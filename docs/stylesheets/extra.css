@@ -1,0 +1,186 @@
+/* ------------------------------------------------------- */
+/* STONE AGE THEME VARIABLES                            */
+/* ------------------------------------------------------- */
+:root {
+  /* Brand Colors */
+  --sa-primary-500: #0ea5e9; /* Bright Blue (Accent/Links) */
+  --sa-primary-700: #0369a1; /* Deep Blue (Brand Header) */
+
+  /* Light Mode Colors */
+  --sa-light-bg:      #ffffff; 
+  --sa-light-sidebar: #f9fafb; 
+  --sa-light-text:    #111827; 
+  --sa-light-muted:   #4b5563; 
+  --sa-light-border:  #e5e7eb;
+
+  /* Dark Mode Colors */
+  --sa-dark-main:     #111827; /* Deepest Dark (Main Background) */
+  --sa-dark-surface:  #1f2937; /* Lighter Dark (Sidebar/Cards) */
+  
+  --sa-dark-text:     #f9fafb; /* Content Primary (White) */
+  --sa-dark-muted:    #9ca3af; /* Content Secondary (Grey) */
+  --sa-dark-border:   #4b5563;
+  --sa-nav-text:      #cbd5e1; /* Sidebar Text Color */
+
+}
+
+/* ------------------------------------------------------- */
+/* DARK MODE (Slate) - CONFIGURATION                    */
+/* ------------------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  /* --- BACKGROUNDS --- */
+  --md-default-bg-color:        var(--sa-dark-main);
+  --md-default-bg-color--light: var(--sa-dark-surface);
+  
+  /* Header: Matches Sidebar */
+  --md-primary-fg-color:        var(--sa-dark-surface);
+  
+  /* --- TEXT --- */
+  --md-default-fg-color:        var(--sa-dark-text);
+  --md-default-fg-color--light: var(--sa-dark-muted);
+
+  /* --- ACCENTS --- */
+  --md-typeset-a-color:         var(--sa-primary-500); 
+  --md-accent-fg-color:         var(--sa-primary-500);
+  
+  /* Header Text Color */
+  --md-primary-bg-color:        #ffffff; 
+
+  /* Borders */
+  --md-typeset-table-color:     var(--sa-dark-border);
+}
+
+[data-md-color-scheme="slate"] .md-header {
+  background: #1f2937 !important;
+}
+
+/* ------------------------------------------------------- */
+/* LIGHT MODE (Default) - CONFIGURATION                 */
+/* ------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color:        var(--sa-light-bg);
+  --md-default-bg-color--light: var(--sa-light-sidebar);
+  
+  --md-default-fg-color:        var(--sa-light-text);
+  --md-default-fg-color--light: var(--sa-light-muted);
+  
+  --md-primary-fg-color:        var(--sa-primary-700); /* Deep Blue Header */
+  --md-primary-bg-color:        #ffffff; 
+  
+  --md-typeset-a-color:         var(--sa-primary-700);
+}
+
+/* --- LIGHT MODE SEARCH FIX --- */
+/* Forces the search bar to be White even when not clicked */
+[data-md-color-scheme="default"] .md-search__input {
+  background-color: #ffffff; 
+  border-radius: 4px; 
+}
+/* Ensure the text inside the white search bar is dark */
+[data-md-color-scheme="default"] .md-search__input::placeholder,
+[data-md-color-scheme="default"] .md-search__input {
+  color: var(--sa-light-text);
+}
+
+/* ------------------------------------------------------- */
+/* SIDEBAR NAVIGATION (Dark Mode Fixes)                 */
+/* ------------------------------------------------------- */
+/* Force Light Grey text on Dark Sidebar */
+[data-md-color-scheme="slate"] .md-nav__link {
+  color: var(--sa-nav-text) !important;
+  opacity: 1;
+  transition: color 0.1s ease; /* Smooth color transition */
+}
+
+/* FIX: Separated Active vs Hover 
+   We keep 'font-weight: 600' on Active (static state)
+   We REMOVE it from Hover to prevent layout jumping/wrapping
+*/
+
+/* Active State (The page you are currently on) */
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  color: var(--sa-primary-500) !important; /* Brand Blue */
+  font-weight: 600;
+}
+
+/* Hover State (Mouse over) */
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: var(--sa-primary-500) !important; /* Brand Blue */
+  /* font-weight: 600;  <-- REMOVED TO PREVENT WRAPPING */
+}
+
+/* Passed/Done Items */
+[data-md-color-scheme="slate"] .md-nav__link--passed {
+  color: var(--sa-dark-muted) !important;
+}
+
+/* ------------------------------------------------------- */
+/* GENERAL COMPONENT FIXES                              */
+/* ------------------------------------------------------- */
+/* Force body text color */
+[data-md-color-scheme="slate"] body,
+[data-md-color-scheme="slate"] .md-typeset {
+  color: var(--sa-dark-text) !important;
+}
+
+/* Fix Headings */
+[data-md-color-scheme="slate"] .md-typeset h1, 
+[data-md-color-scheme="slate"] .md-typeset h2, 
+[data-md-color-scheme="slate"] .md-typeset h3,
+[data-md-color-scheme="slate"] .md-typeset h4 {
+  color: #ffffff !important;
+}
+
+/* Dark Mode Search Input */
+[data-md-color-scheme="slate"] .md-search__input {
+  background-color: var(--sa-dark-main); 
+  border: 1px solid var(--sa-dark-border);
+  color: #ffffff;
+}
+[data-md-color-scheme="slate"] .md-search__form {
+  background-color: var(--sa-dark-surface);
+}
+
+/* ------------------------------------------------------- */
+/* CODE BLOCK REPAIRS                                   */
+/* ------------------------------------------------------- */
+/* Main Code Blocks */
+[data-md-color-scheme="slate"] .md-typeset pre > code {
+  background-color: var(--sa-dark-surface);
+  color: var(--sa-dark-text);
+  border: 1px solid var(--sa-dark-border);
+  border-radius: 4px;
+}
+
+/* Fix "Invisible" Comments */
+[data-md-color-scheme="slate"] .md-typeset pre > code .c, 
+[data-md-color-scheme="slate"] .md-typeset pre > code .c1, 
+[data-md-color-scheme="slate"] .md-typeset pre > code .cm {
+  color: var(--sa-dark-muted) !important;
+}
+
+/* Inline Code */
+[data-md-color-scheme="slate"] .md-typeset :not(pre) > code {
+  background-color: var(--sa-dark-surface);
+  color: var(--sa-primary-500);
+  border: 1px solid var(--sa-dark-border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* Force all text inside mermaid nodes to be black */
+/* This overrides the theme's attempt to make text white in dark mode */
+.mermaid .node .label,
+.mermaid .node .label *,
+.mermaid .node text,
+.mermaid .node foreignObject div {
+  color: black !important;
+  fill: black !important;
+}
+
+/* Keep the labels on the lines (the arrows) following the theme colors */
+/* This ensures "WebSockets" is white in dark mode and black in light mode */
+.mermaid .edgeLabel,
+.mermaid .edgeLabel span {
+  color: var(--md-typeset-color) !important;
+}

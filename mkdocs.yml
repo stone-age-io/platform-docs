@@ -1,0 +1,57 @@
+site_name: Stone-Age.io Docs
+nav:
+  - Home: index.md
+  - Docs:
+    - Overview: overview.md
+    - Architecture: architecture.md
+    - Getting Started: getting-started.md
+    - Platform Entities and UI: platform-ui-entities.md
+    - Connectivity: connectivity.md
+    - Agent: agent.md
+    - Automation: automation.md
+    - Observability: observability.md
+theme: 
+  name: material
+  logo: assets/logo.svg
+  features:
+    - toc.integrate
+    - navigation.tabs
+    - navigation.tabs.sticky
+  palette:
+    # 1. System Preference (Automatic)
+    # This option allows the OS to decide. It appears as "Auto" to the user.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # 2. Light Mode (Default)
+    # This is triggered when the user explicitly switches to Light.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white  # We override this in extra.css, but 'white' is a safe fallback
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # 3. Dark Mode (Slate)
+    # This is triggered when the user explicitly switches to Dark.
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black  # We override this in extra.css to #111827
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+extra_css:
+  - stylesheets/extra.css
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  - javascripts/mermaid.mjs  # Use the .mjs extension for ES Modules
