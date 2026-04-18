@@ -2,7 +2,7 @@
 
 The Stone-Age.io Platform is architected to decouple **Control** (the "who" and "where") from **Data** (the "what" and "how"). This separation ensures that the platform remains lightweight and responsive, while the underlying infrastructure provides industrial-grade security and reliability.
 
-On top of that Control / Data split, the platform is organized as **four composable layers** — substrate, declarative event logic, stream processing, and long-term storage. This document focuses on the Control Plane / Data Plane architecture; see [Platform Layers](./platform-layers.md) for the complete layer model and graduation criteria.
+This document focuses on the Control Plane / Data Plane split that structures the platform at the highest level. The Data Plane is further organized into four composable layers — see [Platform Layers](./platform-layers.md) for that model, and for how Planes and Layers relate.
 
 ---
 
@@ -61,7 +61,7 @@ The Data Plane is where the actual work happens. It handles the movement of ever
 - **Messaging:** Real-time pub/sub, request/reply, and streaming via NATS.
 - **Connectivity:** Secure, peer-to-peer mesh networking via Nebula.
 
-The Data Plane is Layer 0 of the platform's layered architecture — the always-on substrate that all higher tiers build on.
+The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane — it provisions identities and credentials the Data Plane uses, but it doesn't participate in runtime event flow. See [Platform Layers](./platform-layers.md) for the layer model.
 
 ---
 
@@ -132,7 +132,7 @@ While PocketBase stores the **Inventory** (the identity/metadata about a thing),
 **Why this matters:**
 The UI connects directly to NATS via WebSockets. When a property changes in the KV store, the UI updates instantly without polling a database. This architecture allows the platform to handle high-frequency data with millisecond latency.
 
-The KV store is also where the Rule-Router (Layer 1) keeps state that its rules read and write — alarm status, presence keys, debounce windows, rate-limit counters. The pattern throughout the platform is the same: **state lives in KV; logic is expressed in rules or pipelines that read from and write to KV.**
+The KV store is also where Layer 1 rules keep durable state — alarm status, presence keys, debounce windows, rate-limit counters. See [Automation](./automation.md) for the canonical patterns.
 
 ```mermaid
 graph LR
@@ -197,28 +197,23 @@ NATS provides a native MQTT integration via JetStream. Enable your server/cluste
 
 The platform's event-processing story is structured as three distinct tiers on top of the NATS substrate. Each tier has a clear job and composes cleanly with the others. See [Platform Layers](./platform-layers.md) for the complete model; this section summarizes where each component fits.
 
-#### Layer 1 — The Rule-Router (Declarative Event Logic)
+#### Layer 1 — The Rule Engine (Declarative Event Logic)
 
-The **Rule-Router** is a high-performance evaluation engine that sits on the NATS backbone. It expresses logic as simple YAML rules following the **Trigger → Condition → Action** pattern.
+The platform's **rule engine** is a single high-performance binary (`rule-router`) that hosts three features:
 
-1.  **Trigger:** A message arrives on a NATS subject (e.g., `telemetry.temp`).
-2.  **Condition:** The router checks a condition (e.g., `temp > 40`).
-3.  **Action:** The router performs an action (e.g., `publish alerts.high_temp` or update a KV key).
+- **Router** — NATS-in, NATS-out. The default. Routes, filters, and enriches messages between NATS subjects.
+- **Gateway** — Bidirectional HTTP↔NATS. Inbound webhooks become NATS messages; outbound NATS messages become HTTP calls to external APIs (with configurable retry).
+- **Scheduler** — Cron-triggered publishes to NATS or HTTP on a schedule.
 
-The Rule-Router is **stateless per message** — each rule evaluation is independent. Durable state lives in NATS KV, which rules read and write. This keeps rule-router horizontally scalable while still supporting rich stateful patterns (alarm deduplication, presence tracking, debouncing) through KV-as-state. See [Automation](./automation.md) for the full pattern library.
+All three features share the same YAML rule syntax following the **Trigger → Condition → Action** pattern, read from the same NATS KV buckets, and run on the same engine. You can enable any combination of features in a single process or split them across separate processes.
+
+The rule engine is **stateless per message** — each rule evaluation is independent. Durable state lives in NATS KV, which rules read from and write to. This keeps the engine horizontally scalable while still supporting rich stateful patterns (alarm deduplication, presence tracking, debouncing) through KV-as-state. See [Automation](./automation.md) for the full pattern library and feature-by-feature detail.
 
 #### Layer 2 — Stream Processing (Stateful Computation)
 
-When a problem needs **time-window aggregations, stream joins, or retractable results**, the Rule-Router isn't the right tool. That's where stream processors come in. They subscribe to NATS subjects, maintain in-memory state with proper windowing semantics, and publish results back to NATS for the Rule-Router or UI to consume.
+When a problem needs **time-window aggregations, stream joins, or retractable results**, the rule engine isn't the right tool. That's where stream processors come in. They subscribe to NATS subjects, maintain in-memory state with proper windowing semantics, and publish results back to NATS for Layer 1 rules or the UI to consume.
 
 Any stream processor that speaks NATS works: **eKuiper**, **Benthos / RedPanda Connect / Wombat**, or your own custom Go/Python/Rust service. The platform has no opinion — pick whichever matches your team and your problem. See [Stream Processing](./stream-processing.md) for the full picture.
-
-#### The HTTP-Gateway — Layer 1, HTTP flavor
-
-The **HTTP-Gateway** is built on the same rule engine as the Rule-Router but translates between HTTP and NATS in both directions.
-
-- **Inbound:** Legacy devices or applications that can't speak NATS or MQTT directly can send a POST request to a configurable URL, and the gateway evaluates rules against the request just as the Rule-Router would evaluate a NATS message. Inbound requests are "fire and forget" — the HTTP response is immediate.
-- **Outbound:** NATS messages can trigger outbound HTTP requests to external REST APIs, with JetStream-based acknowledgement so retries are durable.
 
 ---
 
@@ -226,6 +221,6 @@ The **HTTP-Gateway** is built on the same rule engine as the Rule-Router but tra
 
 - For the conceptual layer model: [Platform Layers](./platform-layers.md).
 - For Layer 0 (substrate) detail: [Connectivity](./connectivity.md).
-- For Layer 1 (Rule-Router) detail: [Automation](./automation.md).
+- For Layer 1 (rule engine) detail: [Automation](./automation.md).
 - For Layer 2 (stream processing) detail: [Stream Processing](./stream-processing.md).
 - For Layer 3 (long-term storage) detail: [Observability](./observability.md).

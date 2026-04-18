@@ -27,7 +27,7 @@ The Stone-Age.io Platform applies this concept to the modern edge:
 - **The Channels:** NATS Accounts and Subjects provide isolated logic for different tenants.
 - **The Radios:** Devices and Applications that can speak NATS, MQTT, or even just plain HTTP.
 - **The Dispatcher:** The Stone Age Console (powered by PocketBase) orchestrates the entire system from a single pane of glass.
-- **The Control Room:** The Rule-Router provides live reflexes — routing traffic, triggering alerts, managing state.
+- **The Control Room:** The rule engine provides live reflexes — routing traffic, triggering alerts, managing state, handling webhooks, firing scheduled tasks.
 - **The Production Studio:** Stream processors (eKuiper, Benthos) take raw broadcasts and produce polished analytical content.
 - **The Archive:** Your chosen time-series database keeps the historical record for analysis and reporting.
 
@@ -92,7 +92,7 @@ By leveraging **NATS.io** for messaging and **Nebula** for overlay networking, t
 
 ### 4. Principled Layering, Not Feature Sprawl
 
-The platform is explicitly structured as four composable layers (substrate, declarative event logic, stream processing, long-term storage). Each layer has a clear job and a clear graduation path to the next. You never hit a wall where you need to rewrite — you add the next layer when you need it, and it consumes from the same NATS subjects the previous layer was using. See [Platform Layers](./platform-layers.md) for the detail.
+The platform is explicitly structured as a Control Plane and a four-layer Data Plane (substrate, declarative event logic, stream processing, long-term storage). Each layer has a clear job and a clear graduation path to the next. You never hit a wall where you need to rewrite — you add the next layer when you need it, and it consumes from the same NATS subjects the previous layer was using. See [Platform Layers](./platform-layers.md) for the detail.
 
 ### 5. No Vendor Lock-in
 

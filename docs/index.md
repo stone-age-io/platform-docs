@@ -14,20 +14,22 @@ The Stone-Age.io Platform orchestrates three industry-leading technologies into 
 
 - **Single-Binary Deployment:** No microservices. No Docker-compose. Just one executable.
 - **Infrastructure-as-Tenant:** Creating an organization automatically provisions isolated NATS accounts and Nebula CAs.
-- **Digital Twins:** Real-time state management using NATS KV buckets—view and control devices with sub-millisecond latency.
+- **Digital Twins:** Real-time state management using NATS KV buckets — view and control devices with sub-millisecond latency.
 - **Outbound-Only Security:** Devices punch through firewalls and NATs; no open ports required.
-- **Grug-Brained Logic:** Stateless automation using simple YAML rules via our high-performance Rule-Router.
+- **Grug-Brained Logic:** A unified rule engine (router, gateway, and scheduler features) expressing automation as simple YAML rules.
 - **Bring Your Own Data:** Resilient NATS-native ingestion into your choice of TSDB (VictoriaMetrics, InfluxDB, etc.).
 
 ---
 
-## A Layered Platform
+## Planes and Layers
 
-Stone-Age.io isn't a monolithic product — it's a set of principled layers around a shared NATS substrate. Each layer does one thing well. Each composes cleanly with the others. You can use just the bottom layer for pure messaging, or stack the full four for a complete event-driven architecture.
+Stone-Age.io isn't a monolithic product — it's a **Control Plane** (management surface) alongside a **Data Plane** (runtime) that is internally composed of four layers around a shared NATS substrate.
 
-> **NATS is the bus. Rule-Router is the reflexes. Stream processors are the thinking. Telegraf + TSDB is the memory.**
+> **NATS is the bus. The rule engine is the reflexes. Stream processors are the thinking. Telegraf + TSDB is the memory.**
 
-Understanding the layer model is the single most useful mental model for working with the platform — it tells you where to solve each problem and when to reach for a different tool. Start with [Platform Layers](./platform-layers.md) if you want the framing first.
+Each layer does one thing well. Each composes cleanly with the others. You can use just the bottom layer for pure messaging, or stack all four for a complete event-driven architecture. Understanding the model is the single most useful mental aid for working with the platform — it tells you where to solve each problem and when to reach for a different tool.
+
+Start with [Platform Layers](./platform-layers.md) if you want the framing first.
 
 ---
 
@@ -42,7 +44,7 @@ Start your journey here to understand how to build your private event-driven arc
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
 6.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
 7.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-8.  **[Automation](./automation.md)** — Build intelligent routing and stateful alarms with the Rule-Router (Layer 1).
+8.  **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
 9.  **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
 10. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
 

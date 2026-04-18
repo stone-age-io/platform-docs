@@ -1,6 +1,6 @@
 # Stream Processing
 
-Stream processing is **Layer 2** of the Stone-Age.io platform — the tier where genuinely stateful, time-aware computation happens. When the declarative event logic of the Rule-Router becomes awkward, a stream processor is the natural graduation.
+Stream processing is **Layer 2** of the Stone-Age.io platform — the tier where genuinely stateful, time-aware computation happens. When the declarative event logic of the rule engine becomes awkward, a stream processor is the natural graduation.
 
 For the full layer model, see [Platform Layers](./platform-layers.md).
 
@@ -8,7 +8,7 @@ For the full layer model, see [Platform Layers](./platform-layers.md).
 
 ## 1. When You Need a Stream Processor
 
-The Rule-Router (Layer 1) expresses "when X happens, check Y, do Z." It's stateless per-message — durable state lives in NATS KV. That model covers a remarkable amount of ground, but it has real limits.
+Layer 1 rules express "when X happens, check Y, do Z." They're stateless per-message — durable state lives in NATS KV. That model covers a remarkable amount of ground, but it has real limits.
 
 **You need a stream processor when:**
 
@@ -18,29 +18,29 @@ The Rule-Router (Layer 1) expresses "when X happens, check Y, do Z." It's statel
 - You want **SQL-like expressiveness** over continuous event streams rather than finite tables.
 - You need **complex event processing** — patterns like "A followed by B but not C within T seconds."
 
-If your need doesn't appear in that list, check whether the Rule-Router handles it first. The stateful-alarm-via-KV-stacking pattern in [Automation](./automation.md) covers a lot of cases that *look* like they need a stream processor but don't.
+If your need doesn't appear in that list, check whether Layer 1 handles it first. The stateful-alarm-via-KV-stacking pattern in [Automation](./automation.md) covers a lot of cases that *look* like they need a stream processor but don't.
 
 ---
 
 ## 2. The Handoff Pattern
 
-The most important architectural point: **stream processors don't replace the Rule-Router; they extend it.** Both coexist on the same NATS bus, each doing what they're good at.
+The most important architectural point: **stream processors don't replace the rule engine; they extend it.** Both coexist on the same NATS bus, each doing what they're good at.
 
 <center>
 ```mermaid
 flowchart LR
-    Raw["Raw Events<br/>telemetry.sensor.*"] --> RR1["Rule-Router<br/>(filter, enrich)"]
+    Raw["Raw Events<br/>telemetry.sensor.*"] --> RR1["Layer 1 Rule<br/>(filter, enrich)"]
     RR1 -->|"clean.sensor.*"| SP["Stream Processor<br/>(5-min rolling avg)"]
-    SP -->|"aggregates.sensor.*"| RR2["Rule-Router<br/>(threshold alerts)"]
-    RR2 -->|"alerts.*"| Out["HTTP-Gateway<br/>Slack / PagerDuty"]
+    SP -->|"aggregates.sensor.*"| RR2["Layer 1 Rule<br/>(threshold alerts)"]
+    RR2 -->|"alerts.*"| Out["Gateway feature<br/>Slack / PagerDuty"]
 ```
 </center>
 
 A typical pipeline:
 
-1. **Layer 1 (inbound filter).** A rule-router rule subscribes to the raw telemetry stream, drops invalid messages, hydrates each event with KV-sourced metadata (location name, asset tier), and publishes cleaned events to a dedicated subject.
+1. **Layer 1 (inbound filter).** A rule subscribes to the raw telemetry stream, drops invalid messages, hydrates each event with KV-sourced metadata (location name, asset tier), and publishes cleaned events to a dedicated subject.
 2. **Layer 2 (windowed compute).** A stream processor subscribes to the cleaned subject, maintains a 5-minute tumbling window per sensor, computes averages, and publishes aggregates to another subject.
-3. **Layer 1 (outbound action).** A second rule-router rule subscribes to aggregates, evaluates threshold conditions (using KV-stored per-sensor limits), and either updates a KV alarm key or triggers a notification via the HTTP-Gateway.
+3. **Layer 1 (outbound action).** A second rule subscribes to aggregates, evaluates threshold conditions (using KV-stored per-sensor limits), and either updates a KV alarm key or triggers a notification via the Gateway feature.
 
 Neither layer knows about the other's internals. They communicate through **subject contracts** — what data lands on which subject, with what shape. That decoupling is what keeps the system maintainable.
 
@@ -69,7 +69,7 @@ FROM cleanSensorStream
 GROUP BY sensor_id, TUMBLINGWINDOW(mi, 1)
 ```
 
-The query runs continuously, consuming from a NATS subject and publishing results to another subject. Rule-router rules on the output subject handle thresholding and alerting.
+The query runs continuously, consuming from a NATS subject and publishing results to another subject. Layer 1 rules on the output subject handle thresholding and alerting.
 
 ### Benthos / RedPanda Connect / Wombat
 
@@ -77,7 +77,7 @@ Declarative YAML pipelines with a massive connector library. Excellent for data-
 
 **Strengths:**
 
-- YAML-native, which fits well alongside rule-router's YAML rules.
+- YAML-native, which fits well alongside the rule engine's YAML rules.
 - Extensive processor library: `mapping`, `branch`, `cache`, `dedupe`, `group_by`, and more.
 - Strong support for format transformation (JSON ↔ Protobuf ↔ Avro ↔ CSV).
 - Good fit when the stream processing job is less about windowing and more about "consume from A, transform, send to B and C in parallel."
@@ -118,11 +118,11 @@ Both patterns use JetStream leaf nodes or mirrored streams to move data between 
 
 ---
 
-## 5. Choosing Between Rule-Router and a Stream Processor
+## 5. Choosing Between the Rule Engine and a Stream Processor
 
 When a problem could plausibly be solved at either layer, here's a rough guide:
 
-| Characteristic | Rule-Router (Layer 1) | Stream Processor (Layer 2) |
+| Characteristic | Rule Engine (Layer 1) | Stream Processor (Layer 2) |
 |---|---|---|
 | State scope | Per-rule, in KV | Per-pipeline, in-memory + checkpointed |
 | Time windows | TTL-based presence, debounce, throttle | Tumbling, sliding, session windows |
@@ -132,25 +132,25 @@ When a problem could plausibly be solved at either layer, here's a rough guide:
 | Cost of running | Very low (microsecond evaluation) | Moderate (continuous memory/CPU) |
 | Best for | High-volume stateless routing, KV-backed state | Analytical windows, anomaly detection |
 
-**Rule of thumb:** if the solution in rule-router requires more than two or three KV keys per logical concept, you're probably approaching the boundary of what layer 1 should do. That's not a hard rule — the alarm stacking pattern uses KV in ways that look complex but are actually principled — but it's a useful smell test.
+**Rule of thumb:** if the solution in Layer 1 requires more than two or three KV keys per logical concept, you're probably approaching the boundary of what Layer 1 should do. That's not a hard rule — the alarm stacking pattern uses KV in ways that look complex but are actually principled — but it's a useful smell test.
 
 ---
 
 ## 6. A Worked Example — Anomaly Detection on Access Events
 
-Continuing the access control reference architecture from [Platform Layers](./platform-layers.md):
+This example extends the access control reference architecture from [Platform Layers §8](./platform-layers.md#8-reference-architecture--all-four-layers). The reference architecture shows Layers 0, 1, and 3 handling the operational path; here we add Layer 2 for analytical behavior without touching the hot path.
 
 **The goal:** flag access events that are unusual for the user — accesses outside their normal hours, to doors they rarely use, or in unusual sequences.
 
-**Why this is layer 2:** "Unusual for the user" requires a baseline built from the user's historical access patterns. That's stateful, windowed computation that would be miserable to express in rule-router.
+**Why this is Layer 2:** "Unusual for the user" requires a baseline built from the user's historical access patterns. That's stateful, windowed computation that would be miserable to express in Layer 1 rules.
 
 **The pipeline:**
 
 1. **Layer 1** publishes `access.decision.granted.{door_id}.{direction}` events as they happen. No change to existing rules.
 2. **Layer 2** (eKuiper or a custom Go processor) subscribes to `access.decision.granted.>`, maintains per-user rolling statistics (hour-of-day distribution, door-usage frequency, sequence patterns) over the last 30 days, and for each new event computes a "normalcy score" against the baseline. When the score crosses a threshold, it publishes to `access.anomaly.{user_id}`.
-3. **Layer 1** (another rule-router rule) subscribes to `access.anomaly.>`, hydrates the message with user contact info from KV, and publishes to `notify.security-team` via the HTTP-Gateway.
+3. **Layer 1** (another rule) subscribes to `access.anomaly.>`, hydrates the message with user contact info from KV, and publishes to `notify.security-team` via the Gateway feature.
 
-The layer 1 rules didn't change. The layer 2 pipeline was added without touching the hot authorization path. If the anomaly detector fails or is taken offline for maintenance, access control continues to work normally — only the anomaly signal is lost, and it catches up from JetStream when the processor returns.
+The Layer 1 rules didn't change. The Layer 2 pipeline was added without touching the hot authorization path. If the anomaly detector fails or is taken offline for maintenance, access control continues to work normally — only the anomaly signal is lost, and it catches up from JetStream when the processor returns.
 
 This is the layering paying off. You added analytical behavior to the system without destabilizing the operational path.
 

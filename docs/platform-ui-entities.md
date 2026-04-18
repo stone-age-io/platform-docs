@@ -2,7 +2,7 @@
 
 The Stone Age Console provides a unified interface for managing the logical and physical structures of your IoT environment or Event-Driven Architecture. This document explains the primary entities used to organize your data and how they interact with the user interface.
 
-These entities live at the boundary between the **Control Plane** (PocketBase) and **Layer 0** (NATS substrate) — PocketBase is the source of truth for identity and relationships; NATS subjects and KV buckets are derived from it for the runtime data plane.
+These entities live in the **Control Plane** (PocketBase) — they're the source of truth for identity, inventory, and relationships. At provisioning time and at runtime, they shape what flows through the **Data Plane** (NATS subjects, KV buckets, Nebula certificates). See [Architecture](./architecture.md) for the Control/Data Plane split in full.
 
 ---
 
@@ -96,7 +96,7 @@ Every Location and Thing with a valid **Code** has a dedicated Digital Twin view
 - This component shows the live state stored in the NATS KV bucket. 
 - You can edit values directly in the UI (e.g., changing a `set_point`), and the update is published to NATS instantly for the device to receive.
 
-The Digital Twin is the most visible manifestation of the platform's shared-state pattern — the same KV buckets that back the Twin UI are what Layer 1 rules read from and write to for stateful operations like alarm stacking.
+The same KV buckets that back the Digital Twin UI are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture](./architecture.md) for the full Digital Twin concept, and [Automation](./automation.md) for the KV-state patterns.
 
 ### CRUD & Management
 

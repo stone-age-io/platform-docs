@@ -2,7 +2,7 @@
 
 The Stone-Age.io Platform is designed to get you from a blank terminal to a live, multi-tenant IoT dashboard in under five minutes. (OK maybe not that fast, but it's pretty fast!) Each component is a single binary — the simplest deployment is the platform UI and a single NATS server. You don't need to manage a fleet of containers, complex Docker Compose setups, or a Kubernetes cluster just to get off the ground.
 
-This guide walks you through standing up **Layer 0** (the substrate). Once that's live, you can add the higher layers as needed — see [Platform Layers](./platform-layers.md) for the full picture.
+This guide stands up the **Control Plane** (PocketBase) and the core of the **Data Plane** (NATS) — the foundation the rest of the platform builds on. Once that's live, you can add the higher layers (rules, stream processing, long-term storage) as needed. See [Platform Layers](./platform-layers.md) for the full model.
 
 ---
 
@@ -100,13 +100,13 @@ You should see the message appear instantly in the live stream.
 
 ## 5. Next Steps
 
-Congratulations! You have a fully functional Control and Data plane running — that's Layer 0 of the platform up and live.
+Congratulations! You have a fully functional Control Plane and Data Plane running — the foundation of the platform is live.
 
 From here, you can grow into the higher layers as your needs demand:
 
 *   **Deploy an Agent:** Install the [Agent](./agent.md) on a Linux or Windows machine to start collecting telemetry from real infrastructure.
 *   **Build a Dashboard:** Navigate to the **Visualizer**, unlock the grid, and add a **Gauge** or **Chart** widget pointing to your NATS subjects.
-*   **Define a Rule (Layer 1):** Open the **Rule-Router** and create your first automation logic to route data based on its content. See [Automation](./automation.md).
+*   **Define rules (Layer 1):** Deploy the rule engine — router for NATS-to-NATS logic, gateway for webhooks, scheduler for cron-based publishing. See [Automation](./automation.md).
 *   **Add stream processing (Layer 2):** When you need windowed aggregations or stream joins, see [Stream Processing](./stream-processing.md).
 *   **Archive history (Layer 3):** Hook up Telegraf and a TSDB for long-term storage. See [Observability](./observability.md).
 *   **Understand the whole architecture:** Read [Platform Layers](./platform-layers.md) for the full model.

@@ -1,6 +1,6 @@
 # Observability
 
-Observability is **Layer 3** of the Stone-Age.io platform — the tier that answers questions about the past. While the substrate (Layer 0) handles live state, the Rule-Router (Layer 1) handles reflexes, and stream processors (Layer 2) handle real-time analytical computation, Layer 3 is the historical record. It's what lets you ask "what happened last Tuesday" or "how has this trended over the last month."
+Observability is **Layer 3** of the Stone-Age.io platform — the tier that answers questions about the past. While the substrate (Layer 0) handles live state, the rule engine (Layer 1) handles reflexes, and stream processors (Layer 2) handle real-time analytical computation, Layer 3 is the historical record. It's what lets you ask "what happened last Tuesday" or "how has this trended over the last month."
 
 For the complete layer model and graduation criteria, see [Platform Layers](./platform-layers.md).
 
@@ -14,10 +14,10 @@ Traditional IoT platforms often bundle a time-series database directly into thei
 
 **Stone-Age.io takes a different approach:**
 
-- **Live layers (0–2):** Focus on **present state** and **reflexive behavior**. They answer: *"What is happening right now? What should I do about it?"*
+- **Layers 0–2 (live path):** Focus on **present state** and **reflexive behavior**. They answer: *"What is happening right now? What should I do about it?"*
 - **Layer 3 (BYO):** Focuses on **history and trends**. Answers: *"What happened last Tuesday? How has this changed over time?"*
 
-Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of the live layers.
+Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of Layers 0–2.
 
 ---
 
@@ -61,14 +61,14 @@ A typical production pipeline follows this path:
 5.  **Perses/Grafana:** Queries VictoriaMetrics to render historical graphs.
 
 **Why this is resilient:**
-If your VictoriaMetrics server goes down for maintenance, the data stays safe in the **NATS JetStream**. Once the database is back online, Telegraf catches up from where it left off, ensuring no gaps in your history. The live path — dashboards, alerts, Rule-Router reflexes — is completely unaffected.
+If your VictoriaMetrics server goes down for maintenance, the data stays safe in the **NATS JetStream**. Once the database is back online, Telegraf catches up from where it left off, ensuring no gaps in your history. The live path — dashboards, alerts, Layer 1 rules — is completely unaffected.
 
 <center>
 ```mermaid
 flowchart LR
     Source["<b>Edge Device</b>"] 
     
-    subgraph Platform ["Live Layers (0-2)"]
+    subgraph Platform ["Layers 0-2 (Live Path)"]
         Bus{"<b>NATS JetStream</b>"}
         UI["<b>Console UI</b><br/>Live Widgets"]
         KV[("<b>NATS KV</b><br/>Digital Twin")]
@@ -110,7 +110,7 @@ flowchart LR
 
 ## 4. Example Telegraf Configuration
 
-To begin ingesting data from your data plane, configure Telegraf with a NATS input:
+To begin ingesting data from the Data Plane, configure Telegraf with a NATS input:
 
 ```toml
 [[inputs.nats_consumer]]
@@ -138,14 +138,14 @@ To begin ingesting data from your data plane, configure Telegraf with a NATS inp
 
 ## 5. Closing the Loop — Alerts From Historical Analysis
 
-Layer 3 isn't just a read-only archive. Historical alerts (via vmalert or Grafana alerting) can publish *back* into NATS — typically via the HTTP-Gateway's inbound webhook handling — where Layer 1 rules pick them up and route them like any other event.
+Layer 3 isn't just a read-only archive. Historical alerts (via vmalert or Grafana alerting) can publish *back* into NATS — typically by POSTing to the rule engine's Gateway feature — where Layer 1 rules pick them up and route them like any other event.
 
 This completes the loop:
 
-1.  Events flow out from devices (Layer 0) through the Rule-Router (Layer 1) and stream processors (Layer 2) to Telegraf and into VictoriaMetrics (Layer 3).
+1.  Events flow out from devices (Layer 0) through Layer 1 rules and Layer 2 stream processors to Telegraf and into VictoriaMetrics (Layer 3).
 2.  Vmalert or Grafana evaluates alerting rules against historical data.
-3.  Alert notifications are POSTed to the HTTP-Gateway.
-4.  A Rule-Router rule translates the inbound webhook into a NATS event on a well-defined subject.
+3.  Alert notifications are POSTed to the rule engine's Gateway feature.
+4.  A Layer 1 rule translates the inbound webhook into a NATS event on a well-defined subject.
 5.  Existing alert-routing rules (Slack, PagerDuty, etc.) handle the event just like any other alert.
 
 Your alerting pipeline — short-term and long-term — converges on the same subject contracts. You don't maintain two separate notification systems.
@@ -157,8 +157,8 @@ Your alerting pipeline — short-term and long-term — converges on the same su
 By decoupling observability from the core platform, Stone-Age.io stays:
 
 1.  **Fast:** The core binary is not bogged down by heavy disk I/O.
-2.  **Flexible:** You can switch from VictoriaMetrics to InfluxDB, Snowflake, or SQL without changing any code in the live layers. The subject contracts stay stable; only the Layer 3 consumer changes.
-3.  **Scalable:** You can scale your storage independently of your control plane as your device count grows.
+2.  **Flexible:** You can switch from VictoriaMetrics to InfluxDB, Snowflake, or SQL without changing any code in Layers 0–2. The subject contracts stay stable; only the Layer 3 consumer changes.
+3.  **Scalable:** You can scale your storage independently of your Control Plane as your device count grows.
 4.  **Resilient:** Layer 3 failures never affect Layers 0–2. The operational pipeline keeps running; only historical recency lags until the TSDB returns.
 
 For the layer model in full, see [Platform Layers](./platform-layers.md). For the Layer 1 alerting patterns that hand off to Layer 3, see [Automation](./automation.md).

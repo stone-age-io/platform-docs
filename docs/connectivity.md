@@ -1,6 +1,6 @@
 # Connectivity
 
-Connectivity is the backbone of the Stone-Age.io Platform — **Layer 0** of the layered architecture. We rely on two industry-leading technologies to provide a secure, resilient, and low-latency data plane: **NATS.io** for messaging and **Nebula** for overlay networking.
+Connectivity is the backbone of the Stone-Age.io Platform — **Layer 0** of the Data Plane. We rely on two industry-leading technologies to provide a secure, resilient, and low-latency substrate: **NATS.io** for messaging and **Nebula** for overlay networking.
 
 This document details how these technologies work together to create a secure "Radio Network" that handles communication from the cloud to the extreme edge. For the broader architectural picture of how Layer 0 composes with higher tiers (declarative event logic, stream processing, long-term storage), see [Platform Layers](./platform-layers.md).
 
@@ -20,7 +20,7 @@ In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by N
 - **Examples:** `warehouse_chicago.temp_sensor_01.reading`, `things.controllers.io-abc123.data`, `facilities.alerts.high`.
 - **Wildcards:** Wildcards are powerful tools for subject tokens. You can subscribe to `warehouse_chicago.>` to see every message from that site, or `*.*.status` to monitor the health of every device in the location.
 
-**Subject discipline is the contract between layers.** Rule-Router rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Picking a clean, hierarchical namespace up front pays off as the system grows.
+**Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Picking a clean, hierarchical namespace up front pays off as the system grows.
 
 Note: Permissions are role-based, with subject permissions applied to the user. Permissions can be set by publish/subscribe allow/deny patterns. Deny rules are evaluated after Allow, so combining with wildcard patterns can be used to create complex scenarios.
 
@@ -35,12 +35,12 @@ JetStream is also what makes the platform resilient to Layer 3 outages — telem
 
 ### The Digital Twin (KV Store)
 
-JetStream offers specialized streams called Key-Value (KV) buckets to manage the live state of every entity. 
+JetStream offers specialized streams called Key-Value (KV) buckets to manage the live state of every entity.
 
 - Unlike a database, the KV store is optimized for high-frequency updates.
 - Metadata (Name, Serial #) lives in PocketBase. Live State (Current Temp, Online Status) lives in KV.
 
-The KV store is also where **Layer 1 (Rule-Router)** keeps state that its rules read and write — alarm status, presence keys, debounce windows, rate-limit counters. The pattern is consistent throughout the platform: **state lives in KV; logic reads and writes KV.**
+Layer 1 rules also use KV as their durable state store — alarm status, presence keys, debounce windows, and rate-limit counters all live in KV rather than in the rule engine itself. See [Architecture](./architecture.md) for the Digital Twin concept and [Automation](./automation.md) for the KV-state patterns.
 
 ### Leaf Nodes
 
@@ -49,7 +49,7 @@ For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Le
 - **Local Autonomy:** If the internet goes down, the local devices can still talk to each other and store data.
 - **Transparent Bridging:** When the connection is restored, the Leaf Node automatically syncs data back to your central Stone-Age.io cluster.
 
-Leaf nodes enable **edge deployment of higher layers** too. A Rule-Router instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
+Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
 
 ---
 
