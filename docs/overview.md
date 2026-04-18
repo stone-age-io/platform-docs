@@ -1,8 +1,8 @@
 # Overview
 
-The Stone-Age.io Platform is a comprehensive, single-binary toolkit designed to build, manage, and scale private IoT and Event-Driven Architecture (EDA) applications. 
+The Stone-Age.io Platform is a comprehensive, single-binary toolkit designed to build, manage, and scale private IoT and Event-Driven Architecture (EDA) applications.
 
-By combining the simplicity of a monolithic backend with the power of modern messaging and mesh networking, the platform provides a "Control Plane in a Box" for organizations that want to build, and  manage distributed infrastructure without the overhead of cloud-locked microservices.
+By combining the simplicity of a monolithic backend with the power of modern messaging and mesh networking, the platform provides a "Control Plane in a Box" for organizations that want to build and manage distributed infrastructure without the overhead of cloud-locked microservices.
 
 ---
 
@@ -15,9 +15,9 @@ Current IoT and edge computing solutions typically fall into two categories:
 
 For Managed Service Providers (MSPs) and System Integrators (SIs), these hurdles make it difficult to offer a professional, private, and scalable platform to their customers.
 
-## The Solution: The Moden Radio Network Analogy
+## The Solution: The Modern Radio Network Analogy
 
-Think of the Stone-Age.io Platform like a **modern digital radio network**. 
+Think of the Stone-Age.io Platform like a **modern digital radio network**.
 
 In the past, a System Integrator would build out physical radio towers (infrastructure) and provide radios (things) to their customers. Each customer could have their own private channel (multi-tenancy) but share the same reliable backbone.
 
@@ -27,6 +27,11 @@ The Stone-Age.io Platform applies this concept to the modern edge:
 - **The Channels:** NATS Accounts and Subjects provide isolated logic for different tenants.
 - **The Radios:** Devices and Applications that can speak NATS, MQTT, or even just plain HTTP.
 - **The Dispatcher:** The Stone Age Console (powered by PocketBase) orchestrates the entire system from a single pane of glass.
+- **The Control Room:** The Rule-Router provides live reflexes — routing traffic, triggering alerts, managing state.
+- **The Production Studio:** Stream processors (eKuiper, Benthos) take raw broadcasts and produce polished analytical content.
+- **The Archive:** Your chosen time-series database keeps the historical record for analysis and reporting.
+
+Each piece has a distinct job. Each uses the same airwaves. You can run just the towers and radios for pure messaging, or add the control room for automation, or stack the full set — production studio and archive included — for a complete event-driven architecture.
 
 ```mermaid
 graph TB
@@ -63,6 +68,8 @@ graph TB
     NEB ==>|"Network Isolation"| OrgB
 ```
 
+See [Platform Layers](./platform-layers.md) for the architectural picture of how these pieces compose into distinct tiers, and how to graduate from one to the next as your needs grow.
+
 ## Target Audience
 
 - **Managed Service Providers (MSPs):** Build your own branded RMM (Remote Monitoring and Management) or IoT platform for hundreds of clients using a single deployment.
@@ -73,7 +80,7 @@ graph TB
 
 ### 1. Single Binary Simplicity
 
-Built on top of **PocketBase**, the entire platform (database, identity, API, and embedded UI) is delivered as a single executable binary. Use it however you want, bare metal, Docker, Kubernetes etc. No built in Docker-compose hell, no complex database migrations, and no "it works on my machine" deployment bugs.
+Built on top of **PocketBase**, the entire platform (database, identity, API, and embedded UI) is delivered as a single executable binary. Use it however you want — bare metal, Docker, Kubernetes, etc. No built-in Docker-compose hell, no complex database migrations, and no "it works on my machine" deployment bugs.
 
 ### 2. Built-in Multi-Tenancy
 
@@ -83,10 +90,14 @@ Multi-tenancy is the foundational core. Every Organization created in the UI aut
 
 By leveraging **NATS.io** for messaging and **Nebula** for overlay networking, the platform excels in unreliable environments. Things connect via outbound-only traffic, punching through firewalls and CGNATs (LTE/5G/Satellite/etc.) without requiring complex port forwarding or static IPs.
 
-### 4. No Vendor Lock-in
+### 4. Principled Layering, Not Feature Sprawl
+
+The platform is explicitly structured as four composable layers (substrate, declarative event logic, stream processing, long-term storage). Each layer has a clear job and a clear graduation path to the next. You never hit a wall where you need to rewrite — you add the next layer when you need it, and it consumes from the same NATS subjects the previous layer was using. See [Platform Layers](./platform-layers.md) for the detail.
+
+### 5. No Vendor Lock-in
 
 The Stone-Age.io Platform is built on top of standard, industry-proven protocols. Your data lives in a local SQLite database, your messages travel over NATS, and your long-term metrics are handled by whatever time-series database you choose (e.g., VictoriaMetrics, InfluxDB, Postgres). You own the stack from top to bottom.
 
-### 5. Grug-Brained Development
+### 6. Grug-Brained Development
 
 We believe complexity is the enemy of reliability. Stone-Age.io is designed to be understood by a single human. We prefer clear Go code, reactive Vue components, and straightforward YAML rules over abstract magic and sprawling service meshes.

@@ -21,18 +21,30 @@ The Stone-Age.io Platform orchestrates three industry-leading technologies into 
 
 ---
 
+## A Layered Platform
+
+Stone-Age.io isn't a monolithic product — it's a set of principled layers around a shared NATS substrate. Each layer does one thing well. Each composes cleanly with the others. You can use just the bottom layer for pure messaging, or stack the full four for a complete event-driven architecture.
+
+> **NATS is the bus. Rule-Router is the reflexes. Stream processors are the thinking. Telegraf + TSDB is the memory.**
+
+Understanding the layer model is the single most useful mental model for working with the platform — it tells you where to solve each problem and when to reach for a different tool. Start with [Platform Layers](./platform-layers.md) if you want the framing first.
+
+---
+
 ## Documentation Journey
 
 Start your journey here to understand how to build your private event-driven architecture:
 
 1.  **[Overview](./overview.md)** — Understand the vision and the problems we solve.
-2.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
-3.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
-4.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-5.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations.
-6.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-7.  **[Automation](./automation.md)** — Build intelligent routing and stateful alarms.
-8.  **[Observability](./observability.md)** — Learn our philosophy on long-term data storage.
+2.  **[Platform Layers](./platform-layers.md)** — The conceptual model: how the platform is structured as composable tiers.
+3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
+4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
+5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
+6.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+7.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+8.  **[Automation](./automation.md)** — Build intelligent routing and stateful alarms with the Rule-Router (Layer 1).
+9.  **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+10. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
 
 ---
 

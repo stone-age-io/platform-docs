@@ -3,12 +3,14 @@ nav:
   - Home: index.md
   - Docs:
     - Overview: overview.md
+    - Layers: platform-layers.md
     - Architecture: architecture.md
     - Getting Started: getting-started.md
     - Platform Entities and UI: platform-ui-entities.md
     - Connectivity: connectivity.md
     - Agent: agent.md
     - Automation: automation.md
+    - Stream Processing: stream-processing.md
     - Observability: observability.md
 theme: 
   name: material

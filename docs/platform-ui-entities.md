@@ -1,6 +1,8 @@
 # Platform Entities & UI
 
-The Stone Age Console provides a unified interface for managing the logical and physical structures of your IoT environment or Event Driven Architecture. This document explains the primary entities used to organize your data and how they interact with the user interface.
+The Stone Age Console provides a unified interface for managing the logical and physical structures of your IoT environment or Event-Driven Architecture. This document explains the primary entities used to organize your data and how they interact with the user interface.
+
+These entities live at the boundary between the **Control Plane** (PocketBase) and **Layer 0** (NATS substrate) — PocketBase is the source of truth for identity and relationships; NATS subjects and KV buckets are derived from it for the runtime data plane.
 
 ---
 
@@ -47,7 +49,7 @@ The UI provides two distinct ways to see your locations:
 
 ## 3. Things 
 
-A **Thing** is any entity that produces/consumes data (or even just an entry for inventory purposes/asset tracking). In Stone-Age, a Thing is a first-class **Auth Record**.
+A **Thing** is any entity that produces/consumes data (or even just an entry for inventory purposes / asset tracking). In Stone-Age.io, a Thing is a first-class **Auth Record**.
 
 ### Concepts
 
@@ -61,6 +63,8 @@ A Thing is typically linked to:
 
 - **A NATS User:** To allow the device to publish telemetry.
 - **A Nebula Host:** To allow secure, encrypted access to the device for maintenance or SSH.
+
+The subjects a Thing publishes to become the inputs to your Layer 1 rules — picking a clean Thing Code and subject namespace pattern is the first step in building automation that's easy to reason about later.
 
 ---
 
@@ -91,6 +95,8 @@ Every Location and Thing with a valid **Code** has a dedicated Digital Twin view
 
 - This component shows the live state stored in the NATS KV bucket. 
 - You can edit values directly in the UI (e.g., changing a `set_point`), and the update is published to NATS instantly for the device to receive.
+
+The Digital Twin is the most visible manifestation of the platform's shared-state pattern — the same KV buckets that back the Twin UI are what Layer 1 rules read from and write to for stateful operations like alarm stacking.
 
 ### CRUD & Management
 

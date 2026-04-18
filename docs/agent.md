@@ -2,6 +2,8 @@
 
 The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It acts as a resilient, outbound-only executor that connects your physical hardware to the data plane.
 
+The Agent is an **edge primitive of Layer 0** — it's what turns a bare server or IoT gateway into a node on the NATS bus. Once connected, it participates in the full layered architecture: it publishes telemetry that Layer 1 rules can react to, Layer 2 stream processors can aggregate, and Layer 3 tools can archive. See [Platform Layers](./platform-layers.md) for the complete picture.
+
 ---
 
 ## 1. Overview
@@ -78,6 +80,8 @@ The Agent integrates seamlessly with the Prometheus ecosystem.
 - **NATS Ingestion:** It scrapes these exporters locally and publishes the metrics to a NATS JetStream.
 - **Heartbeats:** It publishes a consistent heartbeat to the Digital Twin (KV store), allowing the UI to show real-time "Online/Offline" status.
 
+Agent telemetry flows through every layer of the platform: Layer 1 rules can alert on missed heartbeats or anomalous readings, Layer 2 processors can compute per-device baselines, and Layer 3 archives the full history for trend analysis.
+
 ### B. Service Checks & Control
 
 The Agent can monitor the status of system services (e.g., `nginx`, `docker`, `mssql`).
@@ -126,4 +130,4 @@ commands:
     - "uptime"
 ```
 
-The Stone Age Agent turns a raw server or IoT gateway into a managed entity that is secure by default and easy to operate at scale.
+The Stone Age Agent turns a raw server or IoT gateway into a managed entity that is secure by default and easy to operate at scale — a first-class participant in the layered platform rather than a bolted-on endpoint.

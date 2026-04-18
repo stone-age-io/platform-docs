@@ -1,21 +1,23 @@
 # Observability
 
-One of the core tenets of the Stone-Age.io Platform is our **"Bring Your Own" (BYO)** philosophy regarding things/applications, and specifically long-term data storage. We focus on providing the best possible real-time Control Plane and Data Plane, while leaving historical storage to industry-leading time-series databases.
+Observability is **Layer 3** of the Stone-Age.io platform — the tier that answers questions about the past. While the substrate (Layer 0) handles live state, the Rule-Router (Layer 1) handles reflexes, and stream processors (Layer 2) handle real-time analytical computation, Layer 3 is the historical record. It's what lets you ask "what happened last Tuesday" or "how has this trended over the last month."
 
-This document explains our observability strategy and how to integrate the suggested stack for long-term telemetry storage and trend analysis.
+For the complete layer model and graduation criteria, see [Platform Layers](./platform-layers.md).
+
+One of the core tenets of Stone-Age.io is the **"Bring Your Own" (BYO)** philosophy for long-term data storage. We focus on providing an excellent substrate and live-path experience, while leaving historical storage to industry-leading time-series databases that are optimized for exactly that job.
 
 ---
 
 ## 1. The "Bring Your Own" Philosophy
 
-Traditional IoT platforms often attempt to build a time-series database (TSDB) directly into their core binary. This inevitably leads to architectural bloat, poor performance, and difficult maintenance.
+Traditional IoT platforms often bundle a time-series database directly into their core binary. This inevitably leads to architectural bloat, poor performance, and difficult maintenance.
 
-**The Stone-Age.io approach is different:**
+**Stone-Age.io takes a different approach:**
 
-- **Stone Age Console:** Focuses on **Live State** (The Digital Twin) and **Control**. It answers: *"What is happening right now?"*
-- **Suggested Stack:** Focuses on **History** and **Trends**. It answers: *"What happened last Tuesday?"*
+- **Live layers (0–2):** Focus on **present state** and **reflexive behavior**. They answer: *"What is happening right now? What should I do about it?"*
+- **Layer 3 (BYO):** Focuses on **history and trends**. Answers: *"What happened last Tuesday? How has this changed over time?"*
 
-By leveraging the NATS backbone, you can tap into the data stream and pipe it into any storage engine without impacting the performance of the live Control Plane.
+Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of the live layers.
 
 ---
 
@@ -27,7 +29,7 @@ If you do not have an existing observability stack, we recommend the following b
 
 **Telegraf** is a lightweight agent used for collecting and reporting metrics. In our ecosystem, it acts as the bridge between NATS and your database.
 
-- **NATS Consumer:** Telegraf subscribes to your NATS subjects (e.g., `telemetry.>`).
+- **NATS Consumer:** Telegraf subscribes to your NATS subjects (e.g., `telemetry.>`) using a durable JetStream consumer, so nothing is lost during maintenance.
 - **Parsing:** It converts NATS JSON payloads into metrics.
 - **Output:** It pushes those metrics to your storage engine.
 
@@ -35,7 +37,7 @@ If you do not have an existing observability stack, we recommend the following b
 
 **VictoriaMetrics** is a high-performance, cost-effective, and scalable time-series database. It is fully compatible with the Prometheus API.
 
-- **Grug-Brained:** Like Stone Age, VictoriaMetrics prefers single-binary simplicity and low resource usage.
+- **Grug-Brained:** Like Stone-Age.io, VictoriaMetrics prefers single-binary simplicity and low resource usage.
 - **Retention:** Use it to store months or years of historical data.
 - **Vmalert:** This component allows you to execute "recording rules" or "alerting rules" against historical data (e.g., *"Alert if the average temperature over the last 24 hours is 10% higher than the previous week"*).
 
@@ -52,27 +54,27 @@ While the Stone-Age.io Platform Dashboard is perfect for operational control, **
 
 A typical production pipeline follows this path:
 
-1.  **Agent:** Collects local metrics (CPU, Temp, etc.) and publishes to NATS.
+1.  **Agent / Device:** Collects local metrics (CPU, Temp, etc.) and publishes to NATS.
 2.  **NATS Cluster:** Routes the data to real-time UI widgets AND persistent JetStream.
 3.  **Telegraf:** Acts as a JetStream consumer, pulling data from the bus at its own pace.
-4.  **VictoriaMetrics:** Receives data from Telegraf via the remote write protocol.
+4.  **VictoriaMetrics:** Receives data from Telegraf via the remote-write protocol.
 5.  **Perses/Grafana:** Queries VictoriaMetrics to render historical graphs.
 
 **Why this is resilient:**
-If your VictoriaMetrics server goes down for maintenance, the data stays safe in the **NATS JetStream**. Once the database is back online, Telegraf will catch up from where it left off, ensuring no gaps in your history.
+If your VictoriaMetrics server goes down for maintenance, the data stays safe in the **NATS JetStream**. Once the database is back online, Telegraf catches up from where it left off, ensuring no gaps in your history. The live path — dashboards, alerts, Rule-Router reflexes — is completely unaffected.
 
 <center>
 ```mermaid
 flowchart LR
     Source["<b>Edge Device</b>"] 
     
-    subgraph Platform ["The Stone-Age Platform"]
+    subgraph Platform ["Live Layers (0-2)"]
         Bus{"<b>NATS JetStream</b>"}
         UI["<b>Console UI</b><br/>Live Widgets"]
         KV[("<b>NATS KV</b><br/>Digital Twin")]
     end
 
-    subgraph BYO ["BYO Observability Stack"]
+    subgraph BYO ["Layer 3 — BYO Observability"]
         Telegraf["<b>Telegraf</b><br/>Consumer"]
         TSDB[("<b>VictoriaMetrics</b><br/>History")]
         Grafana["<b>Grafana/Perses</b><br/>Analysis"]
@@ -108,7 +110,7 @@ flowchart LR
 
 ## 4. Example Telegraf Configuration
 
-To begin ingesting data from your data plane, simply configure Telegraf with a NATS input:
+To begin ingesting data from your data plane, configure Telegraf with a NATS input:
 
 ```toml
 [[inputs.nats_consumer]]
@@ -134,10 +136,29 @@ To begin ingesting data from your data plane, simply configure Telegraf with a N
 
 ---
 
-## 5. Summary
+## 5. Closing the Loop — Alerts From Historical Analysis
 
-By decoupling observability from the core platform, Stone Age remains:
+Layer 3 isn't just a read-only archive. Historical alerts (via vmalert or Grafana alerting) can publish *back* into NATS — typically via the HTTP-Gateway's inbound webhook handling — where Layer 1 rules pick them up and route them like any other event.
+
+This completes the loop:
+
+1.  Events flow out from devices (Layer 0) through the Rule-Router (Layer 1) and stream processors (Layer 2) to Telegraf and into VictoriaMetrics (Layer 3).
+2.  Vmalert or Grafana evaluates alerting rules against historical data.
+3.  Alert notifications are POSTed to the HTTP-Gateway.
+4.  A Rule-Router rule translates the inbound webhook into a NATS event on a well-defined subject.
+5.  Existing alert-routing rules (Slack, PagerDuty, etc.) handle the event just like any other alert.
+
+Your alerting pipeline — short-term and long-term — converges on the same subject contracts. You don't maintain two separate notification systems.
+
+---
+
+## 6. Summary
+
+By decoupling observability from the core platform, Stone-Age.io stays:
 
 1.  **Fast:** The core binary is not bogged down by heavy disk I/O.
-2.  **Flexible:** You can switch from VictoriaMetrics to InfluxDB, Snowflake, or SQL without changing a single line of code in Stone Age.
+2.  **Flexible:** You can switch from VictoriaMetrics to InfluxDB, Snowflake, or SQL without changing any code in the live layers. The subject contracts stay stable; only the Layer 3 consumer changes.
 3.  **Scalable:** You can scale your storage independently of your control plane as your device count grows.
+4.  **Resilient:** Layer 3 failures never affect Layers 0–2. The operational pipeline keeps running; only historical recency lags until the TSDB returns.
+
+For the layer model in full, see [Platform Layers](./platform-layers.md). For the Layer 1 alerting patterns that hand off to Layer 3, see [Automation](./automation.md).
