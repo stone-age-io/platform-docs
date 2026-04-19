@@ -64,7 +64,7 @@ The Data Plane is where the actual work happens. It handles the movement of ever
 - **Messaging:** Real-time pub/sub, request/reply, and streaming via NATS.
 - **Connectivity:** Secure, peer-to-peer mesh networking via Nebula.
 
-The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane — it provisions identities and credentials the Data Plane uses, but it doesn't participate in runtime event flow. See [Platform Layers](./platform-layers.md) for the layer model.
+The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane — it provisions identities and credentials the Data Plane uses, and it connects to NATS as a narrow administrative client on the System Account to propagate account and credential changes in real-time (via `$SYS.REQ.CLAIMS.UPDATE`). It does **not** participate in tenant-level event flow — no telemetry, no rule traffic, no user/device messages pass through PocketBase. See [Platform Layers](./platform-layers.md) for the layer model.
 
 ---
 
@@ -86,9 +86,23 @@ The minimum viable deployment is two binaries: the Control Plane and a NATS serv
 | **TSDB** | Long-term time-series storage | VictoriaMetrics, InfluxDB, etc. | Long-term historical storage |
 | **Dashboards** | Historical visualization and alerting | Grafana, Perses | Long-term historical analysis |
 
-**Key properties of this topology:**
+### Bootstrapping the NATS Server from the Control Plane
 
-- **The Control Plane does not sit on the NATS runtime bus.** It provisions credentials into NATS at create-time, then gets out of the way. A PocketBase restart does not interrupt the Data Plane.
+The Control Plane's role isn't limited to runtime credential management — it also produces the server-side artifacts you need to stand up NATS in the first place. When you initialize PocketBase, the platform generates an Operator JWT, a System Account JWT, a System User, a resolver configuration, and a ready-to-use `nats-server` config file. You export these with a single command:
+
+```bash
+./stone-age nats export --output ./nats-config/
+```
+
+The exported directory contains everything needed to run `nats-server -c ./nats-config/nats.conf` against the Control Plane's identity hierarchy. From that point on, PocketBase's connection to the System Account propagates any account or user changes you make in the UI to the running cluster in real-time — no config file edits, no server restarts.
+
+This is a deliberate design choice: the Control Plane owns the Operator key and stamps the server's identity artifacts, but once NATS is running it takes over its own lifecycle. You can run multiple NATS servers or an entire cluster from a single Control Plane, scale them independently, and rotate their config without touching PocketBase. The Control Plane's ongoing role is the admin-subject connection described below, not server supervision.
+
+The getting-started doc walks through this workflow end-to-end. See [Getting Started](./getting-started.md) for the runnable commands.
+
+### Key Properties of This Topology
+
+- **The Control Plane is a narrow administrative NATS client, not a tenant-data participant.** PocketBase connects to NATS on the System Account to propagate credential and account changes (`$SYS.REQ.CLAIMS.UPDATE` and related admin subjects) so that changes made in the UI take effect on the cluster in real-time, without restarts. It does not publish or subscribe on tenant subjects — no telemetry, no rule events, no device commands flow through it. A PocketBase restart pauses new provisioning operations but does not interrupt any running tenant traffic.
 - **Every runtime component is a NATS client.** Agents publish telemetry. The rule engine subscribes to subjects and publishes derived events. Stream processors consume and produce on NATS. Telegraf subscribes to telemetry subjects and writes to the TSDB. The common vocabulary is NATS subjects.
 - **Components can be colocated or distributed.** A small deployment might run the Control Plane, NATS, Nebula Lighthouse, and rule engine on a single host. A large deployment might run each centrally, with NATS leaf nodes and rule engine instances at each edge site. The components don't know or care which topology they're in — they only know about NATS.
 - **Each component can be scaled independently.** The rule engine is stateless per-message and scales horizontally. NATS clusters horizontally. The Control Plane scales vertically (it's a low-traffic metadata store). Stream processors scale per pipeline.
