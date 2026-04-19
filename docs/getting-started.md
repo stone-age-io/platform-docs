@@ -93,6 +93,8 @@ You can use the `nats` CLI tool or add another widget and use the built-in **Pub
 nats pub test.hello '{"msg": "Hello Stone Age", "val": 42}'
 ```
 
+Once you've defined Thing Types and their operations, the Publisher widget can also bind to a `Thing + Operation` pair — the subject resolves automatically from the Thing's context and the payload form is driven by the operation's message schema. See [Thing Types](./thing-types.md).
+
 ### Step C: The Result
 You should see the message appear instantly in the live stream. 
 
@@ -106,6 +108,7 @@ From here, you can grow into the higher layers as your needs demand:
 
 *   **Deploy an Agent:** Install the [Agent](./agent.md) on a Linux or Windows machine to start collecting telemetry from real infrastructure.
 *   **Build a Dashboard:** Navigate to the **Visualizer**, unlock the grid, and add a **Gauge** or **Chart** widget pointing to your NATS subjects.
+*   **Declare contracts:** Define [Thing Types](./thing-types.md) so every participant on your fabric has a declarative contract for its subjects and message shapes.
 *   **Define rules (Layer 1):** Deploy the rule engine — router for NATS-to-NATS logic, gateway for webhooks, scheduler for cron-based publishing. See [Automation](./automation.md).
 *   **Add stream processing (Layer 2):** When you need windowed aggregations or stream joins, see [Stream Processing](./stream-processing.md).
 *   **Archive history (Layer 3):** Hook up Telegraf and a TSDB for long-term storage. See [Observability](./observability.md).

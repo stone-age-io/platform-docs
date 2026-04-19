@@ -134,6 +134,8 @@ The UI connects directly to NATS via WebSockets. When a property changes in the 
 
 The KV store is also where Layer 1 rules keep durable state — alarm status, presence keys, debounce windows, rate-limit counters. See [Automation](./automation.md) for the canonical patterns.
 
+The subjects and message shapes that flow through both the KV store and the broader NATS bus are declared, per kind of participant, by **Thing Types**. A Thing Type is the contract for what a Thing publishes, subscribes to, requests, or replies to — making the subject hierarchy that underpins the Digital Twin explicit rather than implicit. See [Thing Types](./thing-types.md) for the full model.
+
 ```mermaid
 graph LR
     subgraph Control["Control Plane"]
@@ -220,6 +222,7 @@ Any stream processor that speaks NATS works: **eKuiper**, **Benthos / RedPanda C
 ## 6. Where to Go Next
 
 - For the conceptual layer model: [Platform Layers](./platform-layers.md).
+- For the contract layer that describes participants on the fabric: [Thing Types](./thing-types.md).
 - For Layer 0 (substrate) detail: [Connectivity](./connectivity.md).
 - For Layer 1 (rule engine) detail: [Automation](./automation.md).
 - For Layer 2 (stream processing) detail: [Stream Processing](./stream-processing.md).

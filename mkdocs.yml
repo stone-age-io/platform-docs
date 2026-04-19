@@ -7,6 +7,7 @@ nav:
     - Architecture: architecture.md
     - Getting Started: getting-started.md
     - Platform Entities and UI: platform-ui-entities.md
+    - Thing Types: thing-types.md
     - Connectivity: connectivity.md
     - Agent: agent.md
     - Automation: automation.md

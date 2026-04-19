@@ -61,19 +61,27 @@ A **Thing** is any entity that produces/consumes data (or even just an entry for
 
 A Thing is typically linked to:
 
-- **A NATS User:** To allow the device to publish telemetry.
+- **A Thing Type:** The contract that declares what subjects the Thing uses and what message shapes it exchanges. See [Thing Types](./thing-types.md).
+- **A NATS User:** To allow the device to publish telemetry. Permissions can be derived from the Thing Type's linked `nats_role`.
 - **A Nebula Host:** To allow secure, encrypted access to the device for maintenance or SSH.
 
-The subjects a Thing publishes to become the inputs to your Layer 1 rules — picking a clean Thing Code and subject namespace pattern is the first step in building automation that's easy to reason about later.
+The subjects a Thing publishes to become the inputs to your Layer 1 rules — picking a clean Thing Code and subject namespace pattern is the first step in building automation that's easy to reason about later. The Thing Type makes that pattern declarative rather than implicit: rather than hoping every camera publishes on a sensible subject, the camera Thing Type declares the contract once and every camera of that type follows it.
 
 ---
 
 ## 4. Types 
 
-Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering.
+Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering. Location Types are purely for organization; Thing Types have grown into the platform's primary **contract layer** for describing what a participant does on the fabric.
 
 - **Location Types:** Categorize your sites (e.g., `Campus`, `Building`, `Room`, `Cabinet`).
-- **Thing Types:** Define the "Capabilities" of a device. For example, a `Smart Meter` type might define capabilities like `publish` and `request-reply`, informing the UI what widgets are appropriate for that device.
+- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `{location}.camera.{thing}`), a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a message schema), and an optional **NATS role** that turns those operations into runtime permissions. See [Thing Types](./thing-types.md) for the full model.
+
+Thing Types compose from two other collections that the UI also manages directly:
+
+- **Thing Operations:** Shareable records describing individual verbs on the fabric. A single `heartbeat` operation record is typically linked from every Thing Type that emits heartbeats.
+- **Message Schemas:** JSON Schema documents describing operation payloads, versioned via `(namespace, name, version)`.
+
+All three (Thing Types, Thing Operations, Message Schemas) live under the **Types** menu group in the sidebar alongside Location Types.
 
 ---
 
@@ -87,7 +95,8 @@ The Dashboard is a flexible grid system where you can build custom views:
 
 - **Widgets:** Add Gauges, Charts, Switches, and Maps.
 - **NATS-Native:** Most widgets subscribe directly to NATS subjects. Data never touches the database; it flows from the device to NATS to your browser.
--  **Variables:** Define dashboard variables (e.g., `{{building_id}}`) to create a single dashboard that can be "switched" to show data for different sites/things/etc.
+- **Variables:** Define dashboard variables (e.g., `{{building_id}}`) to create a single dashboard that can be "switched" to show data for different sites/things/etc.
+- **Thing Type-aware binding:** The Publisher widget can bind to a `Thing + Operation` pair. When bound, the subject auto-resolves from the Thing's context against the Thing Type's templates, and payload input renders as a schema-driven form when the operation has a linked message schema. See [Thing Types](./thing-types.md) for the contract model that powers this.
 
 ### The Digital Twin 
 

@@ -42,11 +42,12 @@ Start your journey here to understand how to build your private event-driven arc
 3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
 4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-6.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
-7.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-8.  **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
-9.  **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
-10. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+6.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
+7.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+8.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+9.  **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
+10. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+11. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
 
 ---
 
