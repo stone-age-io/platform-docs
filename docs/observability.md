@@ -23,7 +23,9 @@ Because all layers communicate through NATS subjects, Layer 3 is a **pure consum
 
 ## 2. The Suggested Stack 
 
-If you do not have an existing observability stack, we recommend the following based on speed, simplicity, and efficiency.
+If you do not have an existing observability stack, we recommend the following based on speed, simplicity, and efficiency. Each component below is its own single-binary process — you deploy them alongside your NATS cluster and they connect as NATS clients.
+
+> **A turnkey reference deployment is on the roadmap.** We're planning to publish a "Stone-Age Reference Stack" — an opinionated Docker Compose (and/or systemd unit file) bundle that provisions the Control Plane, NATS, Nebula Lighthouse, rule-router, Telegraf, VictoriaMetrics, and Grafana with preconfigured dashboards, so teams who don't want to make architectural decisions on day one can get a complete working stack in one command. Until then, the sections below describe the pieces you'd assemble yourself.
 
 ### A. Telegraf 
 

@@ -25,9 +25,19 @@ flowchart TD
 
 ---
 
-## 1. The Rule Engine — One Binary, Three Features
+## 1. The Rule Engine — A Separate Binary With Three Features
 
-The rule engine is a single Go binary (`rule-router`) that hosts three selectable features. All three share the same YAML rule syntax, read from the same NATS KV buckets, and use the same evaluation engine. What changes between them is the **trigger** — where events originate — and what **actions** are available.
+The rule engine (`rule-router`) is a **single-binary component** that runs alongside NATS as a peer process — in the same spirit as the Agent, but on the server/central side of the fabric. It is **not** part of the Control Plane binary; it's an independent executable that connects to NATS as a client and does its work entirely over NATS subjects and KV buckets.
+
+**Deployment topology is operational, not architectural.** You can run the rule engine:
+
+- **Centrally** alongside your main NATS cluster — the common case for most deployments.
+- **At the edge** alongside a NATS leaf node at a customer site — when you want local rule evaluation that keeps working during WAN outages.
+- **Both** — a common pattern is one set of rules running centrally (for aggregation, cross-site alerting) and another at the edge (for site-local reflexes).
+
+Wherever it runs, the engine is stateless per message and horizontally scalable. Need more throughput? Run another instance against the same NATS cluster. Durable state lives in NATS KV, not in the engine process.
+
+The binary hosts three selectable features that all share the same YAML rule syntax, read from the same NATS KV buckets, and use the same evaluation engine. What changes between them is the **trigger** — where events originate — and what **actions** are available.
 
 | Feature | Trigger | Typical Actions | Default? |
 |---|---|---|---|

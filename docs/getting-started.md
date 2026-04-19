@@ -104,7 +104,7 @@ You should see the message appear instantly in the live stream.
 
 Congratulations! You have a fully functional Control Plane and Data Plane running — the foundation of the platform is live.
 
-From here, you can grow into the higher layers as your needs demand:
+From here, you can grow into the higher layers as your needs demand. Each addition below is **its own single-binary component** that connects to the same NATS bus you just set up — no architectural rework required, just another process to run.
 
 *   **Deploy an Agent:** Install the [Agent](./agent.md) on a Linux or Windows machine to start collecting telemetry from real infrastructure.
 *   **Build a Dashboard:** Navigate to the **Visualizer**, unlock the grid, and add a **Gauge** or **Chart** widget pointing to your NATS subjects.

@@ -1,8 +1,8 @@
 # Overview
 
-The Stone-Age.io Platform is a comprehensive, single-binary toolkit designed to build, manage, and scale private IoT and Event-Driven Architecture (EDA) applications.
+The Stone-Age.io Platform is a comprehensive toolkit designed to build, manage, and scale private IoT and Event-Driven Architecture (EDA) applications. Each component is a single binary, composable over a shared NATS substrate — no service mesh, no orchestrator required.
 
-By combining the simplicity of a monolithic backend with the power of modern messaging and mesh networking, the platform provides a "Control Plane in a Box" for organizations that want to build and manage distributed infrastructure without the overhead of cloud-locked microservices.
+By combining the simplicity of a monolithic control plane with the power of modern messaging and mesh networking, the platform provides a "Control Plane in a Box" for organizations that want to build and manage distributed infrastructure without the overhead of cloud-locked microservices.
 
 ---
 
@@ -35,10 +35,10 @@ Each piece has a distinct job. Each uses the same airwaves. You can run just the
 
 ```mermaid
 graph TB
-    subgraph Core["Single Binary Platform"]
-        PB["PocketBase<br/>Identity & Orchestration"]
-        NATS["NATS.io<br/>Messaging Backbone"]
-        NEB["Nebula<br/>Mesh VPN"]
+    subgraph Core["Platform Components"]
+        PB["PocketBase<br/>(Control Plane — single binary)<br/>Identity & Orchestration"]
+        NATS["NATS.io<br/>(single binary)<br/>Messaging Backbone"]
+        NEB["Nebula<br/>(single binary)<br/>Mesh VPN"]
         
         PB -.->|"Provisions Accounts and Users"| NATS
         PB -.->|"Generates CAs and host configs"| NEB
@@ -78,9 +78,17 @@ See [Platform Layers](./platform-layers.md) for the architectural picture of how
 
 ## Key Value Propositions
 
-### 1. Single Binary Simplicity
+### 1. Each Component is a Single Binary
 
-Built on top of **PocketBase**, the entire platform (database, identity, API, and embedded UI) is delivered as a single executable binary. Use it however you want — bare metal, Docker, Kubernetes, etc. No built-in Docker-compose hell, no complex database migrations, and no "it works on my machine" deployment bugs.
+Stone-Age.io is not one monolithic executable — it's a small set of independent components, each delivered as a single binary with zero external runtime dependencies.
+
+- **The Control Plane** (PocketBase + embedded UI + provisioning hooks) is one binary.
+- **The rule engine** (`rule-router`) is another.
+- **The Agent** is another.
+- **NATS** and **Nebula** are their own upstream binaries.
+- **Stream processors** (eKuiper, Benthos, custom) and **Layer 3 components** (Telegraf, TSDB) are additional single-binary components you add only when you need them.
+
+Each component communicates with the others through NATS subjects. There's no service mesh to configure, no Docker Compose hell, no Kubernetes cluster to stand up just to get off the ground. Deploy each binary where it belongs — the Control Plane centrally, the Agent at the edge, the rule engine wherever makes operational sense — and let NATS handle the wiring.
 
 ### 2. Built-in Multi-Tenancy
 

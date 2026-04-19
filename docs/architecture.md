@@ -13,16 +13,19 @@ Understanding the split between these two layers is key to understanding the pla
 <center>
 ```mermaid
 graph TB
-    subgraph SingleBinary["Platform"]
+    subgraph Platform["Platform Components (each a single binary)"]
         direction TB
-        PB["PocketBase<br/><b>Control Plane</b><br/>REST API + UI"]
+        
+        subgraph ControlPlane["Control Plane"]
+            PB["PocketBase<br/>REST API + UI<br/>Provisioning Hooks"]
+        end
         
         subgraph DataPlane["Data Plane"]
             NATS["NATS.io<br/>Messaging & Streams"]
             Nebula["Nebula<br/>Mesh Networking"]
         end
         
-        PB -->|"Provisions Accounts, and Users"| NATS
+        PB -->|"Provisions Accounts and Users"| NATS
         PB -->|"Generates CAs, Certs, and Configs"| Nebula
     end
     
@@ -65,7 +68,75 @@ The Data Plane is internally organized as four composable layers (substrate, dec
 
 ---
 
-## 2. Multi-Tenancy & Infrastructure Isolation
+## 2. Component Topology
+
+Stone-Age.io is not a single monolithic executable. It's a small set of independent components, **each a single binary**, that communicate through NATS subjects. Every component is independently deployable, independently upgradable, and independently scalable.
+
+The minimum viable deployment is two binaries: the Control Plane and a NATS server. Every other component is additive — you add it when you need the capability it provides, and it joins the fabric by speaking NATS to the same bus.
+
+| Component | Role | Binary | Added when you need... |
+|---|---|---|---|
+| **Control Plane** | Identity, inventory, provisioning, embedded UI | `stone-age` | Always required |
+| **NATS** | Messaging substrate, streams, KV | `nats-server` | Always required |
+| **Nebula Lighthouse** | Mesh VPN directory / hole-punching | `nebula` | Secure edge connectivity |
+| **Agent** | Edge telemetry, service checks, remote exec | `stone-age-agent` | You have devices or servers to manage |
+| **Rule engine** | Layer 1 declarative event logic (router, gateway, scheduler) | `rule-router` | Automation, webhook I/O, scheduled publishing |
+| **Stream processor** | Layer 2 windowed/stateful computation | eKuiper, Benthos, custom Go/Rust | Time-window aggregations, stream joins, anomaly detection |
+| **Telegraf** | Layer 3 TSDB ingestion bridge | `telegraf` | Long-term historical storage |
+| **TSDB** | Long-term time-series storage | VictoriaMetrics, InfluxDB, etc. | Long-term historical storage |
+| **Dashboards** | Historical visualization and alerting | Grafana, Perses | Long-term historical analysis |
+
+**Key properties of this topology:**
+
+- **The Control Plane does not sit on the NATS runtime bus.** It provisions credentials into NATS at create-time, then gets out of the way. A PocketBase restart does not interrupt the Data Plane.
+- **Every runtime component is a NATS client.** Agents publish telemetry. The rule engine subscribes to subjects and publishes derived events. Stream processors consume and produce on NATS. Telegraf subscribes to telemetry subjects and writes to the TSDB. The common vocabulary is NATS subjects.
+- **Components can be colocated or distributed.** A small deployment might run the Control Plane, NATS, Nebula Lighthouse, and rule engine on a single host. A large deployment might run each centrally, with NATS leaf nodes and rule engine instances at each edge site. The components don't know or care which topology they're in — they only know about NATS.
+- **Each component can be scaled independently.** The rule engine is stateless per-message and scales horizontally. NATS clusters horizontally. The Control Plane scales vertically (it's a low-traffic metadata store). Stream processors scale per pipeline.
+
+<center>
+```mermaid
+flowchart LR
+    subgraph Central["Central Deployment"]
+        CP["Control Plane<br/>(stone-age)"]
+        NATSC["NATS Cluster"]
+        NEB["Nebula Lighthouse"]
+        RR["rule-router"]
+        TG["Telegraf"]
+        TSDB[("TSDB")]
+    end
+    
+    subgraph Edge["Customer Site A"]
+        LEAF["NATS Leaf Node"]
+        AGENT1["Agent"]
+        RR_EDGE["rule-router<br/>(optional local)"]
+    end
+    
+    subgraph Edge2["Customer Site B"]
+        LEAF2["NATS Leaf Node"]
+        AGENT2["Agent"]
+    end
+    
+    CP -.->|"provisions<br/>at create-time"| NATSC
+    CP -.->|"provisions<br/>at create-time"| NEB
+    
+    RR <-->|"subscribe/publish"| NATSC
+    TG -->|"subscribe"| NATSC
+    TG --> TSDB
+    
+    LEAF <-->|"outbound NATS"| NATSC
+    LEAF2 <-->|"outbound NATS"| NATSC
+    
+    AGENT1 -->|"publish"| LEAF
+    RR_EDGE <-->|"subscribe/publish"| LEAF
+    AGENT2 -->|"publish"| LEAF2
+```
+</center>
+
+This separation is deliberate and it's the reason the platform scales from a developer laptop to a multi-site MSP deployment without architectural changes. You add components, you don't rewire.
+
+---
+
+## 3. Multi-Tenancy & Infrastructure Isolation
 
 In the Stone-Age.io Platform, multi-tenancy is not just a software filter; it is **infrastructure-enforced**. When you create an **Organization** in the platform, a specific chain of events occurs to isolate that tenant:
 
@@ -122,7 +193,7 @@ graph TB
 
 ---
 
-## 3. The Digital Twin Concept (Live State)
+## 4. The Digital Twin Concept (Live State)
 
 While PocketBase stores the **Inventory** (the identity/metadata about a thing), the live **State** of a thing is stored in the **NATS Key-Value (KV) Store**. We call this the Digital Twin.
 
@@ -160,7 +231,7 @@ graph LR
 
 ---
 
-## 4. The Chain of Trust
+## 5. The Chain of Trust
 
 The Stone-Age.io Platform uses a "Chain of Trust" model based on Private Key Infrastructure (PKI) and JSON Web Token (JWT).
 
@@ -185,7 +256,7 @@ Nebula functions similarly to SSH keys but for your entire network.
 
 ---
 
-## 5. Compatibility and Automation Strategy 
+## 6. Compatibility and Automation Strategy 
 
 ### Third-Party Applications
 
@@ -201,13 +272,13 @@ The platform's event-processing story is structured as three distinct tiers on t
 
 #### Layer 1 — The Rule Engine (Declarative Event Logic)
 
-The platform's **rule engine** is a single high-performance binary (`rule-router`) that hosts three features:
+The platform's **rule engine** (`rule-router`) is a separate single-binary component that runs alongside NATS — just like the Agent does, but on the server/central side of the fabric rather than at the edge. It's not embedded in the Control Plane binary; it's a peer process that speaks NATS. It hosts three features:
 
 - **Router** — NATS-in, NATS-out. The default. Routes, filters, and enriches messages between NATS subjects.
 - **Gateway** — Bidirectional HTTP↔NATS. Inbound webhooks become NATS messages; outbound NATS messages become HTTP calls to external APIs (with configurable retry).
 - **Scheduler** — Cron-triggered publishes to NATS or HTTP on a schedule.
 
-All three features share the same YAML rule syntax following the **Trigger → Condition → Action** pattern, read from the same NATS KV buckets, and run on the same engine. You can enable any combination of features in a single process or split them across separate processes.
+All three features share the same YAML rule syntax following the **Trigger → Condition → Action** pattern, read from the same NATS KV buckets, and run on the same engine. You can enable any combination of features in a single process or split them across separate processes. Instances can be deployed centrally, at the edge alongside NATS leaf nodes, or both — the engine doesn't know or care which topology it's in.
 
 The rule engine is **stateless per message** — each rule evaluation is independent. Durable state lives in NATS KV, which rules read from and write to. This keeps the engine horizontally scalable while still supporting rich stateful patterns (alarm deduplication, presence tracking, debouncing) through KV-as-state. See [Automation](./automation.md) for the full pattern library and feature-by-feature detail.
 
@@ -219,7 +290,7 @@ Any stream processor that speaks NATS works: **eKuiper**, **Benthos / RedPanda C
 
 ---
 
-## 6. Where to Go Next
+## 7. Where to Go Next
 
 - For the conceptual layer model: [Platform Layers](./platform-layers.md).
 - For the contract layer that describes participants on the fabric: [Thing Types](./thing-types.md).

@@ -12,7 +12,7 @@ The Stone-Age.io Platform orchestrates three industry-leading technologies into 
 
 ## Key Features
 
-- **Single-Binary Deployment:** No microservices. No Docker-compose. Just one executable.
+- **Each Component is a Single Binary:** No microservice sprawl. No Docker Compose hell. Each piece — Control Plane, rule engine, Agent, NATS, Nebula — is an independent executable that speaks NATS to its peers.
 - **Infrastructure-as-Tenant:** Creating an organization automatically provisions isolated NATS accounts and Nebula CAs.
 - **Digital Twins:** Real-time state management using NATS KV buckets — view and control devices with sub-millisecond latency.
 - **Outbound-Only Security:** Devices punch through firewalls and NATs; no open ports required.

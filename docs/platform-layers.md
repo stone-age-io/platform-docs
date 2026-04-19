@@ -97,7 +97,7 @@ The substrate is the always-on foundation. It handles message transport, durable
 
 ## 4. Layer 1 — Reflexes (Declarative Event Logic)
 
-**Component:** The rule engine (a single binary with router, gateway, and scheduler features).
+**Component:** The rule engine (`rule-router`) — a separate single-binary component with router, gateway, and scheduler features. Runs as its own process alongside NATS, independent of the Control Plane binary.
 
 Layer 1 is where you express *rules* — declarative, stateless-per-message event transformations with conditions and actions. This is the layer that distinguishes a messaging bus from a platform.
 
