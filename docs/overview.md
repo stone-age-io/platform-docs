@@ -13,8 +13,6 @@ Current IoT and edge computing solutions typically fall into two categories:
 1. **The Cloud Trap:** Heavy vendor lock-in with proprietary APIs, unpredictable egress costs, and the requirement that data must leave your premises to be useful.
 2. **The Microservices Swamp:** Fragile stacks consisting of a dozen different open-source tools (VPNs, MQTT brokers, databases, auth services) that are difficult to secure, maintain, and multi-tenant.
 
-For Managed Service Providers (MSPs) and System Integrators (SIs), these hurdles make it difficult to offer a professional, private, and scalable platform to their customers.
-
 ## The Solution: The Modern Radio Network Analogy
 
 Think of the Stone-Age.io Platform like a **modern digital radio network**.

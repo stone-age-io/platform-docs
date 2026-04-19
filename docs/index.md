@@ -1,6 +1,6 @@
 # Welcome to the Stone-Age.io Docs
 
-Stone-Age.io is a comprehensive toolkit designed for Managed Service Providers (MSPs) and System Integrators (SIs) who need to build, manage, and scale distributed event-driven applications without the complexity of traditional cloud-locked platforms.
+Stone-Age.io is a comprehensive toolkit designed for operators who need to build, manage, and scale distributed event-driven applications without the complexity of traditional cloud-locked platforms.
 
 The Stone-Age.io Platform orchestrates three industry-leading technologies into a unified management experience:
 
