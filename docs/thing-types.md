@@ -4,7 +4,9 @@ Thing Types are the **contract layer** of the Stone-Age.io fabric. They describe
 
 If a **Thing** is an instance of something on the fabric, a **Thing Type** is the contract that defines how that kind of thing behaves. A single IP camera is a Thing. The description "an IP camera publishes motion events, answers snapshot requests, and accepts PTZ commands" is the Thing Type.
 
-This page explains what's in a Thing Type, how it composes with operations and message schemas, how the platform uses linked NATS roles to derive permissions, and where the boundary lies between contract (what belongs here) and platform behavior (what doesn't).
+This page explains what's in a Thing Type, how it composes with operations and message schemas, how consumers resolve its subject templates, and where the boundary lies between contract (what belongs here) and platform behavior (what doesn't).
+
+Thing Types are purely declarative — they describe the message contract. NATS roles and their permissions are managed directly on the `nats_roles` collection.
 
 ---
 
@@ -15,7 +17,7 @@ Every Thing on the fabric has two parts:
 - **The Thing instance** — a specific device, service, application, or agent. It has a unique code, a location, credentials, and metadata. It lives in the `things` collection.
 - **The Thing Type it points to** — the contract that describes what a thing of this kind does on the fabric. It lives in the `thing_types` collection.
 
-A Thing Type says "things of this kind publish motion events, answer snapshot requests, and accept PTZ commands." A Thing says "I am cam-042, located in warehouse-a, of type ip_camera." Together, the platform and its consumers know exactly what subjects cam-042 uses on NATS, what payloads it exchanges, and what permissions its NATS user needs.
+A Thing Type says "things of this kind publish motion events, answer snapshot requests, and accept PTZ commands." A Thing says "I am cam-042, located in warehouse-a, of type ip_camera." Together, the platform and its consumers know exactly what subjects cam-042 uses on NATS and what payloads it exchanges.
 
 This separation is the key to the whole design. Contracts are shared across many instances. Instances don't re-declare their behavior — they reference the contract that already describes it.
 
@@ -38,7 +40,6 @@ Key fields:
 | `subject_prefix` | Template string like `{location}.camera.{thing}`. Stored literally. Empty values default to `{location}.{thing_type_code}.{thing}` when consumers resolve. |
 | `capabilities` | Coarse-grained summary of what this Thing Type does. Values: `publish`, `subscribe`, `request`, `reply`. Typically maintained as the union of its operations' capabilities. |
 | `operations` | Multi-relation to `thing_type_operations` — the verbs this Thing Type declares. |
-| `nats_role` | Optional single relation to a `nats_roles` record. Linking a role turns this Thing Type's operations into permission content on that role (see §5). |
 
 ### `thing_type_operations`
 
@@ -97,14 +98,9 @@ Consumers resolve templates against a Thing's context using these reserved varia
 
 When a Thing Type's `subject_prefix` is empty, consumers use `{location}.{thing_type_code}.{thing}` as the default. This covers the common case and removes boilerplate for Thing Types that don't need a bespoke layout.
 
-### The two platform resolvers
+### The platform resolver
 
-The platform ships reference resolvers so that consumers don't have to reinvent the logic:
-
-- **Go resolver** — `internal/subjectresolver/`. Used by the NATS role sync hook (§5) to produce wildcard permission patterns (e.g., `*.camera.*.heartbeat`) rather than per-thing subjects.
-- **TypeScript resolver** — `ui/src/utils/subjectResolver.ts`. Used by UI widgets to resolve against concrete Thing contexts.
-
-Both implement the same resolution contract. Consumers are not required to use these resolvers — the platform stores templates as data, and any client can resolve however it wants. They exist because the role sync and the UI both need resolution and shouldn't duplicate the logic.
+The platform ships a reference TypeScript resolver at `ui/src/utils/subjectResolver.ts`. It's used by UI widgets (the Publisher widget in particular) to resolve templates against concrete Thing contexts. Consumers are not required to use it — the platform stores templates as data, and any client can resolve them however it wants. It exists so the UI doesn't have to reinvent the substitution logic.
 
 ### Resolution example
 
@@ -140,45 +136,11 @@ Deleting a Thing Type does not delete its operations. The operations persist and
 
 ---
 
-## 5. NATS Role Synchronization
+## 5. Relationship to NATS Roles
 
-A Thing Type's `nats_role` field is the connective tissue that turns the contract into runtime NATS permissions.
+Thing Types describe what a participant does on the fabric. NATS roles control what a NATS user is allowed to publish to or subscribe from. These are **independent concerns** — Thing Types do not derive role permissions.
 
-**The flow:**
-
-1. You link a `nats_role` to a Thing Type.
-2. A hook (`hooks/thing_type_role_sync.go`) fires on create/update of `thing_types` or `thing_type_operations`.
-3. The hook walks the Thing Type's operations, resolves their subject patterns using the Go subject resolver, and writes them to the role's permission fields.
-4. `pb-nats` continues to own the downstream chain — `nats_roles` → `nats_users` → JWTs and `.creds` files. The platform owns the *content* of the role; pb-nats owns the cryptographic identity.
-
-**Capability-to-permission mapping:**
-
-| Operation capability | Role permission field |
-|---|---|
-| `publish` | `publish_permissions` |
-| `request` | `publish_permissions` (the request is published) |
-| `subscribe` | `subscribe_permissions` |
-| `reply` | `subscribe_permissions` (the reply subscribes to receive requests) |
-
-Additionally, any `reply` operation on the Thing Type causes `allow_response = true` to be set on the role, so the NATS user can publish to the inbox subject when answering a request.
-
-**Wildcarding for role permissions:**
-
-Role permissions are per-role, not per-thing. A role grants permissions to *all* things that link it, so subjects are wildcarded:
-
-- `{thing}` → `*`
-- `{location}` → `*` unless the role scopes it to a specific location
-- Other variables resolve to concrete values from the role's context
-
-For example, a camera Thing Type with operation `motion` (suffix `motion`) and prefix `{location}.camera.{thing}` produces the wildcard pattern `*.camera.*.motion` on its linked role. Every camera using that role can publish to its own `warehouse-a.camera.cam-042.motion` subject; none can publish to another camera's subject because their individual permission paths don't include other cameras — the pattern is scoped by the role, but NATS enforces per-user resolution at connection time.
-
-**Re-sync on operation changes:**
-
-Editing a shared operation re-syncs every Thing Type that links it. A schema change, a suffix change, or a capability change propagates to all roles at once.
-
-**Thing Types without a linked role:**
-
-Thing Types with no `nats_role` produce no permissions. This is the correct default for existing records and for Thing Types used purely as documentation or inventory categorization without live NATS traffic.
+Operators author NATS role permissions directly on the `nats_roles` record. A Thing Type's subject templates are a useful reference when authoring those permissions — the patterns a role needs to grant look like the resolved wildcard forms of the Thing Type's operations — but the translation is manual and deliberate.
 
 ---
 
@@ -237,7 +199,6 @@ description:       Network camera with motion detection and PTZ
 subject_prefix:    {location}.camera.{thing}
 capabilities:      [publish, subscribe, reply]
 operations:        [heartbeat, status, motion, snapshot_reply, ptz]
-nats_role:         → camera_role
 ```
 
 ### A referenced schema
@@ -272,25 +233,15 @@ Thing: `code = cam-042`, `type = ip_camera`, located at `warehouse-a`.
 | `snapshot_reply` | reply | `warehouse-a.camera.cam-042.snapshot` |
 | `ptz` | subscribe | `warehouse-a.camera.cam-042.cmd.ptz` |
 
-### Resolved role permissions (camera_role)
-
-With `camera_role` linked to the `ip_camera` Thing Type:
-
-| Permission Field | Patterns |
-|---|---|
-| `publish_permissions` | `*.camera.*.heartbeat`, `*.camera.*.status`, `*.camera.*.motion` |
-| `subscribe_permissions` | `*.camera.*.snapshot`, `*.camera.*.cmd.ptz` |
-| `allow_response` | `true` (because `snapshot_reply` is a reply operation) |
-
 ---
 
 ## 7. Using Thing Types in the UI
 
 Admin views live under the **Types** menu group in the sidebar, alongside Location Types:
 
-- **Thing Types** — list and edit Thing Types. The form includes subject prefix, operations multi-select, NATS role picker, and capability summary.
-- **Thing Operations** — list and edit the shareable operation records.
-- **Message Schemas** — list and edit JSON Schema documents.
+- **Thing Types** — list and edit Thing Types. The form includes identity fields (name, description, code), subject prefix, capabilities multi-select, and an operations multi-select with a quick-add modal for creating new operations inline.
+- **Thing Operations** — list and edit the shareable operation records. The form enforces the `^[a-z0-9_]+$` name pattern, requires a `capability`, requires a `subject_suffix`, and offers an optional schema relation with a quick-add modal.
+- **Message Schemas** — list and edit JSON Schema documents. The form enforces the namespace/name pattern and a semver `version`. A built-in **"Infer from sample"** helper accepts a JSON sample and generates a starting schema, which you can then refine in either the visual schema builder or the raw JSON editor.
 
 ### Publisher widget integration
 
@@ -300,7 +251,7 @@ The dashboard `publisher` widget can bind to a **Thing + Operation** pair in its
 - **Payload input is schema-driven** if the operation has a linked message schema. Top-level primitive properties render as form fields via `JsonSchemaForm.vue`; nested objects and arrays fall back to JSON input.
 - **On send**, the form model serializes to JSON and publishes.
 
-Without a binding, the Publisher widget retains its legacy free-text subject and payload inputs.
+Without a binding, the Publisher widget falls back to free-text subject and payload inputs.
 
 This integration is a direct consumer of the Thing Type primitive — the widget knows the subject because it resolved the template, and it knows the payload shape because it read the schema. Other widgets (Gauge, Chart, Console) will gain similar bindings as they evolve; the primitive is already in place.
 
@@ -324,15 +275,14 @@ The test for any proposed new field: *does it describe the message contract betw
 
 ---
 
-## 9. Migration and Existing Data
+## 9. Optional Fields
 
-Existing Thing Types without `subject_prefix`, `operations`, or `nats_role` values continue working exactly as before. The new fields are optional and additive:
+`subject_prefix` and `operations` are both optional:
 
-- A Thing Type with no operations emits no subjects and grants no NATS permissions via role sync. It's a pure inventory/categorization record.
-- A Thing Type with operations but no linked `nats_role` describes contracts but doesn't automatically generate NATS permissions. Consumers (CLI tools, UI widgets) can still use it for resolution and schema awareness.
-- A Thing Type with operations and a linked role participates fully in the role sync.
+- A Thing Type with no operations is a pure inventory/categorization record — it emits no subjects and defines no contract.
+- A Thing Type with operations describes contracts that consumers (UI widgets, CLI tools, rules) can use for subject resolution and schema awareness.
 
-The `capabilities` field values were widened from `pub`/`sub`/`req-reply` to `publish`/`subscribe`/`request`/`reply` as part of this feature. Existing records using the old values require a one-time data migration.
+The `capabilities` field accepts `publish`, `subscribe`, `request`, and `reply`.
 
 ---
 
