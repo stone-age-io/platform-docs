@@ -39,7 +39,7 @@ If you do not have an existing observability stack, we recommend the following b
 
 **VictoriaMetrics** is a high-performance, cost-effective, and scalable time-series database. It is fully compatible with the Prometheus API.
 
-- **Grug-Brained:** Like Stone-Age.io, VictoriaMetrics prefers single-binary simplicity and low resource usage.
+- **Operationally simple:** Like Stone-Age.io, VictoriaMetrics ships as a single binary and runs comfortably on modest hardware.
 - **Retention:** Use it to store months or years of historical data.
 - **Vmalert:** This component allows you to execute "recording rules" or "alerting rules" against historical data (e.g., *"Alert if the average temperature over the last 24 hours is 10% higher than the previous week"*).
 

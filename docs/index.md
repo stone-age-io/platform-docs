@@ -1,23 +1,23 @@
 # Welcome to the Stone-Age.io Docs
 
-Stone-Age.io is a comprehensive toolkit designed for operators who need to build, manage, and scale distributed event-driven applications without the complexity of traditional cloud-locked platforms.
+Stone-Age.io is a toolkit for building, managing, and scaling distributed event-driven applications on infrastructure you control. It pairs an opinionated control plane with proven open-source primitives so the operational story stays understandable as the system grows.
 
-The Stone-Age.io Platform orchestrates three industry-leading technologies into a unified management experience:
+The platform brings three projects together under a single management surface:
 
-- **Management (PocketBase):** A monolithic backend providing Identity, Inventory, and an embedded UI.
-- **Messaging (NATS.io):** A high-performance, multi-tenant "Nervous System" for telemetry and commands.
-- **Connectivity (Nebula):** A peer-to-peer mesh VPN that provides secure, encrypted tunnels to the extreme edge.
+- **Management — PocketBase:** A self-contained backend that handles identity, inventory, and the embedded UI.
+- **Messaging — NATS.io:** A high-performance, multi-tenant fabric for telemetry, commands, and live state.
+- **Connectivity — Nebula:** A peer-to-peer mesh VPN that delivers encrypted tunnels all the way to the edge.
 
 ---
 
 ## Key Features
 
-- **Each Component is a Single Binary:** No microservice sprawl. No Docker Compose hell. Each piece — Control Plane, rule engine, Agent, NATS, Nebula — is an independent executable that speaks NATS to its peers.
-- **Infrastructure-as-Tenant:** Creating an organization automatically provisions isolated NATS accounts and Nebula CAs.
-- **Digital Twins:** Real-time state management using NATS KV buckets — view and control devices with sub-millisecond latency.
-- **Outbound-Only Security:** Devices punch through firewalls and NATs; no open ports required.
-- **Grug-Brained Automation:** A unified rule engine (router, gateway, and scheduler features) expressing automation as simple YAML rules.
-- **Bring Your Own Data:** Resilient NATS-native ingestion into your choice of TSDB (VictoriaMetrics, InfluxDB, etc.).
+- **Single-binary components:** The Control Plane, rule engine, Agent, NATS, and Nebula each ship as a self-contained executable with no runtime dependencies. They wire themselves together over NATS, so the same architecture works on bare metal, a single VM, containers, or a Kubernetes cluster — whichever fits your operations.
+- **Infrastructure-as-Tenant:** Creating an Organization provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
+- **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database.
+- **Outbound-only security:** Devices and Agents initiate connections outward to NATS and Nebula. No inbound ports are required, so edge nodes stay invisible to the public internet.
+- **Declarative automation:** A unified rule engine (router, gateway, and scheduler features) expresses NATS routing, webhook ingestion and egress, and cron-driven publishes as YAML rules.
+- **Bring your own storage:** Long-term telemetry is consumed from NATS by the time-series database of your choice — VictoriaMetrics, InfluxDB, Prometheus, Postgres, or anything else Telegraf can target.
 
 ---
 
@@ -35,7 +35,7 @@ Start with [Platform Layers](./platform-layers.md) if you want the framing first
 
 ## Documentation Journey
 
-Start your journey here to understand how to build your private event-driven architecture:
+These pages, in order, walk through the platform from concept to deployment:
 
 1.  **[Overview](./overview.md)** — Understand the vision and the problems we solve.
 2.  **[Platform Layers](./platform-layers.md)** — The conceptual model: how the platform is structured as composable tiers.
@@ -56,4 +56,4 @@ Start your journey here to understand how to build your private event-driven arc
 
 > "Complexity is the enemy of reliability."
 
-Stone-Age.io is built for the engineer who values transparency and maintainability over cleverness. We prefer clear Go code, reactive Vue components, and straightforward YAML over magic abstractions. We provide the toolkit; you own the network.
+Stone-Age.io is built for engineers who value transparency and maintainability over cleverness. We prefer clear Go code, reactive Vue components, and straightforward YAML over magic abstractions. We provide the toolkit; you own the network.
