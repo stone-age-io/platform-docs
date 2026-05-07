@@ -20,11 +20,37 @@ Organizations are the top-level container for all data and infrastructure. Every
 
 A Membership binds a PocketBase User to an Organization.
 
-- **Roles:** 
+- **Roles (per-organization):**
     - `Owner`: Full access, including deletion of the Org.
     - `Admin`: Can manage users, locations, and infrastructure.
     - `Member`: Read-only or restricted access to dashboards and data.
+    - `Badge`: Restricted to the Badge view and a badge-only dashboard — used for kiosk- or wallet-style identity surfaces where the user does not need general platform access.
 - **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself.
+
+### Cross-Organization Roles
+
+Two roles exist *outside* the per-organization Membership model and apply to the user account itself:
+
+- **Operator** (`users.is_operator = true`): Can create, edit, and delete Organizations and invite users into any Org. Operators are the day-to-day platform administrators and are the recommended identity for managing the system from the UI. The first Operator is created by the `bootstrap` command.
+- **SuperUser** (`_superusers` collection): A backend service account with full database access regardless of API rules. Created via `./stone-age superuser upsert` and intended for infrastructure-level management — schema imports, NATS Operator/System Account seeding, and other platform-level concerns. SuperUsers are not members of any organization; they sign in at the embedded admin UI (`/_/`).
+
+### Permissions Matrix
+
+A coarse summary of what each role can do in the UI. Fine-grained authorization is enforced by PocketBase API rules on each collection; the UI hides actions a user cannot perform.
+
+| Capability | Owner | Admin | Member | Badge | Operator¹ | SuperUser |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| View dashboards, Things, Locations | ✅ | ✅ | ✅ | dashboard only | ✅ | ✅ |
+| Create / edit Things and Locations | ✅ | ✅ | — | — | ✅ | ✅ |
+| Manage Thing Types, Operations, Schemas | ✅ | ✅ | — | — | ✅ | ✅ |
+| Manage NATS users, roles, imports/exports | ✅ | ✅ | — | — | ✅ | ✅ |
+| Manage JetStream streams and KV buckets | ✅ | ✅ | — | — | ✅ | ✅ |
+| Manage Nebula networks and hosts | ✅ | ✅ | — | — | ✅ | ✅ |
+| Invite / manage org members | ✅ | ✅ | — | — | ✅ | ✅ |
+| Create / edit / delete Organizations | — | — | — | — | ✅ | ✅ |
+| Schema imports, Operator key custody | — | — | — | — | — | ✅ |
+
+¹ Operator is a flag on the user record (`is_operator`), independent of per-org Membership role. An Operator without a Membership in a given org still cannot read that org's data — Membership is what grants tenant-data access; the Operator flag grants org-management authority.
 
 ---
 
@@ -106,6 +132,15 @@ Every Location and Thing with a valid **Code** has a dedicated Digital Twin view
 - You can edit values directly in the UI (e.g., changing a `set_point`), and the update is published to NATS instantly for the device to receive.
 
 The same KV buckets that back the Digital Twin UI are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture](./architecture.md) for the full Digital Twin concept, and [Automation](./automation.md) for the KV-state patterns.
+
+### JetStream Streams and KV Buckets
+
+Owners and Admins can manage the org's JetStream resources directly from the UI without dropping to the `nats` CLI. These views connect over the same NATS WebSocket session the rest of the UI uses, so changes take effect immediately.
+
+- **Streams** (`/nats/streams`): create, edit, inspect, and delete JetStream streams. The form covers the common operational knobs — captured subjects, retention policy (`limits` / `interest` / `workqueue`), storage backend (`file` / `memory`), max-messages / max-bytes / max-age limits, replicas, discard policy, and duplicate window.
+- **KV Buckets** (`/nats/kv`): create, configure, and inspect Key-Value buckets. The form covers history depth, max bucket size, max value size, TTL, and replicas. The detail view embeds a **KV Dashboard** that lets you browse keys, view current values, and watch live updates as keys change.
+
+Both views appear in the sidebar only when the browser is connected to NATS — the operations execute against the live cluster, not against PocketBase. Layer 1 rules and stream processors consume the same streams and buckets you create here; the UI is a convenience surface, not a separate runtime.
 
 ### CRUD & Management
 

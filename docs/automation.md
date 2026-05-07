@@ -45,7 +45,7 @@ The binary hosts three selectable features that all share the same YAML rule syn
 | **Gateway** | HTTP request (inbound); NATS subject (outbound) | Publish to NATS (inbound); call HTTP with retry (outbound) | Opt-in |
 | **Scheduler** | Cron expression | Publish to NATS; call HTTP with retry | Opt-in |
 
-Features are enabled via the binary's config file or environment variables (e.g. `RR_FEATURES_GATEWAY=true`). You can run any combination in a single process — sharing NATS connections, KV cache, and the metrics endpoint — or split them across separate processes if you want operational isolation. **The choice is operational, not architectural.**
+Features are enabled via the binary's config file or environment variables (e.g. `RR_FEATURES_GATEWAY=true`). You can run any combination in a single process or split them across separate processes if you want operational isolation. **The choice is operational, not architectural.** See the [rule-router documentation](https://github.com/skeeeon/rule-router) for the per-feature configuration details.
 
 ### The TCA Pattern
 

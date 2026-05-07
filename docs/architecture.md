@@ -64,7 +64,7 @@ The Data Plane is where the actual work happens. It handles the movement of ever
 - **Messaging:** Real-time pub/sub, request/reply, and streaming via NATS.
 - **Connectivity:** Secure, peer-to-peer mesh networking via Nebula.
 
-The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane — it provisions identities and credentials the Data Plane uses, and it connects to NATS as a narrow administrative client on the System Account to propagate account and credential changes in real-time (via `$SYS.REQ.CLAIMS.UPDATE`). It does **not** participate in tenant-level event flow — no telemetry, no rule traffic, no user/device messages pass through PocketBase. See [Platform Layers](./platform-layers.md) for the layer model.
+The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane and provisions the identities and credentials the Data Plane uses at runtime. See [Platform Layers](./platform-layers.md) for the layer model; §2 below covers how the Control Plane stays connected to NATS without participating in tenant-level event flow.
 
 ---
 
@@ -158,7 +158,8 @@ In the Stone-Age.io Platform, multi-tenancy is not just a software filter; it is
 | :--- | :--- | :--- |
 | **Organization** | **NATS Account** | Cryptographic multi-tenancy via NATS Operator mode. |
 | **Organization** | **Nebula CA** | A unique Certificate Authority is generated for every Org. |
-| **Members/Things**| **NATS Users** | Users are scoped to their specific NATS Account. |
+| **Thing** (auth record) | **NATS User** | Each Thing has its own NATS user signed by the Org's Account. |
+| **Membership** (User ↔ Org link) | **NATS User** (relation) | A Membership references a NATS user in that Org's Account, giving the human a credential scoped to that organization. |
 
 This means that even if a device in *Organization A* is compromised, it has no cryptographic path to see messages or network traffic in *Organization B*.
 
@@ -282,25 +283,7 @@ NATS provides a native MQTT integration via JetStream. Enable your server/cluste
 
 ### Layered Event Processing
 
-The platform's event-processing story is structured as three distinct tiers on top of the NATS substrate. Each tier has a clear job and composes cleanly with the others. See [Platform Layers](./platform-layers.md) for the complete model; this section summarizes where each component fits.
-
-#### Layer 1 — The Rule Engine (Declarative Event Logic)
-
-The platform's **rule engine** (`rule-router`) is a separate single-binary component that runs alongside NATS — just like the Agent does, but on the server/central side of the fabric rather than at the edge. It's not embedded in the Control Plane binary; it's a peer process that speaks NATS. It hosts three features:
-
-- **Router** — NATS-in, NATS-out. The default. Routes, filters, and enriches messages between NATS subjects.
-- **Gateway** — Bidirectional HTTP↔NATS. Inbound webhooks become NATS messages; outbound NATS messages become HTTP calls to external APIs (with configurable retry).
-- **Scheduler** — Cron-triggered publishes to NATS or HTTP on a schedule.
-
-All three features share the same YAML rule syntax following the **Trigger → Condition → Action** pattern, read from the same NATS KV buckets, and run on the same engine. You can enable any combination of features in a single process or split them across separate processes. Instances can be deployed centrally, at the edge alongside NATS leaf nodes, or both — the engine doesn't know or care which topology it's in.
-
-The rule engine is **stateless per message** — each rule evaluation is independent. Durable state lives in NATS KV, which rules read from and write to. This keeps the engine horizontally scalable while still supporting rich stateful patterns (alarm deduplication, presence tracking, debouncing) through KV-as-state. See [Automation](./automation.md) for the full pattern library and feature-by-feature detail.
-
-#### Layer 2 — Stream Processing (Stateful Computation)
-
-When a problem needs **time-window aggregations, stream joins, or retractable results**, the rule engine isn't the right tool. That's where stream processors come in. They subscribe to NATS subjects, maintain in-memory state with proper windowing semantics, and publish results back to NATS for Layer 1 rules or the UI to consume.
-
-Any stream processor that speaks NATS works: **eKuiper**, **Benthos / RedPanda Connect / Wombat**, or your own custom Go/Python/Rust service. The platform has no opinion — pick whichever matches your team and your problem. See [Stream Processing](./stream-processing.md) for the full picture.
+Above Layer 0, the platform's event logic is structured as three composable tiers — declarative rules (Layer 1), stateful stream processing (Layer 2), and long-term storage (Layer 3) — each its own single-binary component speaking NATS. The architectural model and graduation criteria live in [Platform Layers](./platform-layers.md); the per-layer detail lives in [Automation](./automation.md), [Stream Processing](./stream-processing.md), and [Observability](./observability.md). This document doesn't recap them.
 
 ---
 

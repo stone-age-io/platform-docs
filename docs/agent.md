@@ -112,7 +112,7 @@ Security at the edge is handled through strict cryptographic isolation.
 
 ```yaml
 # A typical Agent config fetched during bootstrap
-device_id: "chicago-warehouse-vent-01"
+thing_code: "chicago-warehouse-vent-01"
 nats:
   urls: ["wss://nats.acme.io:9222"]
   auth_type: "creds"

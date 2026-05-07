@@ -13,6 +13,7 @@ nav:
     - Automation: automation.md
     - Stream Processing: stream-processing.md
     - Observability: observability.md
+    - Configuration Reference: configuration.md
 theme: 
   name: material
   logo: assets/logo.svg

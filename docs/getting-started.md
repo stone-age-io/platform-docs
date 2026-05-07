@@ -8,7 +8,7 @@ This guide stands up the **Control Plane** (PocketBase) and the core of the **Da
 
 ## 1. Installation
 
-You can download the latest pre-compiled binary for your architecture from our [Releases page](https://github.com/stone-age-io/platform/releases), or build it from source if you have Go 1.23+ installed.
+You can download the latest pre-compiled binary for your architecture from our [Releases page](https://github.com/stone-age-io/platform/releases), or build it from source if you have Go 1.25+ and Node.js 20+ installed.
 
 ### Building from Source
 ```bash
@@ -25,60 +25,71 @@ go build -o stone-age main.go
 
 ---
 
-## 2. First Run: The Control Plane
+## 2. Initialize the Control Plane
 
-The Stone-Age.io Platform looks for an optional `config.yaml` in the current directory, or can be configured using environment variables. These configuration options allow you to dictate the underlying PocketBase libraries. By default, it expects NATS to be available at `nats://localhost:4222`.
+The Stone-Age.io Platform looks for an optional `config.yaml` in the current directory, or can be configured using environment variables. These configuration options drive the underlying PocketBase libraries. By default, the binary expects NATS to be available at `nats://localhost:4222`.
 
-### Create your SuperUser and Initial Data
+This step initializes the database, seeds the NATS Operator/System Account/System User, and creates your first human administrator. None of these commands need the server to be running — they open the embedded database directly.
 
-Before we start running the application, let's create a SuperUser which has access to ALL data in the control plane, regardless of API Rules, and also seed our initial data.
+### Step 1: Create the SuperUser (and seed initial data)
 
 ```bash
 ./stone-age superuser upsert EMAIL PASS
 ```
 
-By creating your SuperUser on initial run of the server, you have populated all initial data and schema information. Schema is imported from the embedded file in the binary, support libraries have done their initial run to populate NATS Operator/System Account/System User, and begin audit logging. You can now use the binary to export your NATS configuration files for deploying your NATS server(s):
+This is the first command you run on a fresh install. It creates a **SuperUser** — a backend service account with full database access regardless of API rules. As a side effect, the binary imports the embedded schema, runs the support libraries' first-time setup (which seeds the NATS Operator, System Account, and System User), and starts audit logging.
 
-```bash
-./stone-age nats export --output ./nats-config/
-```
-
-Finally, we'll use the built-in `bootstrap` command to create your first PocketBase Operator User, create your first Organization, and take ownership of the NATS System Account and System User into this organization.
+### Step 2: Bootstrap the first Organization and Operator user
 
 ```bash
 ./stone-age bootstrap
 ```
 
-As a note, it is suggested from here forward to use this PocketBase Operator User to manage the system. SuperUsers should be thought of as a backend service account for management of the underlying infrastructure and PocketBase Operator Users, while your PocketBase Operator User is used to administer the platform from the UI.
+The `bootstrap` command creates your first **Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, and links the pre-existing NATS System Account/User/Role to it. Pass `--email`, `--password`, and `--org` to skip the interactive prompts.
 
-### Start the Platform Server
+From here forward, use the **Operator** user to administer the platform from the UI. The SuperUser is best reserved for infrastructure-level management (schema imports, NATS Operator key custody, troubleshooting via the embedded admin UI at `/_/`).
+
+---
+
+## 3. Stand Up the NATS Server
+
+Now that the Control Plane database has been seeded with the NATS Operator and System Account, export the matching server-side config and start NATS:
+
+```bash
+./stone-age nats export --output ./nats-config/
+nats-server -c ./nats-config/nats.conf
+```
+
+The exported directory contains the operator JWT, operator config, and a ready-to-use `nats-server` config. We won't go deep on running NATS here — their [documentation](https://docs.nats.io) covers production topologies, leaf nodes, clustering, and TLS in depth.
+
+> **WebSockets are required** for the browser UI to connect. The exported `nats.conf` enables a WebSocket listener on port `9222` by default — adjust the `websocket { ... }` block if you need TLS (`wss://`) or a different port.
+
+---
+
+## 4. Run the Control Plane and Connect the Browser
+
+Start the platform server:
+
 ```bash
 ./stone-age serve
 ```
 
-Now you can open your browser and access the UI at `http://localhost:8090` using your PocketBase Operator User, or you can access the embedded SuperUser UI at `http://localhost:8090/_` using your SuperUser credentials.
+The UI is available at `http://localhost:8090` (sign in with your Operator user). The embedded admin UI is at `http://localhost:8090/_/` (sign in with your SuperUser).
+
+Once you're signed in as the Operator, point the browser at NATS:
+
+1. Navigate to **Settings** in the sidebar.
+2. Under **NATS Connection**, add your NATS WebSocket URL — usually `ws://localhost:9222` for a local server, or `wss://...` once TLS is in place.
+3. **Linked Identity:** the bootstrap step linked the seeded NATS **System User** to the System organization. Assign that user to your membership so the browser has credentials to connect with.
+4. Optionally enable **Auto-connect on login**, then click **Connect**.
+
+You should see a green **Status: Connected** indicator.
+
+> **For real workloads, create a new Organization (and its NATS Account/User) rather than reusing the System account.** The System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data.
 
 ---
 
-## 3. The NATS Bridge: Data Plane Setup
-
-We're not going to go into too much depth about how to run NATS since we think their [documentation](https://docs.nats.io) already does a great job. If you exported the config earlier, just run the server with `nats-server -c /path/to/nats.conf`.
-
-Now that the Control Plane and Data Plane are running, we need to tell your browser how to talk to the Data Plane (NATS).
-
-1.  Navigate to **Settings** in the sidebar.
-2.  Under **NATS Connection**, add your NATS WebSocket URL. 
-    *   *Note: If NATS is local, this is usually `ws://localhost:9222` or `wss://...`.*
-3.  **Linked Identity:** Since the platform automatically provisioned a NATS System Account and System User when you created your Organization, you can assign the **System User** to your membership.
-4.  Optionally set **Auto-connect on login** and then click **Connect**. 
-
-You should see a green indicator: **Status: Connected**.
-
-Note: At this point you probably want to create a new organization/NATS Account/NATS User for actual use. You can use the System Account, but it's really meant for built-in NATS server/cluster operations and management, not actual data. The System Account also isn't JetStream enabled, which is another reason not to use it for day-to-day data.
-
----
-
-## 4. The "Hello World" Event
+## 5. The "Hello World" Event
 
 Let's verify the entire pipeline is working by sending a message and watching it appear in real-time.
 
@@ -100,14 +111,14 @@ You should see the message appear instantly in the live stream.
 
 ---
 
-## 5. Next Steps
+## 6. Next Steps
 
 Congratulations! You have a fully functional Control Plane and Data Plane running — the foundation of the platform is live.
 
 From here, you can grow into the higher layers as your needs demand. Each addition below is **its own single-binary component** that connects to the same NATS bus you just set up — no architectural rework required, just another process to run.
 
 *   **Deploy an Agent:** Install the [Agent](./agent.md) on a Linux or Windows machine to start collecting telemetry from real infrastructure.
-*   **Build a Dashboard:** Navigate to the **Visualizer**, unlock the grid, and add a **Gauge** or **Chart** widget pointing to your NATS subjects.
+*   **Build a Dashboard:** Click **Dashboard** in the sidebar (the Visualizer view) — unlock the grid and add a **Gauge** or **Chart** widget pointing to your NATS subjects.
 *   **Declare contracts:** Define [Thing Types](./thing-types.md) so every participant on your fabric has a declarative contract for its subjects and message shapes.
 *   **Define rules (Layer 1):** Deploy the rule engine — router for NATS-to-NATS logic, gateway for webhooks, scheduler for cron-based publishing. See [Automation](./automation.md).
 *   **Add stream processing (Layer 2):** When you need windowed aggregations or stream joins, see [Stream Processing](./stream-processing.md).

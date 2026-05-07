@@ -104,6 +104,6 @@ The platform is explicitly structured as a Control Plane and a four-layer Data P
 
 The Stone-Age.io Platform is built on top of standard, industry-proven protocols. Your data lives in a local SQLite database, your messages travel over NATS, and your long-term metrics are handled by whatever time-series database you choose (e.g., VictoriaMetrics, InfluxDB, Postgres). You own the stack from top to bottom.
 
-### 6. Grug-Brained Development
+### 6. Grug-Brained by Design
 
 We believe complexity is the enemy of reliability. Stone-Age.io is designed to be understood by a single human. We prefer clear Go code, reactive Vue components, and straightforward YAML rules over abstract magic and sprawling service meshes.

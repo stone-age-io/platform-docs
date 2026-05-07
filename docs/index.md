@@ -16,7 +16,7 @@ The Stone-Age.io Platform orchestrates three industry-leading technologies into 
 - **Infrastructure-as-Tenant:** Creating an organization automatically provisions isolated NATS accounts and Nebula CAs.
 - **Digital Twins:** Real-time state management using NATS KV buckets — view and control devices with sub-millisecond latency.
 - **Outbound-Only Security:** Devices punch through firewalls and NATs; no open ports required.
-- **Grug-Brained Logic:** A unified rule engine (router, gateway, and scheduler features) expressing automation as simple YAML rules.
+- **Grug-Brained Automation:** A unified rule engine (router, gateway, and scheduler features) expressing automation as simple YAML rules.
 - **Bring Your Own Data:** Resilient NATS-native ingestion into your choice of TSDB (VictoriaMetrics, InfluxDB, etc.).
 
 ---
@@ -48,6 +48,7 @@ Start your journey here to understand how to build your private event-driven arc
 9.  **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
 10. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
 11. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+12. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
 
 ---
 

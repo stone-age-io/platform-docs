@@ -12,15 +12,17 @@ NATS provides the messaging fabric for the platform. It is designed to be always
 
 ### Core Pub/Sub & Subject Namespacing
 
-In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io suggests a hierarchical namespacing pattern to keep data organized within the Account:
+In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's canonical namespacing pattern is location-first and Thing-Type-aware:
 
-`[location].[thing].[property]`
-`[prefix].[entity].[subject]`
+```
+{location}.{thing_type_code}.{thing}.{operation_suffix}
+```
 
-- **Examples:** `warehouse_chicago.temp_sensor_01.reading`, `things.controllers.io-abc123.data`, `facilities.alerts.high`.
-- **Wildcards:** Wildcards are powerful tools for subject tokens. You can subscribe to `warehouse_chicago.>` to see every message from that site, or `*.*.status` to monitor the health of every device in the location.
+- **Examples:** `warehouse-a.temp_sensor.sensor-01.reading`, `warehouse-a.camera.cam-042.motion`, `chicago.gateway.gw-99.heartbeat`.
+- **Where the segments come from:** `{location}` and `{thing}` are the codes on the Location and Thing records; `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
+- **Wildcards:** Wildcards are powerful tools for subject tokens. You can subscribe to `warehouse-a.>` to see every message from that site, or `warehouse-a.camera.*.motion` to see every camera's motion events at that site.
 
-**Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Picking a clean, hierarchical namespace up front pays off as the system grows.
+**Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
 
 Note: Permissions are role-based, with subject permissions applied to the user. Permissions can be set by publish/subscribe allow/deny patterns. Deny rules are evaluated after Allow, so combining with wildcard patterns can be used to create complex scenarios.
 
@@ -33,14 +35,14 @@ Core NATS is "fire and forget." To handle historical data or "at-least-once" del
 
 JetStream is also what makes the platform resilient to Layer 3 outages — telemetry retained in a JetStream stream catches up to the TSDB when Telegraf reconnects, with no data loss.
 
-### The Digital Twin (KV Store)
+### Key-Value Buckets (Live State)
 
-JetStream offers specialized streams called Key-Value (KV) buckets to manage the live state of every entity.
+JetStream offers specialized streams called Key-Value (KV) buckets that are optimized for high-frequency updates. They're the substrate primitive behind two distinct platform concerns:
 
-- Unlike a database, the KV store is optimized for high-frequency updates.
-- Metadata (Name, Serial #) lives in PocketBase. Live State (Current Temp, Online Status) lives in KV.
+- **The Digital Twin** — per-entity live state (current temperature, online status, set points) that the UI reads/writes over WebSocket. The static side of the same entity (name, serial, location) lives in PocketBase. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the canonical model.
+- **Layer 1 rule state** — alarm status, presence keys, debounce windows, rate-limit counters. Rules stay stateless per message; KV holds the durable state. See [Automation §5](./automation.md#5-stateful-patterns-via-kv).
 
-Layer 1 rules also use KV as their durable state store — alarm status, presence keys, debounce windows, and rate-limit counters all live in KV rather than in the rule engine itself. See [Architecture](./architecture.md) for the Digital Twin concept and [Automation](./automation.md) for the KV-state patterns.
+Both concerns share the same buckets, the same access patterns, and the same isolation boundary (the org's NATS Account).
 
 ### Leaf Nodes
 
@@ -50,6 +52,33 @@ For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Le
 - **Transparent Bridging:** When the connection is restored, the Leaf Node automatically syncs data back to your central Stone-Age.io cluster.
 
 Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
+
+### Cross-Account Subject Sharing (Imports & Exports)
+
+NATS Accounts are isolated by default — subjects in Account A are invisible to Account B. **Imports** and **Exports** are the NATS-native way to punch a controlled hole between two Accounts when you genuinely want shared traffic.
+
+**The protocol model:**
+
+- An **Export** is a declaration on the *source* Account: "I am willing to share this subject (or stream) with other Accounts." Exports come in two flavors:
+    - **Stream export** — pub/sub: subscribers in importing accounts see published messages.
+    - **Service export** — request/reply: requesters in importing accounts can call the service and receive replies.
+- An **Import** is the matching declaration on the *consuming* Account: "I want to subscribe to this exported subject from that Account." The import optionally remaps the subject into the local namespace (e.g., a remote `events.>` becomes local `partner.events.>`).
+- Exports can be **public** (any Account may import) or **private** (importing requires a token signed by the exporting Account).
+
+The platform manages both sides as first-class collections (`nats_account_exports`, `nats_account_imports`) so the cluster's account-level wiring is configuration data, not a hand-edited resolver file.
+
+**The UI surface:**
+
+- **Exports** (`/nats/exports`): list, create, edit, and delete exports for the current org's Account. Form fields cover the subject, type (`stream`/`service`), token requirement, response type for services (`Singleton`/`Stream`/`Chunked`), `advertise`, and an optional description.
+- **Imports** (`/nats/imports`): list, create, edit, and delete imports. Form fields cover the source Account public key, the remote subject, an optional local subject remap, the activation token (for private exports), type, share, and `allow_trace`.
+
+**When to reach for it:**
+
+- A **shared "system events" Account** that publishes to many tenants — each tenant Account adds an import to receive the feed.
+- A **service-bureau pattern** — one Account hosts a request/reply service (geocoding, billing-rate lookups, OCR) and other Accounts import the service subject.
+- **Cross-tenant collaboration** between two specific orgs that need to exchange a narrow set of subjects without merging Accounts.
+
+Imports/exports are the right tool when you want **cryptographically separated tenants that occasionally share a subject**. If you want full shared traffic, the answer is one Account — not many Accounts wired together with imports and exports.
 
 ---
 
