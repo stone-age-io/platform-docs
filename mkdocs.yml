@@ -10,6 +10,7 @@ nav:
     - Thing Types: thing-types.md
     - Connectivity: connectivity.md
     - Agent: agent.md
+    - Edge Nodes: edge-nodes.md
     - Automation: automation.md
     - Stream Processing: stream-processing.md
     - Observability: observability.md
