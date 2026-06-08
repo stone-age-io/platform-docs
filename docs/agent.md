@@ -16,7 +16,7 @@ The agent is a single Go binary with zero external dependencies (other than the 
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
 !!! note "Not to be confused with `leaf-sync`"
-    The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Edge Nodes](./edge-nodes.md).
+    The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
 
 ---
 

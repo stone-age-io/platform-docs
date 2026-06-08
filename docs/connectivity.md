@@ -53,7 +53,7 @@ For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Le
 
 Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
 
-How the platform models a site and gets that locally-mirrored config to the edge — the `leaf_nodes` entity and the `leaf-sync` agent — is covered in [Edge Nodes](./edge-nodes.md).
+How the platform models a site and gets that locally-mirrored config to the edge — the `leaf_nodes` entity and the `leaf-sync` agent — is covered in [Leaf Nodes](./leaf-nodes.md).
 
 ### Cross-Account Subject Sharing (Imports & Exports)
 
@@ -133,5 +133,5 @@ By combining the cryptographic identity of NATS with the secure tunneling of Neb
 - **Layer 2 (stream processing):** [Stream Processing](./stream-processing.md).
 - **Layer 3 (long-term storage):** [Observability](./observability.md).
 - **The edge integration story:** [The Agent](./agent.md).
-- **Modeling & syncing an edge site:** [Edge Nodes](./edge-nodes.md).
+- **Modeling & syncing a site:** [Leaf Nodes](./leaf-nodes.md).
 - **The layer model in full:** [Platform Layers](./platform-layers.md).

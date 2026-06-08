@@ -45,7 +45,7 @@ These pages, in order, walk through the platform from concept to deployment:
 6.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
 7.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
 8.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-9.  **[Edge Nodes](./edge-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
+9.  **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
 10. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
 11. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
 12. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
