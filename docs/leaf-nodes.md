@@ -6,13 +6,13 @@ What turns a bare NATS process into a Stone-Age.io **Leaf Node** is **`leaf-sync
 
 This page covers both: the Leaf Node entity and the `leaf-sync` agent that brings it to life.
 
-!!! note "\"Leaf node\" means two related things — keep them straight"
-    | Term | What it is |
-    | :--- | :--- |
-    | **NATS leaf node** | The stock `nats-server` running at the site in leaf mode, dialing the hub outbound. A Layer 0 transport primitive — see [Connectivity](./connectivity.md#leaf-nodes). |
-    | **Leaf Node** (this page) | The *platform's* model of the site: a PocketBase record with one NATS identity, an optional Nebula host, and an allowlist of config to mirror. Built **on** a NATS leaf node, but adds provisioning, RBAC, and config sync. This is what the UI and PocketBase call a "Leaf Node." |
-    | **`leaf-sync`** | The agent that bootstraps the leaf node's config and continuously mirrors central config → local KV. The subject of this page. |
-    | **The [Agent](./agent.md)** (`stone-age-agent`) | A *per-Thing* executor (telemetry, service checks, remote exec). Different binary, different job. A site often runs both: `leaf-sync` keeps the site's config in sync; Agents report on individual devices. |
+> # "Leaf node" means two related things — keep them straight
+>    | Term | What it is |
+>    | :--- | :--- |
+>    | **NATS leaf node** | The stock `nats-server` running at the site in leaf mode, dialing the hub outbound. A Layer 0 transport primitive — see [Connectivity](./connectivity.md#leaf-nodes). |
+>    | **Leaf Node** (this page) | The *platform's* model of the site: a PocketBase record with one NATS identity, an optional Nebula host, and an allowlist of config to mirror. Built **on** a NATS leaf node, but adds  provisioning, RBAC, and config sync. This is what the UI and PocketBase call a "Leaf Node." |
+>    | **`leaf-sync`** | The binary that bootstraps the leaf node's config and continuously mirrors central config → local KV. The subject of this page. |
+>    | **The [Agent](./agent.md)** (`stone-age-agent`) | A *per-Thing* executor (telemetry, service checks, remote exec). Different binary, different job. A site often runs both: `leaf-sync` keeps the site's config in  sync; Agents report on individual devices. |
 
 ---
 
