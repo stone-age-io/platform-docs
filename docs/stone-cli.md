@@ -292,7 +292,36 @@ Two conventions keep `stone` pipeline-friendly: structured output goes to **stdo
 
 ---
 
-## 9. Limitations
+## 9. Driving `stone` with Claude
+
+Because `stone` is a clean, scriptable surface with stable JSON output, it's a natural fit for an AI assistant that can shell out to a terminal. The CLI ships with everything an assistant needs to drive it safely — no prompt-engineering on your part required.
+
+Two files travel in the repo, describing the same capability surface for two audiences:
+
+| File | Audience | What it is |
+| :--- | :--- | :--- |
+| **`.claude/skills/stone/SKILL.md`** | Claude Code | An imperative [Agent Skill](https://docs.claude.com/en/docs/claude-code/skills) that Claude Code **auto-loads** when your request matches its trigger description. You don't invoke it by hand. |
+| **`SKILLS.md`** | Humans & other tools | The audience-neutral reference of the same surface — bootstrap order, entity table, NATS sync semantics, and limitations — for people, other assistants, or automation. |
+
+When you're working in a project that has the stone skill installed (it lives under `.claude/skills/` in the CLI's repo, and can be installed into any project or your user config), Claude Code activates it automatically the moment your ask looks like platform work — *"create a thing"*, *"switch org"*, *"pull the workspace"*, *"publish to NATS on the platform"*, or any command starting with `stone`. From that point the assistant is operating from the skill's playbook rather than improvising.
+
+### What the skill encodes
+
+The skill turns the conventions documented on this page into operating rules the assistant follows:
+
+- **Bootstrap before acting.** It walks the context → auth → org → workspace chain (§3), checking each precondition and fixing only what's missing — so it won't fire entity commands against an unconfigured or wrong-org context.
+- **Parseable output.** It always adds `-o json` when it intends to consume a result, never scraping the human-facing table format.
+- **No invented ids.** It resolves relations by looking them up first (`get <key> --fields id -o json`) instead of guessing a 15-char id — and prefers natural keys for one-off operations.
+- **GitOps awareness.** It knows `apply` is idempotent and **never deletes**, so it won't expect a missing-from-workspace record to disappear.
+- **Failure-mode literacy.** It reads `nats-sync: skipped — …` as informational, recognizes the per-membership NATS creds model, and maps common PocketBase 400s back to "that wasn't a valid relation id."
+
+> **The interactive login is a deliberate safety boundary.** `stone auth login` prompts for credentials, and the assistant *cannot* supply them — the skill is explicitly told to surface the requirement and let you log in yourself. An assistant can manage your tenant, but it can't authenticate as you. Combined with the platform's per-organization scoping and PocketBase API rules, the assistant operates inside exactly the same boundaries you do.
+
+The upshot: pointing Claude Code at this platform doesn't mean trusting it to reverse-engineer a CLI — it means handing it a vetted set of commands and the judgment to chain them in the right order. Keep the two files in sync when command shapes change; both are meant to stay accurate to the surface an assistant relies on.
+
+---
+
+## 10. Limitations
 
 - Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags.
 - `apply` never deletes server records that are missing locally. Delete explicitly.
@@ -302,7 +331,7 @@ Two conventions keep `stone` pipeline-friendly: structured output goes to **stdo
 
 ---
 
-## 10. Where to Go Next
+## 11. Where to Go Next
 
 - **Stand up a server for `stone` to talk to:** [Getting Started](./getting-started.md).
 - **The entities the CLI manages, and the console that mirrors it:** [Platform Entities & UI](./platform-ui-entities.md).
