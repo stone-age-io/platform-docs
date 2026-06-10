@@ -42,14 +42,15 @@ These pages, in order, walk through the platform from concept to deployment:
 3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
 4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-6.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
-7.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
-8.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-9.  **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
-10. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
-11. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
-12. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
-13. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+6.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
+7.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
+8.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+9.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+10. **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
+11. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
+12. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+13. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+14. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
 
 ---
 
