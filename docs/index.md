@@ -51,6 +51,7 @@ These pages, in order, walk through the platform from concept to deployment:
 12. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
 13. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
 14. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+15. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
 
 ---
 
