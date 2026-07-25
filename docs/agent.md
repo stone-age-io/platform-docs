@@ -15,8 +15,7 @@ The agent is a single Go binary with zero external dependencies (other than the 
 - **Resilient:** Automatically handles NATS reconnections and backoffs.
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
-!!! note "Not to be confused with `leaf-sync`"
-    The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
+> **Not to be confused with `leaf-sync`.** The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
 
 ---
 
@@ -26,7 +25,7 @@ One of the most powerful features for MSPs is the automated provisioning flow. I
 
 ### The Lifecycle of a "Thing":
 
-1.  **Creation:** An Admin creates a new **Thing** in the Stone Age Console.
+1.  **Creation:** An Owner, Admin, or Member creates a new **Thing** in the Stone Age Console. Attaching the Thing's **NATS user** and **Nebula host** is Owner/Admin only, though — so a Thing created by a member sits un-provisioned until an Owner or Admin links its identities, and step 5 below has nothing to hand it. See [Authorization](./authorization.md).
 2.  **Identity:** PocketBase generates a unique `email` and `password` (or token) for that Thing.
 3.  **Bootstrap:** The Agent is installed on the edge device with its PocketBase credentials.
 4.  **Login:** The Agent logs into the PocketBase API (`/api/collections/things/auth-with-password`).
@@ -106,7 +105,7 @@ For custom logic, the Agent can execute local scripts or shell commands.
 Security at the edge is handled through strict cryptographic isolation.
 
 - **nKey Authentication:** The Agent uses a private NKey to sign NATS connection challenges. The private key never leaves the device.
-- **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command.
+- **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — the `nats_roles` and `nats_users` collections are closed to members and badge holders for reads as well as writes, precisely because a role's permission fields are copied verbatim into the JWT the platform signs.
 - **Nebula Encryption:** All administrative traffic between your workstation and the Agent (like SSH or log retrieval) is encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely.
 
 ---

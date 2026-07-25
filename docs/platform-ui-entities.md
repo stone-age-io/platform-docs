@@ -13,44 +13,50 @@ Organizations are the top-level container for all data and infrastructure. Every
 ### Organizations
 
 - **Isolation:** Each Organization receives its own private NATS Account and Nebula Certificate Authority.
-- **Ownership:** An organization is managed by an **Owner** (the creator) who has full control over billing and deletion.
-- **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding.
+- **Ownership:** An organization has an **Owner** — the identity that may delete it. Creating and *editing* the organization record are platform-**Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, so no tenant role has an update path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
+- **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding. Invitations can offer any role except `owner`.
 
 ### Memberships
 
 A Membership binds a PocketBase User to an Organization.
 
 - **Roles (per-organization):**
-    - `Owner`: Full access, including deletion of the Org.
-    - `Admin`: Can manage users, locations, and infrastructure.
-    - `Member`: Read-only or restricted access to dashboards and data.
-    - `Badge`: Restricted to the Badge view and a badge-only dashboard — used for kiosk- or wallet-style identity surfaces where the user does not need general platform access.
-- **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself.
+    - `Owner`: Full tenant authority. **Identical to `Admin` in every API rule** — the only differences are that an Owner cannot leave their own organization and may delete it.
+    - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, Leaf Nodes, and the identity links on a Thing.
+    - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations, Message Schemas). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
+    - `Badge`: Restricted to the Badge view and a badge-only dashboard — used for kiosk- or wallet-style identity surfaces where the user does not need general platform access. Like every role, it can still read the one NATS identity linked to its own membership, which is what its browser connects with.
+- **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself. Access to it is **row-scoped**, not field-hidden: a member or badge holder sees exactly that one `nats_users` row and no other — see [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 ### Cross-Organization Roles
 
 Two roles exist *outside* the per-organization Membership model and apply to the user account itself:
 
-- **Operator** (`users.is_operator = true`): Can create, edit, and delete Organizations and invite users into any Org. Operators are the day-to-day platform administrators and are the recommended identity for managing the system from the UI. The first Operator is created by the `bootstrap` command.
+- **Operator** (`users.is_operator = true`): Can create, edit, and delete Organizations and invite users into any Org. Editing the organization record is **exclusively** an Operator action — no tenant role, not even Owner, has an update path to it. Operators are also the only identities that can read the **audit log** (`audit_logs`); no tenant role can. They are the day-to-day platform administrators and the recommended identity for managing the system from the UI. The first Operator is created by the `bootstrap` command, which — along with the embedded admin panel — is the only way to grant Operator status; the API cannot.
 - **SuperUser** (`_superusers` collection): A backend service account with full database access regardless of API rules. Created via `./stone-age superuser upsert` and intended for infrastructure-level management — schema imports, NATS Operator/System Account seeding, and other platform-level concerns. SuperUsers are not members of any organization; they sign in at the embedded admin UI (`/_/`).
 
-### Permissions Matrix
+### Permissions
 
-A coarse summary of what each role can do in the UI. Fine-grained authorization is enforced by PocketBase API rules on each collection; the UI hides actions a user cannot perform.
+Authorization is enforced **solely** by PocketBase API rules on each collection. The UI's capability map decides which menu items and buttons render — it is navigation convenience, **not** the security boundary, and a hidden button is still a reachable endpoint for anyone holding a token.
 
-| Capability | Owner | Admin | Member | Badge | Operator¹ | SuperUser |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| View dashboards, Things, Locations | ✅ | ✅ | ✅ | dashboard only | ✅ | ✅ |
-| Create / edit Things and Locations | ✅ | ✅ | — | — | ✅ | ✅ |
-| Manage Thing Types, Operations, Schemas | ✅ | ✅ | — | — | ✅ | ✅ |
-| Manage NATS users, roles, imports/exports | ✅ | ✅ | — | — | ✅ | ✅ |
-| Manage JetStream streams and KV buckets | ✅ | ✅ | — | — | ✅ | ✅ |
-| Manage Nebula networks and hosts | ✅ | ✅ | — | — | ✅ | ✅ |
-| Invite / manage org members | ✅ | ✅ | — | — | ✅ | ✅ |
-| Create / edit / delete Organizations | — | — | — | — | ✅ | ✅ |
-| Schema imports, Operator key custody | — | — | — | — | — | ✅ |
+**The authoritative capability matrix lives on one page: [Authorization & Roles](./authorization.md).** Rather than duplicate it here, the highlights that most often surprise people:
 
-¹ Operator is a flag on the user record (`is_operator`), independent of per-org Membership role. An Operator without a Membership in a given org still cannot read that org's data — Membership is what grants tenant-data access; the Operator flag grants org-management authority.
+- `Owner` and `Admin` are the same allowlist in every rule. Granting `admin` grants full tenant authority.
+- `Member` **does** create and edit Things and Locations. It cannot delete them, and it cannot attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path.
+- `Member` and `Badge` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
+- Editing the Organization record, and reading the audit log, are Operator-only.
+- Every role, including `Badge`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`).
+
+### Self-Service Credential Rotation
+
+Any authenticated identity with a linked NATS user — a `users` membership, a `things` record, or a `leaf_nodes` record — can rotate its own credential:
+
+```
+POST /api/me/nats-creds/rotate
+```
+
+It takes **no id parameter**: it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. Available to every role, including `badge`. Afterwards, re-read your own record to pick up the new `.creds`.
+
+The reason this is a route rather than a permissive update rule is that a PocketBase rule cannot express a single-field allowlist, and the field that must stay closed is consequential — `nats_users.publish_permissions` is copied verbatim into the JWT the platform signs. **Revocation** is not part of the route; it stays an Owner/Admin action. See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 ---
 
@@ -88,8 +94,10 @@ A **Thing** is any entity that produces/consumes data (or even just an entry for
 A Thing is typically linked to:
 
 - **A Thing Type:** The contract that declares what subjects the Thing uses and what message shapes it exchanges. See [Thing Types](./thing-types.md).
-- **A NATS User:** To allow the device to publish telemetry. Permissions can be derived from the Thing Type's linked `nats_role`.
+- **A NATS User:** To allow the device to publish telemetry. What it may publish or subscribe to comes from the `nats_roles` record assigned to that NATS user (plus any per-user overrides) — authored directly by an Owner or Admin, not derived from the Thing Type. See [Thing Types §5](./thing-types.md#5-relationship-to-nats-roles).
 - **A Nebula Host:** To allow secure, encrypted access to the device for maintenance or SSH.
+
+Both relations are **Owner/Admin only**. A `member` may create and edit a Thing but cannot set or change its `nats_user` or `nebula_host` — otherwise a member could re-point a Thing at a privileged identity, authenticate as the Thing, and read credentials that were never theirs. In practice this means a member-created Thing sits un-provisioned until an Owner or Admin links its identities. See [Authorization §2](./authorization.md#2-capability-matrix).
 
 The subjects a Thing publishes to become the inputs to your Layer 1 rules — picking a clean Thing Code and subject namespace pattern is the first step in building automation that's easy to reason about later. The Thing Type makes that pattern declarative rather than implicit: rather than hoping every camera publishes on a sensible subject, the camera Thing Type declares the contract once and every camera of that type follows it.
 
@@ -107,7 +115,7 @@ Thing Types compose from two other collections that the UI also manages directly
 - **Thing Operations:** Shareable records describing individual verbs on the fabric. A single `heartbeat` operation record is typically linked from every Thing Type that emits heartbeats.
 - **Message Schemas:** JSON Schema documents describing operation payloads, versioned via `(namespace, name, version)`.
 
-All three (Thing Types, Thing Operations, Message Schemas) live under the **Types** menu group in the sidebar alongside Location Types.
+All three (Thing Types, Thing Operations, Message Schemas) live under the **Types** menu group in the sidebar alongside Location Types. **Reading them is open to every role in the organization** — a member needs the contract to resolve subjects and validate payloads. **Creating, editing, and deleting them is Owner/Admin only.**
 
 ---
 

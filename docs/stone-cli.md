@@ -125,28 +125,36 @@ Before real work, four preconditions must hold. Check them in order and fix only
 
 The CLI exposes typed CRUD over the same Control Plane collections the console manages. The command set is generated from a single declarative table, so every entity behaves consistently and the name aliases are forgiving (`stone thing`, `stone things`, `stone thing_type`, `stone thing-types` all resolve).
 
-| Entity | Org-scoped | Lookup key | Verbs |
-| :--- | :---: | :--- | :--- |
-| `thing` | yes | `code` | full |
-| `location` | yes | `code` | full |
-| `location-type` | yes | `code` | full |
-| `thing-type` | yes | `code` | full |
-| `thing-type-operation` | yes | `name` | full |
-| `message-schema` | yes | `name` | full |
-| `organization` | no | `name` | full |
-| `membership` | no | — (id only) | full |
-| `invite` | yes | `email` | full |
-| `nats-user` | yes | `nats_username` | full |
-| `nats-role` | yes | `name` | full |
-| `nats-import` | yes | `name` | full |
-| `nats-export` | yes | `name` | full |
-| `nebula-network` | yes | `name` | full |
-| `nebula-host` | yes | `hostname` | full |
-| `leaf-node` | yes | `code` | full |
-| `nats-account` | yes | `name` | `ls / get / update / edit` |
-| `nebula-ca` | yes | `name` | `ls / get / update / edit` |
+| Entity | Org-scoped | Lookup key | Verbs | Role required |
+| :--- | :---: | :--- | :--- | :--- |
+| `thing` | yes | `code` | full | read: any · create/update: member+ · delete: owner/admin |
+| `location` | yes | `code` | full | read: any · create/update: member+ · delete: owner/admin |
+| `location-type` | yes | `code` | full | read: any · write: owner/admin |
+| `thing-type` | yes | `code` | full | read: any · write: owner/admin |
+| `thing-type-operation` | yes | `name` | full | read: any · write: owner/admin |
+| `message-schema` | yes | `name` | full | read: any · write: owner/admin |
+| `organization` | no | `name` | full | read: any member, or operator · create/update: **operator only** · delete: operator or the org's `owner` |
+| `membership` | no | — (id only) | full | read: your own, or owner/admin of the org · write: owner/admin |
+| `invite` | yes | `email` | full | owner/admin (operator may create) |
+| `nats-user` | yes | `nats_username` | full | owner/admin — **including reads** (plus your own one row) |
+| `nats-role` | yes | `name` | full | owner/admin — including reads |
+| `nats-import` | yes | `name` | full | owner/admin — including reads |
+| `nats-export` | yes | `name` | full | owner/admin — including reads |
+| `nebula-network` | yes | `name` | full | owner/admin — including reads |
+| `nebula-host` | yes | `hostname` | full | owner/admin — including reads |
+| `leaf-node` | yes | `code` | full | read: any · write: owner/admin |
+| `nats-account` | yes | `name` | `ls / get` | read: any · **all writes: operator** · signing keys: owner/admin via route |
+| `nebula-ca` | yes | `name` | `ls / get` | read: any · **all writes: operator** · no rotation trigger exists |
 
-"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization — you can read and adjust them, but not create or delete them by hand.
+"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, and both are now **read-only to every tenant role** — `update` requires a platform Operator, and neither can be created or deleted by hand. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is an operator operation.
+
+In the **Role required** column, *any* means any role in the current organization including `badge`, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
+
+- On the `nats-*` and `nebula-*` entities, a member or badge holder gets an **empty `ls`, not a filtered one** — the read rules themselves require owner or admin. The one exception is the single `nats-user` row linked to your own membership.
+- On `thing`, the `nats_user` and `nebula_host` relations are owner/admin only. A member can create and edit a Thing but any `--nats-user` / `--nebula-host` flag will be rejected.
+- On your **own** `membership` record the writable surface is the NATS identity link only. `--role`, `--user`, and `--invited-by` are rejected outright — self-promotion is not a supported path. Changing someone's role requires owner or admin.
+
+The full matrix, and the reasoning behind each restriction, is on [Authorization & Roles](./authorization.md).
 
 ```sh
 stone location create --name "HQ" --code hq
@@ -267,7 +275,15 @@ stone org switch "Warehouse Ops" --set-nats-default   # also makes it the nats-c
 stone nats sync-context                               # re-issue after rotating keys
 ```
 
-Run `sync-context` after a credential rotation (e.g. `stone nats-user update <id> --regenerate true`). The org switch always succeeds even if this step can't; when it short-circuits, it prints an informational `nats-sync: skipped — <reason>` line, never an error:
+Run `sync-context` after a credential rotation. Rotating *someone else's* credential is `stone nats-user update <id> --regenerate true` and needs owner or admin — a member or badge holder gets a 404, because `nats_users` writes are owner/admin only. To rotate **your own**, call the dedicated route, which every role can use and which takes no id:
+
+```sh
+curl -X POST https://platform.acme.io/api/me/nats-creds/rotate \
+    -H "Authorization: $TOKEN"
+stone nats sync-context      # then re-issue the local creds
+```
+
+See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). The org switch always succeeds even if this step can't; when it short-circuits, it prints an informational `nats-sync: skipped — <reason>` line, never an error:
 
 | Reason | Meaning |
 | :--- | :--- |
@@ -326,7 +342,7 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 - Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags.
 - `apply` never deletes server records that are missing locally. Delete explicitly.
 - No JetStream **consumer** management — use the `nats` CLI.
-- `nats-account` and `nebula-ca` updates that touch limits or infrastructure fields require operator-level credentials server-side. Org admins can only trigger key/CA rotation (`rotate_keys: true`).
+- `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require operator-level credentials server-side. Signing-key operations go through `POST /api/org/nats-account/keys` (owner/admin), not `stone nats-account update`.
 - `auth login` is interactive by design — credentials can't be discovered by the CLI.
 
 ---
@@ -335,6 +351,7 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 
 - **Stand up a server for `stone` to talk to:** [Getting Started](./getting-started.md).
 - **The entities the CLI manages, and the console that mirrors it:** [Platform Entities & UI](./platform-ui-entities.md).
+- **Which of those entities your role can actually touch:** [Authorization & Roles](./authorization.md).
 - **The contract graph behind Thing Types and message schemas:** [Thing Types](./thing-types.md).
 - **How per-membership NATS creds fit the account model:** [Connectivity](./connectivity.md).
 - **GitOps at the edge — the same declarative spirit, applied to a site:** [Leaf Nodes](./leaf-nodes.md).

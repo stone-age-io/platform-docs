@@ -54,6 +54,7 @@ The Control Plane is where you manage your business logic and inventory. It is t
 - **Inventory:** Things, Thing Types, Locations, and Floorplans.
 - **Credentials:** Generating NATS JWTs, Nebula Certificates, and API Tokens.
 - **Orchestration:** PocketBase hooks automatically trigger infrastructure provisioning when you change things in the UI.
+- **Authorization:** The PocketBase **API rules** on each collection — the platform's only access-control layer. See §3 and [Authorization & Roles](./authorization.md).
 
 ### The Data Plane 
 
@@ -162,6 +163,12 @@ In the Stone-Age.io Platform, multi-tenancy is not just a software filter; it is
 | **Membership** (User ↔ Org link) | **NATS User** (relation) | A Membership references a NATS user in that Org's Account, giving the human a credential scoped to that organization. |
 
 This means that even if a device in *Organization A* is compromised, it has no cryptographic path to see messages or network traffic in *Organization B*.
+
+### Authorization inside an Organization
+
+Cryptography draws the boundary *between* tenants. Inside one, access is governed by four roles on the Membership record — `owner`, `admin`, `member`, and `badge` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `badge` is the most restricted; editing the Organization record and reading the audit log are Operator-only.
+
+**The PocketBase API rules declared on each collection are the only enforcement layer.** The provisioning libraries (`pb-nats`, `pb-nebula`) contain no tenancy logic — they never reference `organization` — and the console's capability map decides what renders, not what is permitted. The full model, the capability matrix, and the row-scoped credential design live on [Authorization & Roles](./authorization.md).
 
 <center>
 ```mermaid
@@ -291,6 +298,7 @@ Above Layer 0, the platform's event logic is structured as three composable tier
 
 - For the conceptual layer model: [Platform Layers](./platform-layers.md).
 - For the contract layer that describes participants on the fabric: [Thing Types](./thing-types.md).
+- For roles, API rules, and the credential model: [Authorization & Roles](./authorization.md).
 - For Layer 0 (substrate) detail: [Connectivity](./connectivity.md).
 - For Layer 1 (rule engine) detail: [Automation](./automation.md).
 - For Layer 2 (stream processing) detail: [Stream Processing](./stream-processing.md).

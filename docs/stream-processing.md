@@ -138,7 +138,7 @@ When a problem could plausibly be solved at either layer, here's a rough guide:
 
 ## 6. A Worked Example — Anomaly Detection on Access Events
 
-This example extends the access control reference architecture from [Platform Layers §8](./platform-layers.md#8-reference-architecture--all-four-layers). The reference architecture shows Layers 0, 1, and 3 handling the operational path; here we add Layer 2 for analytical behavior without touching the hot path.
+This example extends the access control reference architecture from [Platform Layers §8](./platform-layers.md#8-reference-architecture-all-four-layers). The reference architecture shows Layers 0, 1, and 3 handling the operational path; here we add Layer 2 for analytical behavior without touching the hot path.
 
 **The goal:** flag access events that are unusual for the user — accesses outside their normal hours, to doors they rarely use, or in unusual sequences.
 

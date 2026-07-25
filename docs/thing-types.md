@@ -6,7 +6,7 @@ If a **Thing** is an instance of something on the fabric, a **Thing Type** is th
 
 This page explains what's in a Thing Type, how it composes with operations and message schemas, how consumers resolve its subject templates, and where the boundary lies between contract (what belongs here) and platform behavior (what doesn't).
 
-Thing Types are purely declarative — they describe the message contract. NATS roles and their permissions are managed directly on the `nats_roles` collection.
+Thing Types are purely declarative — they describe the message contract. NATS roles and their permissions are managed directly on the `nats_roles` collection, which is **Owner/Admin only** for reads as well as writes: a role's permission fields are copied verbatim into the JWT the platform signs, so write access to that collection is equivalent to granting NATS permissions. See [Authorization](./authorization.md).
 
 ---
 
@@ -140,7 +140,7 @@ Deleting a Thing Type does not delete its operations. The operations persist and
 
 Thing Types describe what a participant does on the fabric. NATS roles control what a NATS user is allowed to publish to or subscribe from. These are **independent concerns** — Thing Types do not derive role permissions.
 
-Operators author NATS role permissions directly on the `nats_roles` record. A Thing Type's subject templates are a useful reference when authoring those permissions — the patterns a role needs to grant look like the resolved wildcard forms of the Thing Type's operations — but the translation is manual and deliberate.
+An organization's Owners and Admins author NATS role permissions directly on the `nats_roles` record — this is a tenant action, not a platform-operator one; `nats_roles` has no operator branch in its API rules. Members and badge holders cannot read the collection at all. A Thing Type's subject templates are a useful reference when authoring those permissions — the patterns a role needs to grant look like the resolved wildcard forms of the Thing Type's operations — but the translation is manual and deliberate.
 
 ---
 
@@ -237,7 +237,7 @@ Thing: `code = cam-042`, `type = ip_camera`, located at `warehouse-a`.
 
 ## 7. Using Thing Types in the UI
 
-Admin views live under the **Types** menu group in the sidebar, alongside Location Types:
+The three collections live under the **Types** menu group in the sidebar, alongside Location Types. **Every role in the organization can read them** — a member needs the contract to resolve subjects and validate payloads — but the create/edit/delete forms below are **Owner/Admin only** ([Authorization](./authorization.md)):
 
 - **Thing Types** — list and edit Thing Types. The form includes identity fields (name, description, code), subject prefix, capabilities multi-select, and an operations multi-select with a quick-add modal for creating new operations inline.
 - **Thing Operations** — list and edit the shareable operation records. The form enforces the `^[a-z0-9_]+$` name pattern, requires a `capability`, requires a `subject_suffix`, and offers an optional schema relation with a quick-add modal.
@@ -264,7 +264,7 @@ Thing Types describe the **message contract** between a Thing and the fabric. Th
 Not in a Thing Type or its operations:
 
 - **State machines or lifecycles.** Alarm status, presence, session tracking — belong in NATS KV and rule-router rules.
-- **Rate limits, priorities, throttles.** Belong in NATS account limits, the NATS role, or rule-router rules.
+- **Rate limits, priorities, throttles.** Belong in NATS account limits, the NATS role, or rule-router rules. (Account limits are a **platform-operator** setting — an org's Owners and Admins can read the account record and trigger key rotation, but not change its limits.)
 - **Enabled / disabled flags.** Belong on the Thing instance as runtime state.
 - **Ownership, cost center, environment tags.** Belong on the Thing instance's metadata.
 - **Alert thresholds, notification routing.** Belong in rules.
@@ -290,5 +290,6 @@ The `capabilities` field accepts `publish`, `subscribe`, `request`, and `reply`.
 
 - **[Architecture](./architecture.md)** — how the Control Plane and Data Plane relate; where Thing Types sit in the Digital Twin model.
 - **[Platform UI and Entities](./platform-ui-entities.md)** — the full inventory of entities the UI manages, including how Thing Types fit alongside Things and Locations.
+- **[Authorization & Roles](./authorization.md)** — who can read a contract and who can change it.
 - **[Connectivity](./connectivity.md)** — the NATS substrate that resolved subjects land on; subject namespacing conventions.
 - **[Automation](./automation.md)** — rules that consume the subjects Thing Types declare.
