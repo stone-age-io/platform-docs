@@ -111,6 +111,8 @@ Controls the `pb-audit` library: comprehensive audit logging of create/update/de
 | `retention.max_records` | int | `0` | Max records to keep. `0` disables count-based pruning. |
 | `retention.interval` | string | `"0 2 * * *"` | Cron expression for the retention sweep job. |
 
+> **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is operator-gated to match. A tenant admin cannot self-serve an audit export; the request has to go through a platform operator. See [Authorization §5](./authorization.md#5-the-audit-log-is-operator-only).
+
 ---
 
 ## 3. Environment Variable Overrides
@@ -151,7 +153,7 @@ Because the platform binary embeds PocketBase, the standard PocketBase CLI flags
 - `--encryptionEnv <name>` — name of an env var holding a 32-character key used to encrypt app settings at rest.
 - `--queryTimeout <seconds>` — default SELECT query timeout.
 
-These apply uniformly to all subcommands (`serve`, `bootstrap`, `nats export`, `superuser upsert`).
+These apply uniformly to all subcommands (`serve`, `migrate`, `bootstrap`, `nats export`, `superuser upsert`).
 
 ---
 
@@ -160,12 +162,14 @@ These apply uniformly to all subcommands (`serve`, `bootstrap`, `nats export`, `
 - **Changing `operator_name` after first run is not safe** — the Operator JWT is generated once at first SuperUser creation. Renaming would orphan the existing identity hierarchy.
 - **`server_url` is for the Control Plane's System Account connection only.** Browser-facing NATS WebSocket URLs are configured per-user in the Settings page, not here.
 - **Audit retention runs on a schedule, not on every write.** A misconfigured `interval` will just delay cleanup, not break ingestion.
-- **The schema is embedded in the binary**, not loaded from disk. To change schema, rebuild the binary with an updated `schema.json` (see the platform README).
+- **The schema is embedded in the binary**, not loaded from disk. Updating the embedded `schema.json` is only half the change: it reaches **freshly-created databases only**. To change the schema — or an API rule — on an existing deployment, the platform needs a new `migrations/schema_update_*.go` file, which runs at startup. This is the most common way a rule fix fails to ship. See [Authorization §7](./authorization.md#7-changing-the-rules) and [Operations §5.1](./operations.md#51-how-upgrades-work).
+- **API rules are the platform's only authorization layer.** Nothing in `config.yaml` grants or restricts access; the rules in the embedded schema do all of it. See [Authorization & Roles](./authorization.md).
 
 ---
 
 ## 6. Where to Go Next
 
 - **Initial setup walkthrough:** [Getting Started](./getting-started.md).
+- **Roles, API rules, and the audit-log boundary:** [Authorization & Roles](./authorization.md).
 - **What the NATS section provisions:** [Architecture](./architecture.md).
 - **Imports / exports cross-account sharing:** [Connectivity](./connectivity.md).

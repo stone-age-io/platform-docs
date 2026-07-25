@@ -24,7 +24,9 @@ In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by N
 
 **Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
 
-Note: Permissions are role-based, with subject permissions applied to the user. Permissions can be set by publish/subscribe allow/deny patterns. Deny rules are evaluated after Allow, so combining with wildcard patterns can be used to create complex scenarios.
+Note: subject permissions are attached to the NATS user, usually through a reusable **NATS Role** (`nats_roles`) with optional per-user overrides. Permissions are expressed as publish/subscribe allow/deny patterns; deny rules are evaluated after allow, so combining them with wildcards can express fairly complex scenarios.
+
+> **A "NATS role" is not a membership role.** `nats_roles` records are data-plane permission sets applied to NATS users; the four **membership** roles (`owner`, `admin`, `member`, `badge`) govern who may read or write platform records. Authoring `nats_roles` is Owner/Admin only — for **reads** as well as writes — because a role's publish and subscribe permission fields are copied **verbatim** into the user JWT the platform signs. Write access to them is therefore equivalent to granting NATS permissions. See [Authorization](./authorization.md).
 
 ### JetStream
 
@@ -74,6 +76,8 @@ The platform manages both sides as first-class collections (`nats_account_export
 - **Exports** (`/nats/exports`): list, create, edit, and delete exports for the current org's Account. Form fields cover the subject, type (`stream`/`service`), token requirement, response type for services (`Singleton`/`Stream`/`Chunked`), `advertise`, and an optional description.
 - **Imports** (`/nats/imports`): list, create, edit, and delete imports. Form fields cover the source Account public key, the remote subject, an optional local subject remap, the activation token (for private exports), type, share, and `allow_trace`.
 
+Both views — **including their lists** — are Owner/Admin only. A member or badge holder querying `nats_account_exports` or `nats_account_imports` receives an empty result, not a filtered one.
+
 **When to reach for it:**
 
 - A **shared "system events" Account** that publishes to many tenants — each tenant Account adds an import to receive the feed.
@@ -87,6 +91,8 @@ Imports/exports are the right tool when you want **cryptographically separated t
 ## 2. Nebula
 
 Nebula is a scalable overlay networking tool with a focus on performance, simplicity, and security. It allows your devices to talk to each other as if they were on the same local network, even if they are scattered across the globe behind restrictive firewalls. Again, this is just a brief overview. Refer to the official Nebula documentation for a more in-depth understanding.
+
+> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so members and badge holders get an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a platform Operator, and there is no tenant-triggered CA rotation — rolling a CA is an operator operation. See [Authorization](./authorization.md).
 
 ### Mesh VPN Fundamentals
 
@@ -132,6 +138,7 @@ By combining the cryptographic identity of NATS with the secure tunneling of Neb
 - **Layer 1 (declarative event logic):** [Automation](./automation.md).
 - **Layer 2 (stream processing):** [Stream Processing](./stream-processing.md).
 - **Layer 3 (long-term storage):** [Observability](./observability.md).
+- **Who may author roles, hosts, and account wiring:** [Authorization & Roles](./authorization.md).
 - **The edge integration story:** [The Agent](./agent.md).
 - **Modeling & syncing a site:** [Leaf Nodes](./leaf-nodes.md).
 - **The layer model in full:** [Platform Layers](./platform-layers.md).

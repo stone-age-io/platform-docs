@@ -23,7 +23,7 @@ A vanilla NATS leaf node is unopinionated by design — it's transport, and noth
 - **Pre-loaded config.** `leaf-sync` populates the local KV with the org's Thing contract graph and inventory (§4), so the site can resolve what its devices are and what they're allowed to do — offline, with no round-trip to the hub.
 - **A managed identity.** The Leaf Node is provisioned with its own NATS user by a server-side hook. You never hand-mint keys; you create a record.
 - **A bounded sync scope.** What a site mirrors is an enforced allowlist (§4), not "whatever's in PocketBase." Secret-bearing collections can never reach it.
-- **The same control surface as everything else.** Rotating credentials, narrowing the site's NATS role, or auditing changes are record edits in the console — not SSH sessions on the edge box.
+- **The same control surface as everything else.** Rotating credentials or narrowing the site's NATS role are record edits in the console — not SSH sessions on the edge box. (Those edits *are* audited, but reading `audit_logs` is a platform-operator action: no tenant role, not even `owner`, can read it — see [Authorization §5](./authorization.md#5-the-audit-log-is-operator-only).)
 
 The payoff: a Leaf Node *understands its own configuration*, where a plain leaf node only moves bytes.
 
@@ -42,7 +42,7 @@ The split matters: `leaf-sync` moves *metadata* (the inventory and contracts a s
 
 ## 3. The Leaf Node entity
 
-Create one in the console under **Leaf Nodes → New**. A server-side hook then provisions its NATS identity automatically — no manual key handling.
+Create one in the console under **Leaf Nodes → New**. A server-side hook then provisions its NATS identity automatically — no manual key handling. **Creating, editing, and deleting Leaf Nodes is an Owner/Admin action**; any role in the organization can view the list and detail pages ([Authorization §6](./authorization.md#6-leaf-nodes-and-the-edge)).
 
 | Field | Role |
 | :--- | :--- |
@@ -66,8 +66,8 @@ leaf-sync config   # one-shot: write nats-leaf.conf + edge.creds from PocketBase
 leaf-sync run      # daemon: mirror config collections into local KV
 ```
 
-- **`config`** authenticates to PocketBase as the Leaf Node and fetches everything needed to stand the leaf server up: its own record (domain, synced collections), its NATS user's `.creds`, the org account JWT, and the **operator JWT** (served by the dedicated, leaf-node-authenticated route `GET /api/leaf/operator-jwt`, so the operator key itself stays superuser-only). It writes `nats-leaf.conf` and the creds file. No NATS connection required — run it *before* the leaf server is up.
-- **`run`** connects to the local leaf and, every `sync.interval`, performs a **full reconcile** of each allowed collection: upsert every record into KV bucket `<collection>`, then delete keys for records that no longer exist. It is **fail-soft** — on any PocketBase or NATS error it leaves local KV untouched and retries; it never wipes local state. A *successful but empty* fetch is guarded too: if a collection returns zero records while local KV still holds keys, the purge is skipped for that cycle, so a transient auth or scoping glitch can't wipe the mirror. It shuts down cleanly on `SIGINT`/`SIGTERM`, so it's safe under systemd or Docker.
+- **`config`** authenticates to PocketBase as the Leaf Node and fetches everything needed to stand the leaf server up from a single dedicated, leaf-node-authenticated route — `GET /api/leaf/bootstrap` — which returns six named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, and `operator_jwt`. The server reads the secret-bearing collections with its own privileges and hands back named values, never whole records, so the leaf-node identity needs no read grant on `nats_users` or `nats_accounts` at all (§7). It writes `nats-leaf.conf` and the creds file. No NATS connection required — run it *before* the leaf server is up.
+- **`run`** connects to the local leaf and, every `sync.interval`, performs a **full reconcile** of each allowed collection: upsert every record into KV bucket `<collection>`, then delete keys for records that no longer exist. It is **fail-soft** — on any PocketBase or NATS error it leaves local KV untouched and retries; it never wipes local state. Deletion is driven only by what PocketBase returned, never by whether a write succeeded, so a failed write can never escalate into the key being purged. A *successful but empty* fetch is guarded too: if a collection returns zero records while local KV still holds keys, the purge is skipped for that cycle, so a transient auth or scoping glitch can't wipe the mirror. The mirror is also **self-healing**: a key removed out-of-band — a purged and recreated bucket, a lost store, a manual `nats kv del` — is rewritten on the next cycle rather than staying absent. It shuts down cleanly on `SIGINT`/`SIGTERM`, so it's safe under systemd or Docker.
 
 After each cycle, `run` also writes a best-effort **liveness heartbeat** (when `nats.hub_domain` is set — see §4.1).
 
@@ -81,8 +81,8 @@ sequenceDiagram
     Note over LS: leaf-sync config (one-shot)
     LS->>API: Auth as Leaf Node (email/pass)
     API-->>LS: JWT
-    LS->>API: GET record, user creds, account JWT,<br/>operator JWT (/api/leaf/operator-jwt)
-    API-->>LS: Trust material
+    LS->>API: GET /api/leaf/bootstrap
+    API-->>LS: domain, code, creds,<br/>account JWT + pub, operator JWT
     LS->>LS: Write nats-leaf.conf + edge.creds
     Note over LEAF: nats-server -c nats-leaf.conf
 
@@ -129,7 +129,7 @@ thing_type_operations   message_schemas
 
 This is exactly the **Thing contract graph**: `thing_type` → `thing_type_operation` → `message_schema` (see [Thing Types](./thing-types.md)), plus the Things and Locations that instantiate it. With these mirrored locally, a site can resolve what a Thing's Type is allowed to do — and validate the messages it exchanges — **entirely offline**.
 
-A Leaf Node identity can only ever read these collections, and only within its own organization. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced. The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
+A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the six allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The four bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the operator JWT) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
 
 ---
 
@@ -149,8 +149,8 @@ Once `leaf-sync` has populated local KV, the rest of the layered platform runs a
 
 - **One NATS identity per Leaf Node**, shared by the leaf remote, the rule engine, and `leaf-sync`. The **edge box is the trust boundary**; tenant isolation is the NATS *account* boundary, which the site cannot cross.
 - The site only ever holds **public trust material** (operator JWT, account JWT) plus its own user's creds. It **cannot mint new account users**.
-- The operator JWT is reachable only through `GET /api/leaf/operator-jwt`, authenticated as the Leaf Node — the operator collection stays superuser-only.
-- Narrowing a site's blast radius is a record edit: reassign its NATS role or add per-user permission overrides from the Leaf Node's detail view.
+- That trust material is reachable only through `GET /api/leaf/bootstrap`, authenticated as the Leaf Node. The handler reads named fields with the server's own privileges — the operator collection stays superuser-only, account *seeds* and signing keys are never served, and the leaf-node identity holds **no read grant on `nats_users` or `nats_accounts`**. So the blast radius of a leaked edge credential is those six values and its allowlisted config, fixed regardless of how those collections' rules later evolve. (`GET /api/leaf/operator-jwt` still exists for older agents; it is superseded by `/api/leaf/bootstrap`.)
+- Narrowing a site's blast radius is a record edit — reassign its NATS role or add per-user permission overrides from the Leaf Node's detail view. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 - The Leaf Node's PocketBase password (its `leaf-sync` login) is resettable by an org Admin/Owner from the console — gated by the collection's `manageRule`, so it stays a scoped, audited record action rather than a superuser-only operation.
 
 ---
@@ -195,4 +195,5 @@ Once `leaf-sync` has populated local KV, the rest of the layered platform runs a
 - **The contract graph that gets synced:** [Thing Types](./thing-types.md).
 - **Per-Thing edge execution (a different agent):** [The Agent](./agent.md).
 - **Site-local rules during outages:** [Automation](./automation.md).
+- **What an edge identity may read, and who may manage it:** [Authorization & Roles](./authorization.md).
 - **How the planes fit together:** [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md).

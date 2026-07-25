@@ -13,7 +13,8 @@ The platform brings three projects together under a single management surface:
 ## Key Features
 
 - **Single-binary components:** The Control Plane, rule engine, Agent, NATS, and Nebula each ship as a self-contained executable with no runtime dependencies. They wire themselves together over NATS, so the same architecture works on bare metal, a single VM, containers, or a Kubernetes cluster — whichever fits your operations.
-- **Infrastructure-as-Tenant:** Creating an Organization provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
+- **Infrastructure-as-Tenant:** Creating an Organization — a platform-Operator action — provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
+- **Role-scoped access, enforced in one place:** Four per-organization roles (`owner`, `admin`, `member`, `badge`) plus a platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
 - **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database.
 - **Outbound-only security:** Devices and Agents initiate connections outward to NATS and Nebula. No inbound ports are required, so edge nodes stay invisible to the public internet.
 - **Declarative automation:** A unified rule engine (router, gateway, and scheduler features) expresses NATS routing, webhook ingestion and egress, and cron-driven publishes as YAML rules.
@@ -42,16 +43,17 @@ These pages, in order, walk through the platform from concept to deployment:
 3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
 4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-6.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
-7.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
-8.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
-9.  **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-10. **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
-11. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
-12. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
-13. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
-14. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
-15. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
+6.  **[Authorization & Roles](./authorization.md)** — Who can do what: the four roles, the capability matrix, and the credential model.
+7.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
+8.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
+9.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+10. **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+11. **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
+12. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
+13. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+14. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+15. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+16. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
 
 ---
 

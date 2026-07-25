@@ -19,6 +19,8 @@ Traditional IoT platforms often bundle a time-series database directly into thei
 
 Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of Layers 0–2.
 
+> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane's `audit_logs` collection, and reading it is restricted to platform **Operators**: no tenant role, not even `owner`, can query it. Retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)), and the boundary is described in [Authorization §5](./authorization.md#5-the-audit-log-is-operator-only). Don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
+
 ---
 
 ## 2. The Suggested Stack 

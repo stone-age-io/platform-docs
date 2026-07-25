@@ -13,7 +13,7 @@ Operational state lives in different places, with different owners and different
 | State | Where it lives | Loss impact | Protected by |
 | :--- | :--- | :--- | :--- |
 | **Identity hierarchy** — Operator key, NATS Accounts, Nebula CAs, user/Thing credentials | Control Plane (`pb_data`) | **Severe.** The Operator key is the root of the entire chain of trust — losing it orphans every Account and credential it signed. | This page (§3). |
-| **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull--apply). | This page (§3), plus `stone pull` workspaces. |
+| **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
 | **Live state** — Digital Twin KV, JetStream streams | NATS servers (JetStream storage) | Low to moderate. Twins repopulate from device heartbeats; stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
 | **Historical telemetry** | Your Layer 3 TSDB | Your call — it's [BYO](./observability.md). | Your TSDB's own backup tooling. |
 | **Edge config mirrors** | Leaf node local KV | None. `leaf-sync` reconverges from the Control Plane on its next cycle. | Nothing needed — see [Leaf Nodes](./leaf-nodes.md). |
@@ -107,7 +107,7 @@ zfs create tank/stone-age
 
 ### 3.4 What this routine does *not* cover
 
-By design, per the table in §1: JetStream/KV contents (protect with replicas and mirrors at the NATS layer), your TSDB (its own tooling), and edge state (self-healing). One more worth keeping: a periodic [`stone pull`](./stone-cli.md#5-declarative-workspaces-pull--apply) workspace in git is a human-readable, diffable record of your tenant configuration — not a substitute for backups (it carries no secrets or identity material), but a fine complement for auditing and selective re-creation.
+By design, per the table in §1: JetStream/KV contents (protect with replicas and mirrors at the NATS layer), your TSDB (its own tooling), and edge state (self-healing). One more worth keeping: a periodic [`stone pull`](./stone-cli.md#5-declarative-workspaces-pull-apply) workspace in git is a human-readable, diffable record of your tenant configuration — not a substitute for backups (it carries no secrets or identity material), but a fine complement for auditing and selective re-creation.
 
 ---
 
@@ -151,6 +151,8 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
 ### 5.1 How upgrades work
 
 The platform binary embeds its schema and runs **migrations** automatically: replace the binary, restart, and any pending schema migrations apply at startup. Because the UI and schema are compiled into the same artifact, the Control Plane upgrades **atomically** — there is no window where the UI, API, and schema disagree.
+
+> **A migration file is what makes a schema or API-rule change reach *your* deployment.** The embedded `schema.json` is applied when a database is first created; an existing `pb_data` keeps its collections and its rules until a `migrations/schema_update_*.go` accompanies the change. So "the fix is in the new binary" is only true if the release shipped the migration — which matters most for **authorization** changes, since the API rules are the platform's only enforcement layer. See [Authorization §7](./authorization.md#7-changing-the-rules).
 
 The procedure:
 
@@ -224,11 +226,13 @@ A condensed pre-flight list for taking a deployment to production:
 - [ ] **Backups scheduled** (admin UI cron) **with S3 offsite** configured — and a restore actually rehearsed (§4).
 - [ ] **`pb_data` on its own dataset/volume**, ideally ZFS with automatic snapshots (§3.3).
 - [ ] **App-settings encryption** enabled via `--encryptionEnv` ([Configuration §4](./configuration.md#4-pocketbase-flags)).
-- [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)).
+- [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)). Remember the log is **operator-only**: no tenant role can read it, so plan for who fields "who changed this?" requests ([Authorization §5](./authorization.md#5-the-audit-log-is-operator-only)).
 - [ ] **NATS account limits reviewed** — the shipped defaults (`max_connections: 10`, `max_subscriptions: 50`) are conservative; size them for your real per-org fleets ([Configuration §2](./configuration.md#2-section-reference)).
 - [ ] **NATS clustered** (3+ nodes) with `replicas: 3` on JetStream streams and KV buckets that matter.
 - [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through an Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
-- [ ] **A `stone pull` workspace in git** for reviewable, diffable tenant configuration ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull--apply)).
+- [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).
+- [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the only tenancy enforcement in the platform, and the suite is the only thing that checks them. If the release changed a rule, confirm it also shipped a migration (§5.1).
+- [ ] **A `stone pull` workspace in git** for reviewable, diffable tenant configuration ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
 
 ---
 
@@ -236,6 +240,7 @@ A condensed pre-flight list for taking a deployment to production:
 
 - **First-time setup the checklist assumes:** [Getting Started](./getting-started.md).
 - **Config keys referenced above:** [Configuration Reference](./configuration.md).
+- **Roles, API rules, and the audit-log boundary:** [Authorization & Roles](./authorization.md).
 - **The plane split that shapes this whole page:** [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md).
 - **Edge resilience during outages:** [Leaf Nodes](./leaf-nodes.md).
 - **The GitOps workspace as a config audit trail:** [Stone CLI](./stone-cli.md).

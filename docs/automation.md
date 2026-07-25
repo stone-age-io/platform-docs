@@ -311,7 +311,7 @@ To balance out the previous section: the rule engine is the right tool whenever 
 - **Routing and filtering** — splitting an incoming stream into multiple specialized subjects.
 - **Enrichment** — hydrating sparse events with KV-sourced context before forwarding.
 - **Alarm management** — detection, deduplication, auto-clear via the KV stacking pattern.
-- **Access control and authorization** — a single rule with KV lookups resolves credential → user → permissions → decision.
+- **Access control and authorization** — a single rule with KV lookups resolves credential → user → permissions → decision. (This is *your application's* access control — a badge reader deciding whether to unlock a door, say. It has nothing to do with the platform's own authorization, which is enforced by PocketBase API rules and never by a rule engine — see [Authorization & Roles](./authorization.md).)
 - **Webhook ingestion and egress** — translating between HTTP and NATS in both directions.
 - **Scheduled publishing and fan-out** — cron-triggered rules that publish to NATS or HTTP, optionally iterating over KV-stored lists.
 - **Debounce, throttle, and rate limiting** — KV-backed state machines that suppress or gate events.
