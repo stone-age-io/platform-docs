@@ -51,6 +51,7 @@ Create one in the console under **Leaf Nodes → New**. A server-side hook then 
 | `nats_user` | The site's single NATS identity, minted by the provisioning hook. Shared by the leaf remote, `leaf-sync`, and any local rule engine. |
 | `nebula_host` | Optional link to a Nebula host, so the site can also join the overlay mesh. A Leaf Node can have both. |
 | `synced_collections` | The subset of the allowlist (§4) this site mirrors. |
+| `active` | Owner/Admin switch. Clearing it decommissions the site — see §7. |
 | `location`, `metadata` | Optional site context. |
 
 When you create a Leaf Node, the success modal shows its PocketBase credentials **once** — those are what `leaf-sync` authenticates with. If they're lost, an org Admin/Owner can **reset credentials** from the detail view (the new password is shown once); the old one stops working immediately, so update `leaf-sync.yaml` and restart the agent. The detail view mirrors the Thing layout: a **Liveness** card (status, last heartbeat, agent version, per-collection sync counts — see §4.1) and identity on the left; a **Connectivity** card (NATS username/status, role with reassignment, per-user permission overrides, `.creds` download, and Nebula hostname/IP/config) on the right; plus the synced-collection selection.
@@ -152,6 +153,10 @@ Once `leaf-sync` has populated local KV, the rest of the layered platform runs a
 - That trust material is reachable only through `GET /api/leaf/bootstrap`, authenticated as the Leaf Node. The handler reads named fields with the server's own privileges — the operator collection stays superuser-only, account *seeds* and signing keys are never served, and the leaf-node identity holds **no read grant on `nats_users` or `nats_accounts`**. So the blast radius of a leaked edge credential is those six values and its allowlisted config, fixed regardless of how those collections' rules later evolve. (`GET /api/leaf/operator-jwt` still exists for older agents; it is superseded by `/api/leaf/bootstrap`.)
 - Narrowing a site's blast radius is a record edit — reassign its NATS role or add per-user permission overrides from the Leaf Node's detail view. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 - The Leaf Node's PocketBase password (its `leaf-sync` login) is resettable by an org Admin/Owner from the console — gated by the collection's `manageRule`, so it stays a scoped, audited record action rather than a superuser-only operation.
+- **Deactivating a Leaf Node takes the site off the fabric.** `active` is an Owner/Admin boolean, and clearing it does three things at once: `leaf-sync` can no longer authenticate, the session token it already holds is invalidated immediately, and the site's NATS credential is revoked — so the config pull and the leaf remote connection both stop. Reactivating issues a **new** credential; the previous `.creds` stays revoked permanently, so re-run `leaf-sync config` on the box. This is the control to reach for when a site is retired or a box is presumed lost. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+
+!!! warning "`active` and the liveness badge answer different questions"
+    The Liveness card (§4.1) reports whether `leaf-sync` **is** currently talking to the hub. `active` governs whether it **may**. A deactivated site showing "offline" is the expected outcome, not a fault to chase — and an *active* site showing offline is the one worth investigating.
 
 ---
 

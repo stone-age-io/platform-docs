@@ -195,6 +195,22 @@ stone thing create --email reader-01@things.example.com --code reader-01 \
 
 `--random-password` generates a 32-char URL-safe password and prints it **once to stderr**, so stdout stays clean for `jq`. `--password` and `--random-password` are mutually exclusive; exactly one is required on `create`.
 
+### Decommissioning from the CLI
+
+`thing` and `leaf-node` carry an `active` flag, so a device can be taken out of service from a script:
+
+```sh
+stone thing update reader-01 --active=false        # decommission
+stone thing update reader-01 --active=true         # return to service
+```
+
+!!! warning "`--active=false` is not a status label"
+    It is the same operation as the console's Deactivate button, with the same three effects: the device is signed out immediately, cannot sign in again, and **its NATS credential is revoked**. Reactivating issues a *new* `.creds` file — the old one stays revoked permanently, so the device has to be given the replacement. Owner/Admin only. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+
+    This matters most in `apply`. `pull` writes every non-server field, so `active` lands in the workspace YAML — and a file carrying `active: false` decommissions real hardware on the next `apply`.
+
+Note the `=` in `--active=false`. Boolean flags set *true* when passed bare, so the space-separated form is a different command — `--active false` leaves `false` as a second positional argument and fails with `accepts 1 arg(s), received 2`. It errors rather than doing the wrong thing, but the `=` is required.
+
 ---
 
 ## 5. Declarative workspaces (pull / apply)
@@ -275,13 +291,22 @@ stone org switch "Warehouse Ops" --set-nats-default   # also makes it the nats-c
 stone nats sync-context                               # re-issue after rotating keys
 ```
 
-Run `sync-context` after a credential rotation. Rotating *someone else's* credential is `stone nats-user update <id> --regenerate true` and needs owner or admin — a member or badge holder gets a 404, because `nats_users` writes are owner/admin only. To rotate **your own**, call the dedicated route, which every role can use and which takes no id:
+Run `sync-context` after a credential rotation. Rotating *someone else's* credential is `stone nats-user update <id> --regenerate` and needs owner or admin — a member or badge holder gets a 404, because `nats_users` writes are owner/admin only. To rotate **your own**, use the dedicated route, which every role can use and which takes no id:
 
 ```sh
-curl -X POST https://platform.acme.io/api/me/nats-creds/rotate \
-    -H "Authorization: $TOKEN"
-stone nats sync-context      # then re-issue the local creds
+stone nats creds rotate      # rotate my own credential (any role, incl. badge)
+stone nats sync-context      # then re-issue the local creds file
 ```
+
+To cut a NATS identity off rather than replace its credential, revoke it:
+
+```sh
+stone nats-user update device-01 --revoke        # NATS rejects it immediately and permanently
+stone nats-user update device-01 --regenerate    # re-enable with a fresh JWT
+```
+
+!!! note "There is no `--active` flag on `nats-user`, on purpose"
+    `pb-nats` reads that field into its model and then consults it **nowhere** in JWT generation, so clearing it would recolour a status badge while the client kept publishing. It stays readable as a status column — pb-nats sets it itself when revoking — but it is not a control, and the CLI does not offer it as one. The console removed its equivalent checkbox for the same reason. `--revoke` is the operation that bites.
 
 See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). The org switch always succeeds even if this step can't; when it short-circuits, it prints an informational `nats-sync: skipped — <reason>` line, never an error:
 
@@ -342,8 +367,10 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 - Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags.
 - `apply` never deletes server records that are missing locally. Delete explicitly.
 - No JetStream **consumer** management — use the `nats` CLI.
-- `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require operator-level credentials server-side. Signing-key operations go through `POST /api/org/nats-account/keys` (owner/admin), not `stone nats-account update`.
+- `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require operator-level credentials server-side. Signing-key operations go through `stone nats account-keys` (owner/admin), not `stone nats-account update`.
 - `auth login` is interactive by design — credentials can't be discovered by the CLI.
+- File fields have no CLI upload path: a Location's `floorplan` and an Organization's `logo` must be set from the console.
+- **The CLI's field list is hand-maintained, not derived from the platform's `schema.json`.** It can drift behind a platform release. If a field exists in the console but has no flag, that is the reason — check `cmd/entity.go` in the `stone-cli` repo.
 
 ---
 

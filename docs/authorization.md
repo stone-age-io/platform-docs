@@ -36,6 +36,8 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Read Things and Locations | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
 | Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | ✅ |
 | Delete a Thing or Location | ✅ | ✅ | — | — | — | ✅ |
+| Deactivate / reactivate a Thing or Leaf Node (§4.2) | ✅ | ✅ | — | — | — | ✅ |
+| Reset a Thing's or Leaf Node's PocketBase password | ✅ | ✅ | — | — | — | ✅ |
 | Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | ✅ |
 | Read Thing Types, Operations, Message Schemas | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Manage Thing Types, Operations, Message Schemas | ✅ | ✅ | — | — | — | ✅ |
@@ -105,7 +107,7 @@ Available to **every role, including `badge`**, for callers in the `users`, `thi
 
 It exists as a route rather than a rule branch because **an API rule cannot express a single-field allowlist**. Permitting self-rotation through the update rule would mean asserting `:isset = false` on every *other* writable field — a deny-list that opens up silently the moment someone adds a field. And the field that must stay closed is consequential: `nats_users.publish_permissions` is copied **verbatim** into the JWT the platform signs, so write access to that collection is equivalent to granting NATS permissions. That is why it is owner/admin only.
 
-Revocation is **not** part of the route. Setting the regenerate flag on a revoked user would re-enable it, so revocation stays an owner/admin action through the normal update rule.
+Revocation is **not** part of the route. Setting the regenerate flag on a revoked user would re-enable it, so revocation stays an owner/admin action through the normal update rule — or a consequence of deactivating the device that holds the identity (§4.2).
 
 ### 4.1 Account signing keys
 
@@ -124,6 +126,26 @@ POST /api/org/nats-account/keys      { "action": "rotate" | "add_signing" | "rem
 Like the credential route it takes no record id — the account is derived from the caller's active organization, so it cannot be aimed at another tenant — and each action writes exactly one field. Reach for `add_signing` for routine rotation; `rotate` is for suspected key compromise.
 
 `nebula_ca.updateRule` is operator-only for the same reason and has no tenant route, because the collection has no rotation trigger. Rolling a CA is an operator operation.
+
+### 4.2 Taking a device out of service
+
+`things.active` and `leaf_nodes.active` are Owner/Admin-only booleans. Clearing one is a **decommission**, not a label change — three things happen in the same operation:
+
+| | What it stops |
+| :--- | :--- |
+| The collection's `authRule` (`active = true`) | New sign-ins. The device cannot obtain another token. |
+| A refreshed `tokenKey` | Every token the device **already holds**, immediately. |
+| `revoke` on the linked `nats_users` row | The signed NATS credential — the device stops publishing. |
+
+All three are needed, and the reason is worth internalizing before you rely on any similar flag:
+
+> **An `authRule` is evaluated at the authentication endpoint only** — never on a request that arrives carrying an already-issued token. Thing and Leaf Node tokens live **7 days**. So `active = false` on its own would leave a decommissioned device with a working API session for up to a week. Refreshing `tokenKey` is what closes that window, and it is why deactivation is a server-side hook rather than a rule alone.
+
+And the second half: **a device's real capability is its NATS credential, not its PocketBase session.** Blocking API access without revoking the credential leaves the device publishing to the bus. Deactivation does both.
+
+**Reactivating issues a *fresh* NATS credential.** The revocation cutoff embedded in the account JWT is permanent, so the old `.creds` file stays rejected forever — the device needs the new one. For a Thing running the Agent that happens on the next sync; for a Leaf Node, re-run `leaf-sync config`.
+
+> **A flag with nothing enforcing it is worse than no flag**, because someone will trust it during an incident. `nats_users.active` is the cautionary case: `pb-nats` reads it into its model and then consults it nowhere in JWT generation — only `revoke` disconnects anyone. The console therefore no longer exposes it as an editable control; **Revoke** and **Re-enable** on the NATS user's detail view are the real operations.
 
 ---
 
@@ -161,7 +183,8 @@ Managing Leaf Node records — creating, editing, deleting, and resetting their 
 Two operational facts matter every time an API rule changes.
 
 - **A schema or rule change reaches existing deployments only via a new `migrations/schema_update_*.go` file.** Editing `schema.json` alone affects **freshly-created databases only** — an upgraded production deployment keeps its old rules. This is the single most common way a security fix fails to ship.
-- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, stands up a throwaway database, and asserts 68 authorization behaviours against a live server. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
+- **A new column that a rule reads needs a backfill in the same migration.** PocketBase booleans have no schema-level default, so a new `active` field lands as `false` on every existing row. Importing `authRule: "active = true"` without an accompanying `UPDATE` would lock every already-provisioned device out of the API the moment the deployment restarts. Test the upgrade path against a database that has rows in it, not only a fresh one.
+- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, stands up a throwaway database, and asserts 97 authorization behaviours against a live server. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
 
 Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's `meta.requiresCapability` guards in step with the matrix in §2 — not because they enforce anything, but because a menu that offers an action the rules reject is a bug report waiting to happen.
 

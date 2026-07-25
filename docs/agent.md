@@ -86,6 +86,8 @@ The platform's session token for a Thing lives **7 days**, renewed by each sync.
 
 The tradeoff is recovery. A device powered off or offline for more than 7 days returns with a lapsed token, and with no password it cannot re-authenticate on its own — it needs the password set once more, or a fresh bootstrap. Devices that are frequently offline should keep the password configured. Deleting only the `.creds` file is always safe: the Agent restores it from its stored session without the password.
 
+**Deactivating a Thing ends the session immediately, not in 7 days.** Clearing `active` refreshes the record's `tokenKey`, which invalidates every token already issued — the 7-day lifetime is not a floor on how long a decommissioned device keeps access. This is the intended behaviour, and it has one recovery consequence worth planning for: a Thing that was reactivated after its password had been removed from the service environment cannot re-authenticate on its own. Reactivation restores the *NATS* credential automatically; the PocketBase session has to be re-established with a password. An Owner or Admin can reset it from the Thing's detail view.
+
 ### 2.3 Rotation
 
 Any identity can rotate its **own** NATS credential — that is the one credential operation the API rules cannot express, so it is a route: `POST /api/me/nats-creds/rotate`. It takes no record id (it derives the caller from the auth token) and writes a single field. See [Authorization](./authorization.md).
@@ -98,6 +100,8 @@ For an Agent, rotation has two triggers:
 **Rotation is not revocation.** The previous credential stays valid until it expires or an Owner/Admin revokes it. Rotating after a suspected compromise does not lock the old credential out — revoke it.
 
 Revocation needs no manual recovery step at the edge. The credential sync path never touches NATS, so it keeps working while the NATS connection does not: the Agent exits when its credential is rejected, the service manager restarts it, and the sync on the way back up adopts the current credential.
+
+That recovery loop is exactly what **deactivating** the Thing severs, and deliberately so. Deactivation revokes the NATS credential *and* invalidates the platform session the Agent would have used to fetch a replacement, so the device stays dark rather than healing itself. Reach for it when you want a device gone; reach for revocation alone when you want its current credential replaced. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ---
 

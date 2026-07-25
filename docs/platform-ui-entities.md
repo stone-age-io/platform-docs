@@ -41,7 +41,7 @@ Authorization is enforced **solely** by PocketBase API rules on each collection.
 **The authoritative capability matrix lives on one page: [Authorization & Roles](./authorization.md).** Rather than duplicate it here, the highlights that most often surprise people:
 
 - `Owner` and `Admin` are the same allowlist in every rule. Granting `admin` grants full tenant authority.
-- `Member` **does** create and edit Things and Locations. It cannot delete them, and it cannot attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path.
+- `Member` **does** create and edit Things and Locations. It cannot delete them, deactivate them, or attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path, and one who could clear `active` could take any device in the org off the network. Members create and edit inventory; **decommissioning it is a management action.**
 - `Member` and `Badge` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
 - Editing the Organization record, and reading the audit log, are Operator-only.
 - Every role, including `Badge`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`).
@@ -85,9 +85,10 @@ A **Thing** is any entity that produces/consumes data (or even just an entry for
 
 ### Concepts
 
-- **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration.
+- **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration. An Owner or Admin can reset that password from the detail view if it is lost — it is shown once, and the old one stops working immediately.
 - **Thing Code:** Similar to the Location code, this is used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`).
 - **Metadata:** Used to store device-specific state that doesn't change often, such as hardware revision, install date, or calibration offsets.
+- **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, and its NATS credential is revoked. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ### Infrastructure Binding
 
