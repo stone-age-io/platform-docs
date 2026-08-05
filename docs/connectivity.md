@@ -12,15 +12,15 @@ NATS provides the messaging fabric for the platform. It is designed to be always
 
 ### Core Pub/Sub & Subject Namespacing
 
-In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's canonical namespacing pattern is location-first and Thing-Type-aware:
+In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's canonical namespacing pattern is **family-first** and Thing-Type-aware:
 
 ```
-{location}.{thing_type_code}.{thing}.{operation_suffix}
+{thing_type_code}.{location}.{thing}.{operation_suffix}
 ```
 
-- **Examples:** `warehouse-a.temp_sensor.sensor-01.reading`, `warehouse-a.camera.cam-042.motion`, `chicago.gateway.gw-99.heartbeat`.
+- **Examples:** `temp_sensor.warehouse-a.sensor-01.reading`, `camera.warehouse-a.cam-042.motion`, `gateway.chicago.gw-99.heartbeat`.
 - **Where the segments come from:** `{location}` and `{thing}` are the codes on the Location and Thing records; `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
-- **Wildcards:** Wildcards are powerful tools for subject tokens. You can subscribe to `warehouse-a.>` to see every message from that site, or `warehouse-a.camera.*.motion` to see every camera's motion events at that site.
+- **Wildcards:** Wildcards are powerful tools for subject tokens. Subscribe to `camera.>` to see every camera event across every site, or `camera.warehouse-a.*.motion` to see every camera's motion events at one site. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
 
 **Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
 

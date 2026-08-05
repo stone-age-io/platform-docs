@@ -37,7 +37,7 @@ Key fields:
 |---|---|
 | `code` | URL-safe identifier, e.g. `ip_camera`. Used in subject templates and as a stable reference. |
 | `name`, `description` | Human-readable labels. |
-| `subject_prefix` | Template string like `{location}.camera.{thing}`. Stored literally. Empty values default to `{location}.{thing_type_code}.{thing}` when consumers resolve. |
+| `subject_prefix` | Template string like `camera.{location}.{thing}`. Stored literally. Empty values default to `{thing_type_code}.{location}.{thing}` when consumers resolve. |
 | `capabilities` | Coarse-grained summary of what this Thing Type does. Values: `publish`, `subscribe`, `request`, `reply`. Typically maintained as the union of its operations' capabilities. |
 | `operations` | Multi-relation to `thing_type_operations` — the verbs this Thing Type declares. |
 
@@ -81,7 +81,7 @@ All three collections are org-scoped via the standard tenancy API rules.
 
 ## 3. Subject Templates and Resolution
 
-Subject prefixes and suffixes are stored as **literal template strings**. The value `{location}.camera.{thing}` in a `subject_prefix` field is exactly the text stored — the curly braces are part of the value.
+Subject prefixes and suffixes are stored as **literal template strings**. The value `camera.{location}.{thing}` in a `subject_prefix` field is exactly the text stored — the curly braces are part of the value.
 
 ### Reserved variables
 
@@ -96,7 +96,9 @@ Consumers resolve templates against a Thing's context using these reserved varia
 
 ### Default prefix
 
-When a Thing Type's `subject_prefix` is empty, consumers use `{location}.{thing_type_code}.{thing}` as the default. This covers the common case and removes boilerplate for Thing Types that don't need a bespoke layout.
+When a Thing Type's `subject_prefix` is empty, consumers use `{thing_type_code}.{location}.{thing}` as the default — **family-first**, so a single JetStream stream can capture everything for one kind of Thing across every site (e.g. a `SENSOR` stream binding `sensor.>`). This covers the common case and removes boilerplate for Thing Types that don't need a bespoke layout.
+
+Family-first is the recommendation for new subject designs regardless of whether you use the default. Putting the fixed dimension (family) at position 0 makes stream subject filters concrete instead of wildcarded — you never have to write `*.sensor.>` to capture "all sensors", and streams stop overlapping accidentally. The location and thing are still directly addressable via `{location}` and `{thing}` in per-family subscriptions like `sensor.warehouse-a.*.motion`.
 
 ### The platform resolver
 
@@ -107,13 +109,13 @@ The platform ships a reference TypeScript resolver at `ui/src/utils/subjectResol
 Given:
 
 ```
-thing_type.subject_prefix:  {location}.camera.{thing}
+thing_type.subject_prefix:  camera.{location}.{thing}
 operation.subject_suffix:   motion
 thing.code:                 cam-042
 thing.location.code:        warehouse-a
 ```
 
-A consumer resolves the subject to `warehouse-a.camera.cam-042.motion`. A wildcard subscription `warehouse-a.camera.*.motion` gives every camera's motion events at that site. The prefix/suffix split is what makes wildcard discovery natural.
+A consumer resolves the subject to `camera.warehouse-a.cam-042.motion`. A wildcard subscription `camera.warehouse-a.*.motion` gives every camera's motion events at that site; `camera.>` gives every camera event anywhere and is the natural filter for a `CAMERA` JetStream stream. The prefix/suffix split is what makes wildcard discovery natural, and family-first is what keeps stream subject filters concrete.
 
 ---
 
@@ -196,7 +198,7 @@ Note that `snapshot_request` and `snapshot_reply` are two separate operations th
 code:              ip_camera
 name:              IP Camera
 description:       Network camera with motion detection and PTZ
-subject_prefix:    {location}.camera.{thing}
+subject_prefix:    camera.{location}.{thing}
 capabilities:      [publish, subscribe, reply]
 operations:        [heartbeat, status, motion, snapshot_reply, ptz]
 ```
@@ -227,11 +229,11 @@ Thing: `code = cam-042`, `type = ip_camera`, located at `warehouse-a`.
 
 | Operation | Capability | Resolved Subject |
 |---|---|---|
-| `heartbeat` | publish | `warehouse-a.camera.cam-042.heartbeat` |
-| `status` | publish | `warehouse-a.camera.cam-042.status` |
-| `motion` | publish | `warehouse-a.camera.cam-042.motion` |
-| `snapshot_reply` | reply | `warehouse-a.camera.cam-042.snapshot` |
-| `ptz` | subscribe | `warehouse-a.camera.cam-042.cmd.ptz` |
+| `heartbeat` | publish | `camera.warehouse-a.cam-042.heartbeat` |
+| `status` | publish | `camera.warehouse-a.cam-042.status` |
+| `motion` | publish | `camera.warehouse-a.cam-042.motion` |
+| `snapshot_reply` | reply | `camera.warehouse-a.cam-042.snapshot` |
+| `ptz` | subscribe | `camera.warehouse-a.cam-042.cmd.ptz` |
 
 ---
 

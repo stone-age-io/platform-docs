@@ -109,7 +109,7 @@ The subjects a Thing publishes to become the inputs to your Layer 1 rules — pi
 Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering. Location Types are purely for organization; Thing Types have grown into the platform's primary **contract layer** for describing what a participant does on the fabric.
 
 - **Location Types:** Categorize your sites (e.g., `Campus`, `Building`, `Room`, `Cabinet`).
-- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `{location}.camera.{thing}`), a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a message schema), and an optional **NATS role** that turns those operations into runtime permissions. See [Thing Types](./thing-types.md) for the full model.
+- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{location}.{thing}`), a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a message schema), and an optional **NATS role** that turns those operations into runtime permissions. See [Thing Types](./thing-types.md) for the full model.
 
 Thing Types compose from two other collections that the UI also manages directly:
 
