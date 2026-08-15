@@ -34,6 +34,8 @@ nats:
     max_payload: 1048576    # 1 MB
   export_collection_name: "nats_account_exports"
   import_collection_name: "nats_account_imports"
+  embedded: false                             # run NATS inside this process
+  embedded_config: "./nats-config/nats.conf"  # the config --nats loads
 
 nebula:
   ca_collection_name: "nebula_ca"
@@ -84,8 +86,14 @@ Controls the `pb-nats` library: NATS account/user/role provisioning, exports/imp
 | `default_limits.max_payload` | int | `1048576` | Default max payload bytes for new Org accounts (1 MB). |
 | `export_collection_name` | string | `"nats_account_exports"` | Account-level Export collection name. See [Connectivity §1](./connectivity.md). |
 | `import_collection_name` | string | `"nats_account_imports"` | Account-level Import collection name. |
+| `embedded` | bool | `false` | Run a NATS server inside the Control Plane process. Acted on by `serve` only. Equivalent to `--nats`. |
+| `embedded_config` | string | `"./nats-config/nats.conf"` | The `nats.conf` that `embedded` loads — the file `nats export` writes. Equivalent to `--nats-config`. |
 
 > **Note:** Account-level limits set here are platform-wide defaults applied to *new* Organizations. Existing Org accounts can be edited individually in the UI without re-deploying.
+
+> **`embedded` does not configure the NATS server.** The `nats.conf` does — ports, JetStream, WebSockets, clustering, TLS. `embedded` only decides whether the Control Plane runs that config itself or leaves it to a separate `nats-server`. The two produce an identical server, which is why moving between them is a config change rather than a migration. See [Operations §2.1](./operations.md#21-where-the-nats-server-runs).
+>
+> One thing must agree across the two files: the **port**. `server_url` is where the Control Plane dials, and the `port` in `nats.conf` is where the server listens. `--nats` refuses to start when they differ, because nothing in the process could then reach the server it just started.
 
 ### `nebula`
 
@@ -144,7 +152,19 @@ Environment overrides are the recommended way to inject secrets and per-environm
 
 ---
 
-## 4. PocketBase Flags
+## 4. CLI Flags
+
+### Platform flags
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--config <path>` | — | Load a specific `config.yaml`. |
+| `--nats` | `false` | `serve` only: run a NATS server in this process. Sets `nats.embedded`. |
+| `--nats-config <path>` | `./nats-config/nats.conf` | `serve` only: which `nats.conf` `--nats` loads. Sets `nats.embedded_config`. |
+
+`--nats` and `--nats-config` are registered on the root command, so other subcommands accept them, but only `serve` acts on them — the rest open the database directly and have no bus to talk to.
+
+### PocketBase flags
 
 Because the platform binary embeds PocketBase, the standard PocketBase CLI flags are also available — most notably:
 

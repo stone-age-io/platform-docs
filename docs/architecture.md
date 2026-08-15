@@ -99,6 +99,8 @@ The exported directory contains everything needed to run `nats-server -c ./nats-
 
 This is a deliberate design choice: the Control Plane owns the Operator key and stamps the server's identity artifacts, but once NATS is running it takes over its own lifecycle. You can run multiple NATS servers or an entire cluster from a single Control Plane, scale them independently, and rotate their config without touching PocketBase. The Control Plane's ongoing role is the admin-subject connection described below, not server supervision.
 
+Small deployments can collapse the two processes with `stone-age serve --nats`, which runs a NATS server inside the Control Plane from that same exported config. Nothing above changes — same operator, same identity hierarchy, same file — except that the Data Plane's independence from the Control Plane is suspended while they share a process. Off by default; see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) and [ADR 0001](./decisions/0001-embedded-nats-server.md).
+
 The getting-started doc walks through this workflow end-to-end. See [Getting Started](./getting-started.md) for the runnable commands.
 
 ### Key Properties of This Topology

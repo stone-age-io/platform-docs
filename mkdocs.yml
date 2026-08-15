@@ -18,7 +18,9 @@ nav:
     - Observability: observability.md
     - Configuration Reference: configuration.md
     - Operations & Production: operations.md
-theme: 
+  - Decisions:
+    - 0001 Embedded NATS Server: decisions/0001-embedded-nats-server.md
+theme:
   name: material
   logo: assets/logo.svg
   features:

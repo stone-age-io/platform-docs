@@ -51,6 +51,36 @@ The Control Plane is a low-traffic metadata store, and its outage is far less dr
 
 Nothing in that bottom half is latency-critical. So instead of running an HA database topology to protect a metadata store, the platform's answer is **aggressive backups plus a short, rehearsed restore path** (§3–4). With scheduled native backups, S3 offsite copies, and filesystem snapshots, realistic time-to-recovery is minutes — which, for a service whose outage pauses provisioning but not production traffic, is the right trade.
 
+### 2.1 Where the NATS server runs
+
+The table above assumes the classic split: Control Plane in one process, `nats-server` in another. `stone-age serve --nats` runs the NATS server inside the Control Plane process instead, from the same `nats.conf` that `nats export` writes ([Getting Started §3](./getting-started.md#3-stand-up-the-nats-server)).
+
+That is a real deployment option, not a development toy, but it changes the first row of that table. There are three rungs and you move between them by editing config:
+
+| | What runs | A Control Plane restart costs | Use when |
+| :--- | :--- | :--- | :--- |
+| **1. Embedded** | One process | A brief total bus outage | Small installs; the fabric can blink during an upgrade |
+| **2. Embedded + external** | Control Plane + one `nats-server`, clustered | Devices reconnect; fabric stays up | Upgrade windows start to hurt |
+| **3. Fully external** | Control Plane + a NATS cluster | Nothing | HA, or scaling the bus independently |
+
+At rung 1, **the Data Plane's independence from the Control Plane is suspended** — restarting `stone-age` restarts the bus. That is the whole trade, and it is why `--nats` is off by default.
+
+At rung 2 the independence comes back for planned work, with one wrinkle worth knowing before you rely on it. Measured against a two-node cluster with the embedded node stopped:
+
+| | |
+| :--- | :--- |
+| Core NATS pub/sub, device connections | Survive |
+| JetStream KV reads and writes (R1) | Survive |
+| JetStream **management** — create/delete stream, consumer, bucket | **Stalls** until the node returns |
+
+Two nodes means RAFT quorum is two, so losing one leaves the JetStream meta group without a leader. What stops working is creating and modifying streams and buckets — Control Plane work, and the Control Plane is what is down. Telemetry keeps flowing throughout.
+
+> **Two nodes is not high availability.** It buys independence for *planned* upgrades and nothing more; losing the external node at rung 2 is worse than running at rung 1. Real fault tolerance needs three voting nodes — rung 3.
+
+> **Devices must know both URLs.** A device holding a single URL pointed at the embedded node still drops when it restarts. Give clients both, or the benefit disappears in practice.
+
+Moving 2 → 3 is the one step that isn't purely additive; see [§5.5](#55-moving-the-nats-server-out-of-the-control-plane). The reasoning behind all of this is recorded in [ADR 0001](./decisions/0001-embedded-nats-server.md).
+
 ---
 
 ## 3. Backups
@@ -192,6 +222,39 @@ The Control Plane is the only component with a database and migrations. Everythi
 - **`rule-router`, stream processors, Telegraf** — restart with the new binary; they reconnect to NATS and resume. Stateless per message; durable state is in KV.
 - **Agents and `leaf-sync`** — swap and restart; both are designed around reconnection and fail-soft behavior.
 - **NATS and Nebula** — stock upstream upgrade procedures; the platform places no constraints beyond theirs (see §6).
+
+### 5.5 Moving the NATS server out of the Control Plane
+
+Going from `serve --nats` to a standalone `nats-server` ([§2.1](#21-where-the-nats-server-runs)). Almost all of it is free: the operator JWT, every account, and every user credential live in the Control Plane database and are re-derived, not migrated. Devices keep the credentials they already hold.
+
+**JetStream data is the exception.** Streams, consumers, and the KV buckets holding Digital Twin state live in the embedded server's store directory. An R1 stream on the embedded node dies with that node. Plan for it before you start.
+
+The easiest version of this migration is the one where there is nothing to move:
+
+> **If you expect to grow out of embedded mode, don't put JetStream on the embedded node in the first place.** Add the external node early, keep `jetstream: {}` out of the embedded config, and this section becomes a config edit.
+
+Otherwise, replicate before you drain:
+
+1. **Add the external node.** Give both configs a matching `cluster` block with a shared `name` and routes pointing at each other. Restart both. Confirm the route formed — `nats server list` should show two servers in the cluster.
+
+2. **Raise replicas on anything you intend to keep.** For each stream and KV bucket on the embedded node, set `replicas: 2` and wait for the new peer to report current. Nothing is safe to drain until it is replicated.
+   ```bash
+   nats stream update <name> --replicas 2
+   nats kv status <bucket>          # confirm the peer is current, not catching up
+   ```
+
+3. **Drain the embedded node**, so JetStream moves leadership off it rather than losing it abruptly:
+   ```bash
+   nats server raft step-down
+   ```
+
+4. **Stop the embedded server** — drop `--nats` (or set `nats.embedded: false`) and restart the Control Plane. Point `nats.server_url` at the external node.
+
+5. **Return replicas to their intended value.** A single remaining node cannot hold `replicas: 2`; set them back to 1, or add the third node now and go to 3.
+
+6. **Verify before deleting anything.** Devices reconnect, twins update, `nats stream report` shows every stream present with the expected message counts. Only then remove the old store directory.
+
+> **Rehearse this on a copy first** (§5.3). Steps 2 and 3 are where data is lost if the peer was not actually current, and "it looked fine" is not the same as a message count that matches.
 
 ---
 

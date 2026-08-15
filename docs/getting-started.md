@@ -11,7 +11,7 @@ It's in two halves, and they line up with the first two [depths](./index.md#star
 
 The order is deliberate: the Control Plane's database has to be seeded before it can emit the NATS server config, so §2 necessarily precedes §3. A consequence is that **§2 is exercisable on its own**, and §2 ends with a checkpoint that does exactly that.
 
-**You can also stop after §2** — that's a real deployment for anyone whose problem is "keep an accurate, permissioned record of what we own and where it is," not a crippled trial. Just note that stopping means stopping at *modeling* depth, not trimming the stack: you'd still run a NATS server in a normal deployment (in the same Compose stack, say), it would simply have nothing on it and no device holding a credential to reach it.
+**You can also stop after §2** — that's a real deployment for anyone whose problem is "keep an accurate, permissioned record of what we own and where it is," not a crippled trial. Just note that stopping means stopping at *modeling* depth, not trimming the stack: you'd still run a NATS server in a normal deployment — in the same Compose stack, or inside the Control Plane process with `serve --nats` — it would simply have nothing on it and no device holding a credential to reach it.
 
 Sections §3 onward add the **Data Plane** (NATS), which is what the rest of the platform — rules, stream processing, long-term storage — builds on. See [Platform Layers](./platform-layers.md) for that model.
 
@@ -109,7 +109,7 @@ curl -s -X POST http://localhost:8090/api/org/things \
 >
 > On startup the Control Plane tries to reach NATS. It can't yet, so it logs *"Publisher will continue operating - connection will be established when NATS becomes available"* and enters **bootstrap mode**: a retry ticker plus a durable work queue.
 >
-> This exists to break a chicken-and-egg problem, not to make NATS optional. The database must be seeded before `stone-age nats export` can emit a server config, and NATS can't be reached before it's running — so credential work performed in the meantime is written to the `nats_publish_queue` collection instead of being published, and drains on the first run that connects. That's why `bootstrap` in §2 can create Organizations before a server exists: their account claims are queued on disk and land on the cluster the first time §4's `serve` reaches NATS.
+> This exists to break a chicken-and-egg problem, not to make NATS optional. The database must be seeded before `stone-age nats export` can emit a server config, and NATS can't be reached before it's running — so credential work performed in the meantime is written to the `nats_publish_queue` collection instead of being published, and drains on the first run that connects. That's why `bootstrap` in §2 can create Organizations before a server exists: their account claims are queued on disk and land on the cluster the first time the Control Plane reaches NATS.
 >
 > **Don't read this as a steady state.** Running indefinitely without NATS just grows the queue while the cluster's claims sit stale relative to the database. Harmless while nothing is connected, but it isn't a topology to design around — bring NATS up in §3.
 
@@ -121,22 +121,43 @@ curl -s -X POST http://localhost:8090/api/org/things \
 
 Everything above this line is depth 1 — inventory, no messaging. This section starts depth 2: standing up the fabric so the inventory records you just created can hold identities and talk. It also drains anything §2 left queued.
 
-Now that the Control Plane database has been seeded with the NATS Operator and System Account, export the matching server-side config and start NATS:
+Now that the Control Plane database has been seeded with the NATS Operator and System Account, export the matching server-side config:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
+```
+
+The exported directory contains the operator JWT, the operator config, and a ready-to-use `nats.conf`. Paths inside it are absolute, so it works from any working directory, and the JWT and JetStream directories are created on first run.
+
+Now run a server against it. There are two ways, and they use the same config file.
+
+### Option A — inside the Control Plane
+
+```bash
+./stone-age serve --nats
+```
+
+One process. The Control Plane starts a NATS server from `./nats-config/nats.conf` (override with `--nats-config`) and shuts it down with itself. This is the shortest path to a working bus and it is a legitimate way to run a small deployment — see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) for what you are trading away.
+
+Skip §4's `serve` command if you use this; the server is already running.
+
+### Option B — as its own process
+
+```bash
 nats-server -c ./nats-config/nats.conf
 ```
 
-The exported directory contains the operator JWT, operator config, and a ready-to-use `nats-server` config. We won't go deep on running NATS here — their [documentation](https://docs.nats.io) covers production topologies, leaf nodes, clustering, and TLS in depth.
+The normal topology, and the only one that supports clustering or upgrading the Control Plane without interrupting the bus. Use this if you are unsure — it is the default, and Option A is the opt-in.
 
-> **WebSockets are required** for the browser UI to connect. The exported `nats.conf` enables a WebSocket listener on port `9222` by default — adjust the `websocket { ... }` block if you need TLS (`wss://`) or a different port.
+Either way the running server is identical, because the config is. We won't go deep on running NATS here — their [documentation](https://docs.nats.io) covers production topologies, leaf nodes, clustering, and TLS in depth.
+
+> **WebSockets are required** for the browser UI to connect — browsers cannot speak the NATS TCP protocol. The exported `nats.conf` enables a WebSocket listener on port `9222`; adjust the `websocket { ... }` block for TLS (`wss://`), or pass `--websocket-port` to the export.
 
 ---
 
 ## 4. Connect the Browser to NATS
 
-If the platform server isn't still running from the checkpoint, start it again:
+If you used **Option A**, the platform is already running and you can skip straight to the UI. Otherwise start it:
 
 ```bash
 ./stone-age serve
@@ -191,7 +212,7 @@ Where you go next depends on where you stopped.
 
 ### If you stopped at §2 (inventory)
 
-You have a Control Plane and nothing on the fabric, which is a supported place to be. Consider still running a NATS server alongside it — the queued account claims land as soon as one is reachable, and you avoid a stale cluster the day you do add a device. The natural next moves are inventory-shaped:
+You have a Control Plane and nothing on the fabric, which is a supported place to be. Consider still running a NATS server alongside it — the queued account claims land as soon as one is reachable, and you avoid a stale cluster the day you do add a device. `nats export` followed by `serve --nats` makes that two commands and no extra process. The natural next moves are inventory-shaped:
 
 *   **Model your sites:** Build out Location Types and the location tree, then place Things on floor plans. See [Platform Entities & UI](./platform-ui-entities.md).
 *   **Bulk-load what you own:** Script the REST API or use `stone` to import an existing asset register.
