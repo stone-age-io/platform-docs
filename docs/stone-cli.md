@@ -1,6 +1,6 @@
 # Stone CLI
 
-`stone` is the command-line client for the Stone-Age.io Platform — the scriptable counterpart to the [Stone Age Console](./platform-ui-entities.md). Anything you can click in the console, you can drive from a terminal: managing tenant resources (Things, Locations, Thing Types, message schemas, memberships, NATS users/roles, Nebula hosts), publishing and subscribing on NATS, reading and writing JetStream KV, and — the part the UI can't do — managing your entire tenant configuration as a folder of YAML files under `git` (GitOps style).
+`stone` is the command-line client for the Stone-Age.io Platform — the scriptable counterpart to the [Stone Age Console](./platform-ui-entities.md). Anything you can click in the console, you can drive from a terminal: managing tenant resources (Things, Locations, the Thing Type contract graph, memberships, NATS users/roles, Nebula hosts), publishing and subscribing on NATS, reading and writing JetStream KV, and — the part the UI can't do — pulling your tenant configuration down as a folder of YAML files you can review, diff, and apply back from `git` (§5).
 
 It's a single, dependency-free Go binary that talks to a **running** platform server: PocketBase for tenant data, NATS/JetStream for messaging and KV. It uses the same auth, the same collections, and the same multi-tenant boundaries as the console — so it's an automation surface, not a back door.
 
@@ -232,6 +232,28 @@ Three properties make this safe to live with:
 - **Idempotent.** Re-running `apply` is a no-op when nothing changed. Filenames are cosmetic — `apply` keys solely on the `id` field inside each file.
 - **No deletes.** Records on the server but absent locally are left alone. To delete, use `stone <type> delete <id|key>` or the console.
 - **Reviewable.** Put the workspace under `git` and you get diff, history, blame, and PR review on your infrastructure for free.
+
+### What this is, and what it isn't
+
+People arrive at "GitOps" with expectations set by Flux and Argo CD, so it's worth being precise about which of those properties you get here.
+
+`stone apply` is a **one-way, additive upsert**. It pushes what's in the workspace to the server and stops. It is not a convergence loop.
+
+| | `stone pull` / `apply` | A full GitOps reconciler |
+| :--- | :--- | :--- |
+| Creates and updates from files | ✅ | ✅ |
+| Transactional batches | ✅ (`/api/batch`, 50 per batch) | Varies |
+| Deletes server records missing from git | ❌ **Never** | ✅ (pruning) |
+| Detects drift when someone edits in the console | ❌ Not until the next `pull` | ✅ Continuously |
+| Runs unattended in a control loop | ❌ You invoke it | ✅ |
+
+The practical consequences:
+
+- **The workspace is not authoritative, and it is not a complete picture of the server.** It is a snapshot from the last `pull`, plus your edits. A Thing someone created in the console this morning does not exist in your workspace until you pull again.
+- **Two people editing the same records in different places will not conflict — the last `apply` wins,** field by field, with no warning. If a workspace is shared, treat `pull` before `apply` the way you'd treat `git pull` before a push.
+- **Deletion is deliberately manual.** Removing a file from the workspace does nothing. That's the right default when a stray `rm -rf` would otherwise decommission a customer site, but it does mean git history alone will not tell you the current server state.
+
+None of this makes the workflow less useful — reviewable, diffable, reproducible tenant config is the point, and you get all three. It just isn't a reconciler, so don't build a process that assumes convergence. For the same reason, [Operations §3](./operations.md#3-backups) treats a workspace as an audit and re-creation aid, **not** as a backup.
 
 ---
 

@@ -81,7 +81,9 @@ The UI provides two distinct ways to see your locations:
 
 ## 3. Things 
 
-A **Thing** is any entity that produces/consumes data (or even just an entry for inventory purposes / asset tracking). In Stone-Age.io, a Thing is a first-class **Auth Record**.
+A **Thing** is any entity that produces or consumes data — or just an asset you want a record of. In Stone-Age.io, a Thing is a first-class **Auth Record**, and that one record doubles as the device's identity on the messaging fabric and the mesh. See [Architecture §3.1 — Inventory-as-Identity](./architecture.md#31-inventory-as-identity) for why the platform collapses those two registries into one.
+
+**Pure inventory is a supported use.** The identity relations below are optional; a Thing with neither is an asset-tracking row and nothing more. Nothing on this page obliges you to put a device on the bus.
 
 ### Concepts
 
@@ -91,6 +93,8 @@ A **Thing** is any entity that produces/consumes data (or even just an entry for
 - **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, and its NATS credential is revoked. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ### Infrastructure Binding
+
+Binding is what turns an inventory row into a participant on the fabric. It is **optional and reversible** — the console's create form offers three modes per identity (`auto` to mint a new one, `link` to attach an existing one, `none` to leave it unbound), and `POST /api/org/things` performs the Thing and both identities in a single transaction so you never end up with a half-provisioned device.
 
 A Thing is typically linked to:
 

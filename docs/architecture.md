@@ -164,6 +164,31 @@ In the Stone-Age.io Platform, multi-tenancy is not just a software filter; it is
 
 This means that even if a device in *Organization A* is compromised, it has no cryptographic path to see messages or network traffic in *Organization B*.
 
+### 3.1 Inventory-as-Identity
+
+The table above has a second reading, and it is the one that explains why the platform is shaped the way it is.
+
+Most systems keep two registries: an asset database that knows the camera in the lobby exists, and a separate identity or device-management system that knows what that camera is allowed to do on the network. The two drift. Someone decommissions a device in one and forgets the other.
+
+Stone-Age.io collapses them. **The inventory record is the identity.**
+
+A `things` record is a first-class PocketBase **auth record** — it has credentials and can log in to the API to fetch its own configuration. It carries a relation to a `nats_users` record (its identity on the messaging fabric) and a relation to a `nebula_hosts` record (its identity on the encrypted mesh). One row in one collection is therefore four things at once:
+
+| The row is… | Which means… |
+| :--- | :--- |
+| An **inventory entry** | It has a code, a name, a location, a type, and metadata |
+| A **login** | It can authenticate against the REST API as itself and read its own record |
+| A **messaging identity** | Its linked NATS user is signed by the Org's Account, with permissions from its NATS role |
+| A **mesh node** | Its linked Nebula host holds a certificate issued by the Org's CA |
+
+Two consequences follow, and both are load-bearing:
+
+**The halves are separable.** The identity relations are optional. `POST /api/org/things` takes a `mode` per identity — `auto` (mint a new one), `link` (attach an existing one), or `none`. A Thing created with `none` on both is a plain inventory row that will never appear on the bus. This is what makes [depth 1](./index.md#start-where-you-need-to) real rather than aspirational, and it is why a `member` can create and edit inventory while only an Owner or Admin can attach identities to it.
+
+**Lifecycle actions apply to the asset and the credential together.** Because there is one record, there is one place to act on it. Clearing `active` on a Thing does not just grey a row in a list — the device is signed out immediately, cannot sign in again, and its NATS credential is revoked. Reactivating issues a *new* `.creds` file and the old one stays revoked. Decommissioning an asset and revoking its access are the same operation, so they cannot fall out of step. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+
+The org-level analogue of this idea is **Infrastructure-as-Tenant** — creating an Organization is what provisions its NATS Account and Nebula CA. Same principle, one level up: the management record and the infrastructure it implies are created and destroyed as a unit.
+
 ### Authorization inside an Organization
 
 Cryptography draws the boundary *between* tenants. Inside one, access is governed by four roles on the Membership record — `owner`, `admin`, `member`, and `badge` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `badge` is the most restricted; editing the Organization record and reading the audit log are Operator-only.

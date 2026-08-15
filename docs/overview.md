@@ -1,8 +1,24 @@
 # Overview
 
-The Stone-Age.io Platform is a comprehensive toolkit designed to build, manage, and scale private IoT and Event-Driven Architecture (EDA) applications. Each component is a single binary, composable over a shared NATS substrate — no service mesh, no orchestrator required.
+Stone-Age.io is one HTTP API for the things and places you manage, which also mints the credentials those things use to reach each other. Around that API sits a small set of independent components — each a single binary, composable over a shared NATS substrate, with no service mesh and no orchestrator required.
 
-By combining the simplicity of a monolithic control plane with the power of modern messaging and mesh networking, the platform provides a "Control Plane in a Box" for organizations that want to build and manage distributed infrastructure without the overhead of cloud-locked microservices.
+You can use it as a plain multi-tenant inventory and stop there, or grow it into a complete private IoT and Event-Driven Architecture. See [Start Where You Need To](./index.md#start-where-you-need-to) for the four depths and where each one ends.
+
+---
+
+## What We Call Things
+
+The docs use these five names precisely. They are not interchangeable, and mixing them up is the fastest way to misread an architecture diagram.
+
+| Name | What it means | What it is *not* |
+| :--- | :--- | :--- |
+| **Stone-Age.io** (or "the platform") | The whole system: every component, plane, and layer together. | Not a single binary, and not any one component. |
+| **Control Plane** | The management component — the `stone-age` binary. Identity, inventory, provisioning, and the API. | Not the whole platform, and not the UI. |
+| **Stone Age Console** (or "the console") | The Vue web UI embedded in the Control Plane binary. | Not the security boundary — it renders what the API rules already permit. |
+| **`stone`** | The client CLI you run from a laptop or CI runner. | Not the server. See [Stone CLI](./stone-cli.md) for the `stone` vs `stone-age` distinction. |
+| **Data Plane** | The runtime: NATS, JetStream, KV, and Nebula. Organized internally as [four layers](./platform-layers.md). | Not managed *by* the Control Plane at runtime — it is provisioned by it, then runs independently. |
+
+When this page says "the platform provides X," it means the system as a whole. When it says "the Control Plane does X," it means that specific binary.
 
 ---
 

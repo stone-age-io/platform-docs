@@ -1,6 +1,8 @@
 # Welcome to the Stone-Age.io Docs
 
-Stone-Age.io is a toolkit for building, managing, and scaling distributed event-driven applications on infrastructure you control. It pairs an opinionated control plane with proven open-source primitives so the operational story stays understandable as the system grows.
+Stone-Age.io is one HTTP API for the things and places you manage — and the same API issues the credentials that let them talk to each other.
+
+At its simplest it is a multi-tenant inventory: Things, Locations, and the types that classify them, over a plain REST API with a console on top. It grows into a control plane from there, because in this platform the act of creating an inventory record is also the act that mints that record's identity on the messaging fabric and the encrypted mesh.
 
 The platform brings three projects together under a single management surface:
 
@@ -8,12 +10,56 @@ The platform brings three projects together under a single management surface:
 - **Messaging — NATS.io:** A high-performance, multi-tenant fabric for telemetry, commands, and live state.
 - **Connectivity — Nebula:** A peer-to-peer mesh VPN that delivers encrypted tunnels all the way to the edge.
 
+> **A note on names.** "The platform," "the Control Plane," "the console," and "`stone`" mean four different things in these docs and are not interchangeable. If a diagram stops making sense, check [What We Call Things](./overview.md#what-we-call-things).
+
+---
+
+## Start Where You Need To
+
+You do not have to adopt the whole platform to get value from it. There are four depths, and **each one is a legitimate place to stop.** Most deployments sit at depth 2 or 3 indefinitely.
+
+### 1. An inventory
+
+Things, Locations, and the types that classify them, over the PocketBase REST API with a multi-tenant console on top. Records only — no messaging, no mesh, no contracts.
+
+This is not a degraded mode. A Thing can be created with no NATS user and no Nebula host (`mode: "none"` on both halves of `POST /api/org/things`), and a Thing Type with no operations is a pure categorization record that emits no subjects at all. Creating and editing inventory is the `member` role's job; attaching identities to it is a separate, higher-privileged action.
+
+Depth 1 is about what you *model*, not about what you run. A normal deployment still includes a NATS server — it just has nothing on it yet, and no device holds a credential to reach it. The point isn't a smaller stack; it's that you get a working system before you have modeled a single subject, and none of it gets rewritten when you do.
+
+> **You are done here if** you need a shared, permissioned, multi-tenant record of what you own and where it is — asset tracking, site surveys, an equipment register your field techs can edit from a phone.
+
+### 2. A control plane
+
+Turn on the identity half. Creating an Organization provisions an isolated NATS Account and a private Nebula CA; creating a Thing can mint its NATS user and its Nebula host certificate in the same transaction. Tenant boundaries stop being a `WHERE` clause and become cryptographic.
+
+Now the inventory is load-bearing: the record you created in depth 1 *is* the identity your device authenticates as. See [Inventory-as-Identity](./architecture.md#31-inventory-as-identity).
+
+> **You are done here if** you need devices, services, and people to reach each other securely across sites and NAT, and you are happy writing your own consumers against NATS.
+
+### 3. A contract layer
+
+Declare what participants actually say. A **Thing Type** carries a subject prefix, its **operations** declare capabilities (`publish` / `subscribe` / `request` / `reply`) and subject suffixes, and **message schemas** version the payloads as JSON Schema.
+
+This is the step that makes the fabric self-describing: a consumer can resolve, from data alone, which subjects a given device uses and what shape its messages take. See [Thing Types](./thing-types.md).
+
+> **You are done here if** more than one team or vendor writes code against your bus and you need the subject-and-payload contract to be written down rather than tribal.
+
+### 4. Everything that consumes it
+
+The rule engine, the Agent, stream processors, Telegraf and your time-series database. All of them are clients of the same bus, added when you need the capability they provide.
+
+> **You are done here if** you are building an application, not just running infrastructure.
+
+**Each depth is additive.** Nothing you built at depth 1 gets rewritten to reach depth 4 — the inventory record you created on day one is still the same record, it just accumulates identities, contracts, and consumers around it.
+
 ---
 
 ## Key Features
 
 - **Single-binary components:** The Control Plane, rule engine, Agent, NATS, and Nebula each ship as a self-contained executable with no runtime dependencies. They wire themselves together over NATS, so the same architecture works on bare metal, a single VM, containers, or a Kubernetes cluster — whichever fits your operations.
 - **Infrastructure-as-Tenant:** Creating an Organization — a platform-Operator action — provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
+- **Inventory-as-Identity:** The same record is the asset and the credential. A Thing is a first-class auth record that can hold a NATS user and a Nebula host, so "the camera in the lobby" is one row that is simultaneously an inventory entry, a login, a messaging identity, and a mesh node. There is no separate device registry to keep in sync. See [Architecture §3.1](./architecture.md#31-inventory-as-identity).
+- **A contract layer, not just a schema store:** Thing Types declare *where* a kind of participant speaks (a subject prefix), their operations declare *what verbs* it has (`publish` / `subscribe` / `request` / `reply`, each with a subject suffix), and message schemas declare *what shape* each payload takes (versioned JSON Schema). Subject and payload are described together, so a consumer can resolve from data alone which subjects a device uses and what it will send. See [Thing Types](./thing-types.md).
 - **Role-scoped access, enforced in one place:** Four per-organization roles (`owner`, `admin`, `member`, `badge`) plus a platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
 - **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database.
 - **Outbound-only security:** Devices and Agents initiate connections outward to NATS and Nebula. No inbound ports are required, so edge nodes stay invisible to the public internet.
@@ -28,9 +74,18 @@ Stone-Age.io isn't a monolithic product — it's a **Control Plane** (management
 
 > **NATS is the bus. The rule engine is the reflexes. Stream processors are the thinking. Telegraf + TSDB is the memory.**
 
-Each layer does one thing well. Each composes cleanly with the others. You can use just the bottom layer for pure messaging, or stack all four for a complete event-driven architecture. Understanding the model is the single most useful mental aid for working with the platform — it tells you where to solve each problem and when to reach for a different tool.
+Each layer does one thing well, and each composes cleanly with the others. Understanding the model is the single most useful mental aid for working with the platform.
 
-Start with [Platform Layers](./platform-layers.md) if you want the framing first.
+**This is a different question from the one above.** The four depths answer *"how much of this do I have to adopt?"* The four layers answer *"where does this particular problem belong?"* They are orthogonal, and it is worth keeping them apart:
+
+| | Question it answers | Where the Control Plane sits |
+|---|---|---|
+| **Depths (1–4)** | How much do I adopt on day one? | Depth 1 — it is the shallow end |
+| **Layers (0–3)** | Which component should solve this? | Alongside the layers, in none of them |
+
+Note in particular that Layer 0 — NATS, JetStream, KV, Nebula — is *not* the cheapest starting point. Depth 1 is, and it is pure Control Plane. The layer model has no rung for "inventory only," which is why both models exist.
+
+Start with [Platform Layers](./platform-layers.md) if you want the runtime framing first.
 
 ---
 
