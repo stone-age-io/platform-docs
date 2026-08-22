@@ -1,0 +1,11 @@
+# Normalise line endings. The stored blobs in this repository were a mix of LF
+# and CRLF -- a few files even mixed both internally -- which meant a routine
+# edit from a Windows checkout produced a diff touching every line of a file.
+# `* text=auto` stores everything as LF and lets each checkout do what its
+# platform wants, so a one-line change reads as a one-line change.
+* text=auto
+
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.svg  text
+*.png  binary
