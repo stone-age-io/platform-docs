@@ -18,6 +18,22 @@ The agent is a single Go binary with zero external dependencies (other than the 
 !!! note "Not to be confused with `leaf-sync`"
     The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
 
+### Getting the binary
+
+Prebuilt archives are attached to every [release](https://github.com/stone-age-io/agent/releases) — Linux amd64/arm64, Windows amd64, FreeBSD amd64. Each one carries the binary, the per-OS example configs under `configs/`, and the install guides under `docs/`:
+
+```sh
+VERSION=0.1.0
+wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
+tar xzf agent_${VERSION}_linux_amd64.tar.gz
+sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
+sudo mkdir -p /etc/agent && sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
+```
+
+The agent then installs itself as a service on the host's own service manager — `agent -service install`, which resolves to systemd, a Windows service, or rc.d. There are no unit files to place by hand. `agent -version` reports what a host is running without starting it.
+
+The per-platform guides in the agent repository (`docs/linux.md`, `docs/windows.md`, `docs/freebsd.md`) cover directory layout, permissions and service registration in full.
+
 ---
 
 ## 2. Provisioning & Credential Lifecycle
