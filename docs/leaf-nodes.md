@@ -63,11 +63,12 @@ When you create a Leaf Node, the success modal shows its PocketBase credentials 
 `leaf-sync` is built from the same repository as the Control Plane but ships as its own lean binary. **The edge never runs PocketBase.** It has two commands:
 
 ```sh
-leaf-sync config   # one-shot: write nats-leaf.conf + edge.creds from PocketBase
-leaf-sync run      # daemon: mirror config collections into local KV
+leaf-sync config       # one-shot: write nats-leaf.conf + edge.creds from PocketBase
+leaf-sync run          # daemon: mirror config collections into local KV
+leaf-sync run --nats   # ...and run the leaf node itself, in this process
 ```
 
-- **`config`** authenticates to PocketBase as the Leaf Node and fetches everything needed to stand the leaf server up from a single dedicated, leaf-node-authenticated route — `GET /api/leaf/bootstrap` — which returns six named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, and `operator_jwt`. The server reads the secret-bearing collections with its own privileges and hands back named values, never whole records, so the leaf-node identity needs no read grant on `nats_users` or `nats_accounts` at all (§7). It writes `nats-leaf.conf` and the creds file. No NATS connection required — run it *before* the leaf server is up.
+- **`config`** authenticates to PocketBase as the Leaf Node and fetches everything needed to stand the leaf server up from a single dedicated, leaf-node-authenticated route — `GET /api/leaf/bootstrap` — which returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, and `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and hands back named values, never whole records, so the leaf-node identity needs no read grant on `nats_users` or `nats_accounts` at all (§7). It writes `nats-leaf.conf` and the creds file. No NATS connection required — run it *before* the leaf server is up.
 - **`run`** connects to the local leaf and, every `sync.interval`, performs a **full reconcile** of each allowed collection: upsert every record into KV bucket `<collection>`, then delete keys for records that no longer exist. It is **fail-soft** — on any PocketBase or NATS error it leaves local KV untouched and retries; it never wipes local state. Deletion is driven only by what PocketBase returned, never by whether a write succeeded, so a failed write can never escalate into the key being purged. A *successful but empty* fetch is guarded too: if a collection returns zero records while local KV still holds keys, the purge is skipped for that cycle, so a transient auth or scoping glitch can't wipe the mirror. The mirror is also **self-healing**: a key removed out-of-band — a purged and recreated bucket, a lost store, a manual `nats kv del` — is rewritten on the next cycle rather than staying absent. It shuts down cleanly on `SIGINT`/`SIGTERM`, so it's safe under systemd or Docker.
 
 After each cycle, `run` also writes a best-effort **liveness heartbeat** (when `nats.hub_domain` is set — see §4.1).
@@ -83,7 +84,7 @@ sequenceDiagram
     LS->>API: Auth as Leaf Node (email/pass)
     API-->>LS: JWT
     LS->>API: GET /api/leaf/bootstrap
-    API-->>LS: domain, code, creds,<br/>account JWT + pub, operator JWT
+    API-->>LS: domain, code, creds, account JWT + pub,<br/>operator JWT, $SYS account JWT + pub
     LS->>LS: Write nats-leaf.conf + edge.creds
     Note over LEAF: nats-server -c nats-leaf.conf
 
@@ -130,7 +131,7 @@ thing_type_operations   message_schemas
 
 This is exactly the **Thing contract graph**: `thing_type` → `thing_type_operation` → `message_schema` (see [Thing Types](./thing-types.md)), plus the Things and Locations that instantiate it. With these mirrored locally, a site can resolve what a Thing's Type is allowed to do — and validate the messages it exchanges — **entirely offline**.
 
-A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the six allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The four bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the operator JWT) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
+A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the six allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the operator JWT, and the `$SYS` account JWT and public key) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
 
 ---
 
@@ -150,7 +151,7 @@ Once `leaf-sync` has populated local KV, the rest of the layered platform runs a
 
 - **One NATS identity per Leaf Node**, shared by the leaf remote, the rule engine, and `leaf-sync`. The **edge box is the trust boundary**; tenant isolation is the NATS *account* boundary, which the site cannot cross.
 - The site only ever holds **public trust material** (operator JWT, account JWT) plus its own user's creds. It **cannot mint new account users**.
-- That trust material is reachable only through `GET /api/leaf/bootstrap`, authenticated as the Leaf Node. The handler reads named fields with the server's own privileges — the operator collection stays superuser-only, account *seeds* and signing keys are never served, and the leaf-node identity holds **no read grant on `nats_users` or `nats_accounts`**. So the blast radius of a leaked edge credential is those six values and its allowlisted config, fixed regardless of how those collections' rules later evolve. (`GET /api/leaf/operator-jwt` still exists for older agents; it is superseded by `/api/leaf/bootstrap`.)
+- That trust material is reachable only through `GET /api/leaf/bootstrap`, authenticated as the Leaf Node. The handler reads named fields with the server's own privileges — the operator collection stays superuser-only, account *seeds* and signing keys are never served, and the leaf-node identity holds **no read grant on `nats_users` or `nats_accounts`**. So the blast radius of a leaked edge credential is those eight values and its allowlisted config, fixed regardless of how those collections' rules later evolve. (`GET /api/leaf/operator-jwt` still exists for older agents; it is superseded by `/api/leaf/bootstrap`.)
 - Narrowing a site's blast radius is a record edit — reassign its NATS role or add per-user permission overrides from the Leaf Node's detail view. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 - The Leaf Node's PocketBase password (its `leaf-sync` login) is resettable by an org Admin/Owner from the console — gated by the collection's `manageRule`, so it stays a scoped, audited record action rather than a superuser-only operation.
 - **Deactivating a Leaf Node takes the site off the fabric.** `active` is an Owner/Admin boolean, and clearing it does three things at once: `leaf-sync` can no longer authenticate, the session token it already holds is invalidated immediately, and the site's NATS credential is revoked — so the config pull and the leaf remote connection both stop. Reactivating issues a **new** credential; the previous `.creds` stays revoked permanently, so re-run `leaf-sync config` on the box. This is the control to reach for when a site is retired or a box is presumed lost. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
@@ -187,10 +188,27 @@ Once `leaf-sync` has populated local KV, the rest of the layered platform runs a
 
 `leaf-sync` does not supervise the other processes — use whatever your platform provides.
 
+### 8.1 One process instead of two: `run --nats`
+
+Steps 4 and 5 can collapse. `leaf-sync run --nats` starts the leaf node **inside the agent process**, from the same `nats-leaf.conf` that step 3 wrote, so an edge site is one supervised service rather than two:
+
+```sh
+leaf-sync run --nats
+```
+
+Off by default — the two-process topology stays the default, because it is the one that lets you upgrade the agent without interrupting the bus. Two behaviours change when the flag is on, and both are deliberate:
+
+- **The NATS server starts before PocketBase is touched at all.** A site whose uplink is down must still come up with a working local bus; that autonomy is the entire point of a leaf node.
+- **A failed PocketBase login retries instead of exiting.** Without `--nats`, exiting is correct — the bus is another process and survives. With `--nats`, exiting takes the bus down with it, and a supervisor cycling the pair through a WAN outage means every device on site reconnecting and JetStream recovering its store, in a loop.
+
+The cost is binary size: `nats-server` links in either way, so the stripped binary goes from roughly 17 MB to the high twenties. On an edge box that is not a consideration; it is noted so the number is not a surprise.
+
 > Build a release binary with the version stamped in (it surfaces in `leaf-sync --version` and in every heartbeat):
 > ```sh
-> go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
+> go build -ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
 > ```
+>
+> Or download it from the [Releases page](https://github.com/stone-age-io/platform/releases) — `leaf-sync` is published for linux, darwin and windows on amd64 and arm64, already stamped.
 
 ---
 

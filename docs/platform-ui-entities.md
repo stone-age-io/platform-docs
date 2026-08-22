@@ -24,8 +24,10 @@ A Membership binds a PocketBase User to an Organization.
     - `Owner`: Full tenant authority. **Identical to `Admin` in every API rule** — the only differences are that an Owner cannot leave their own organization and may delete it.
     - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, Leaf Nodes, and the identity links on a Thing.
     - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations, Message Schemas). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
-    - `Badge`: Restricted to the Badge view and a badge-only dashboard — used for kiosk- or wallet-style identity surfaces where the user does not need general platform access. Like every role, it can still read the one NATS identity linked to its own membership, which is what its browser connects with.
-- **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself. Access to it is **row-scoped**, not field-hidden: a member or badge holder sees exactly that one `nats_users` row and no other — see [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
+    - `Viewer`: Read-only staff. Browses the inventory screens and uses dashboards, and writes nothing anywhere. Adding it needed no rule change at all — a role that names itself in no write branch is denied by construction.
+    - `Dashboard`: An appliance login for an unattended screen — the Visualizer and its own settings page, nothing else. It holds no write capability, which is exactly why the authorization suite uses it as the probe that proves an allowlist works.
+    - Both, like every role, can still read the one NATS identity linked to their own membership, which is what the browser connects with. Neither restriction is a NATS restriction: what a login can do on the bus is whatever its linked `nats_users` role permits, set independently.
+- **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself. Access to it is **row-scoped**, not field-hidden: a member, viewer or dashboard holder sees exactly that one `nats_users` row and no other — see [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 ### Cross-Organization Roles
 
@@ -42,9 +44,9 @@ Authorization is enforced **solely** by PocketBase API rules on each collection.
 
 - `Owner` and `Admin` are the same allowlist in every rule. Granting `admin` grants full tenant authority.
 - `Member` **does** create and edit Things and Locations. It cannot delete them, deactivate them, or attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path, and one who could clear `active` could take any device in the org off the network. Members create and edit inventory; **decommissioning it is a management action.**
-- `Member` and `Badge` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
+- `Member`, `Viewer` and `Dashboard` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
 - Editing the Organization record, and reading the audit log, are Operator-only.
-- Every role, including `Badge`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`).
+- Every role, including `Dashboard`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`).
 
 ### Self-Service Credential Rotation
 
@@ -54,7 +56,7 @@ Any authenticated identity with a linked NATS user — a `users` membership, a `
 POST /api/me/nats-creds/rotate
 ```
 
-It takes **no id parameter**: it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. Available to every role, including `badge`. Afterwards, re-read your own record to pick up the new `.creds`.
+It takes **no id parameter**: it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. Available to every role, including `dashboard`. Afterwards, re-read your own record to pick up the new `.creds`.
 
 The reason this is a route rather than a permissive update rule is that a PocketBase rule cannot express a single-field allowlist, and the field that must stay closed is consequential — `nats_users.publish_permissions` is copied verbatim into the JWT the platform signs. **Revocation** is not part of the route; it stays an Owner/Admin action. See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
@@ -137,14 +139,22 @@ The Dashboard is a flexible grid system where you can build custom views:
 - **Variables:** Define dashboard variables (e.g., `{{building_id}}`) to create a single dashboard that can be "switched" to show data for different sites/things/etc.
 - **Thing Type-aware binding:** The Publisher widget can bind to a `Thing + Operation` pair. When bound, the subject auto-resolves from the Thing's context against the Thing Type's templates, and payload input renders as a schema-driven form when the operation has a linked message schema. See [Thing Types](./thing-types.md) for the contract model that powers this.
 
-### The Digital Twin 
+### The Digital Twin
 
-Every Location and Thing with a valid **Code** has a dedicated Digital Twin view. 
+Every Location and Thing with a valid **Code** gets a **Live State** panel on its detail view, showing the keys under `thing.<code>` or `location.<code>` in the organization's twin buckets. It is the same KV browser used for every other bucket, with a second bucket attached — so tree and flat views, filtering, revision history and the detail drawer all behave identically.
 
-- This component shows the live state stored in the NATS KV bucket. 
-- You can edit values directly in the UI (e.g., changing a `set_point`), and the update is published to NATS instantly for the device to receive.
+It has two tabs, because there are [two buckets](./architecture.md#41-two-buckets-one-writer-each):
 
-The same KV buckets that back the Digital Twin UI are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture](./architecture.md) for the full Digital Twin concept, and [Automation](./automation.md) for the KV-state patterns.
+- **Reported** (`twin`) is what the device says. It is **read-only** — the edge overwrites it, so an edit button here would be a lie: the value returns on the next sync.
+- **Desired** (`twin_desired`) is what you want. This is the writable half, and it is the operator's actual control. Setpoints and configuration belong here; commands like `reboot` do not (send those as a message on `cmd.>` — a durable "reboot now" is a bug), and neither do thresholds or alarm ranges (those are [rules](./automation.md) over reported state).
+
+Where the two disagree, the row shows the values themselves — `"auto" → "manual"` — rather than a status word, and the detail pane pairs them in adjacent columns. It says **differs**, never "pending": nothing in the platform pushes a desired value into a device, so a word implying a control loop in progress would be describing something that does not exist. `twin_desired` delivers the value to the edge's local KV; what acts on it is your firmware or your rules.
+
+Only the keys present in a desired value are compared, so extra fields a device reports are ignored. That is deliberate — full equality would flip every assertion you ever set to "differs" the day a device starts reporting one new field.
+
+The same KV buckets are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the full model, and [Automation](./automation.md) for the KV-state patterns.
+
+> **Neither the console nor the platform server creates these buckets on its own.** The Control Plane holds the NATS operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or `leaf-sync` at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
 
 ### JetStream Streams and KV Buckets
 

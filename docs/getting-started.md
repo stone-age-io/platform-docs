@@ -1,8 +1,45 @@
 # Getting Started
 
-This guide gets you from a blank terminal to a running platform quickly. Each component is a single binary — no fleet of containers, no Docker Compose, no Kubernetes cluster just to get off the ground.
+## The short version
 
-It's in two halves, and they line up with the first two [depths](./index.md#start-where-you-need-to):
+One container. It seeds itself on first boot and runs the message bus in the same
+process:
+
+```bash
+docker run -d --name stone-age \
+  -p 8090:8090 -p 4222:4222 -p 9222:9222 \
+  -v stone-age-data:/data \
+  -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
+  -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
+  ghcr.io/stone-age-io/platform:latest
+```
+
+Console at `http://localhost:8090`, sign in as `admin@example.com` with that
+password. Admin panel at `/_/`.
+
+Or from a binary, which is the same five commands the container runs for you:
+
+```bash
+./stone-age superuser upsert admin@example.com 'change-me-8-chars-min'
+./stone-age migrate up
+./stone-age bootstrap --email admin@example.com --org "System" --operator-org "Acme MSP"
+./stone-age nats export --output ./nats-config/
+./stone-age serve --nats
+```
+
+**The order is load-bearing** — `bootstrap` writes fields that `migrate up`
+creates, and `nats export` needs what `bootstrap` seeds. §2 explains why, and
+what each command actually does.
+
+That is the whole install. Everything below is the same path with the reasoning
+attached, plus what to do next.
+
+---
+
+## What this guide covers
+
+The rest of it is in two halves, lining up with the first two
+[depths](./index.md#start-where-you-need-to):
 
 | Sections | What you get |
 | :--- | :--- |
@@ -11,7 +48,7 @@ It's in two halves, and they line up with the first two [depths](./index.md#star
 
 The order is deliberate: the Control Plane's database has to be seeded before it can emit the NATS server config, so §2 necessarily precedes §3. A consequence is that **§2 is exercisable on its own**, and §2 ends with a checkpoint that does exactly that.
 
-**You can also stop after §2** — that's a real deployment for anyone whose problem is "keep an accurate, permissioned record of what we own and where it is," not a crippled trial. Just note that stopping means stopping at *modeling* depth, not trimming the stack: you'd still run a NATS server in a normal deployment — in the same Compose stack, or inside the Control Plane process with `serve --nats` — it would simply have nothing on it and no device holding a credential to reach it.
+**You can also stop after §2** — that's a real deployment for anyone whose problem is "keep an accurate, permissioned record of what we own and where it is," not a crippled trial. Just note that stopping means stopping at *modeling* depth, not trimming the stack: you'd still run a NATS server in a normal deployment — as a separate process, or inside the Control Plane with `serve --nats` — it would simply have nothing on it and no device holding a credential to reach it.
 
 Sections §3 onward add the **Data Plane** (NATS), which is what the rest of the platform — rules, stream processing, long-term storage — builds on. See [Platform Layers](./platform-layers.md) for that model.
 
@@ -19,20 +56,52 @@ Sections §3 onward add the **Data Plane** (NATS), which is what the rest of the
 
 ## 1. Installation
 
-You can download the latest pre-compiled binary for your architecture from our [Releases page](https://github.com/stone-age-io/platform/releases), or build it from source if you have Go 1.25+ and Node.js 20+ installed.
+Three ways in, in increasing order of effort.
 
-### Building from Source
+### Container
+
 ```bash
-# Clone the repository
+docker run -d --name stone-age \
+  -p 8090:8090 -p 4222:4222 -p 9222:9222 \
+  -v stone-age-data:/data \
+  -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
+  -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
+  ghcr.io/stone-age-io/platform:latest
+```
+
+The entrypoint runs §2's commands on first boot and then `serve --nats`, so this
+covers §1 through §4 in one line. Everything lives on the `/data` volume: the
+database, the generated NATS config, the account JWTs and the JetStream store.
+
+`STONE_AGE_NATS_WEBSOCKET_URLS` is the address a **browser** dials, which the
+container cannot work out for itself — use the host's real name rather than
+`localhost` if anyone else will use it.
+
+### Pre-compiled binary
+
+Download for your architecture from the
+[Releases page](https://github.com/stone-age-io/platform/releases). Two binaries
+are published per platform: `stone-age` (the Control Plane) and `leaf-sync` (the
+[edge agent](./leaf-nodes.md), which belongs on edge hardware rather than here).
+
+### From source
+
+Needs Go 1.26+ and Node.js 20.19+ (or 22.12+ — that is Vite's floor, not ours).
+
+```bash
 git clone https://github.com/stone-age-io/platform.git
 cd platform
 
-# Build the UI
+# The console. This writes into pb_public/, which the Go build embeds.
 cd ui && npm install && npm run build && cd ..
 
-# Build the Go binary
-go build -o stone-age main.go
+# The binary. Note the `.` — the package, not just main.go, which would
+# leave out bootstrap.go and fail to compile.
+go build -o stone-age .
 ```
+
+About two minutes end to end on a developer laptop, most of it `npm install` and
+the Vite build.
 
 ---
 

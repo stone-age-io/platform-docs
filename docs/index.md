@@ -60,7 +60,7 @@ The rule engine, the Agent, stream processors, Telegraf and your time-series dat
 - **Infrastructure-as-Tenant:** Creating an Organization — a platform-Operator action — provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
 - **Inventory-as-Identity:** The same record is the asset and the credential. A Thing is a first-class auth record that can hold a NATS user and a Nebula host, so "the camera in the lobby" is one row that is simultaneously an inventory entry, a login, a messaging identity, and a mesh node. There is no separate device registry to keep in sync. See [Architecture §3.1](./architecture.md#31-inventory-as-identity).
 - **A contract layer, not just a schema store:** Thing Types declare *where* a kind of participant speaks (a subject prefix), their operations declare *what verbs* it has (`publish` / `subscribe` / `request` / `reply`, each with a subject suffix), and message schemas declare *what shape* each payload takes (versioned JSON Schema). Subject and payload are described together, so a consumer can resolve from data alone which subjects a device uses and what it will send. See [Thing Types](./thing-types.md).
-- **Role-scoped access, enforced in one place:** Four per-organization roles (`owner`, `admin`, `member`, `badge`) plus a platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
+- **Role-scoped access, enforced in one place:** Five per-organization roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) plus a platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
 - **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database.
 - **Outbound-only security:** Devices and Agents initiate connections outward to NATS and Nebula. No inbound ports are required, so edge nodes stay invisible to the public internet.
 - **Declarative automation:** A unified rule engine (router, gateway, and scheduler features) expresses NATS routing, webhook ingestion and egress, and cron-driven publishes as YAML rules.
@@ -98,17 +98,18 @@ These pages, in order, walk through the platform from concept to deployment:
 3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
 4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-6.  **[Authorization & Roles](./authorization.md)** — Who can do what: the four roles, the capability matrix, and the credential model.
-7.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
-8.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
-9.  **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
-10. **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-11. **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
-12. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
-13. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
-14. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
-15. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
-16. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
+6.  **[Dashboards & Widgets](./dashboards.md)** — The Visualizer: seventeen widget types, the three data-source kinds, and dashboard variables.
+7.  **[Authorization & Roles](./authorization.md)** — Who can do what: the five roles, the capability matrix, and the credential model.
+8.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
+9.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
+10. **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+11. **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+12. **[Leaf Nodes](./leaf-nodes.md)** — Model a site as a `leaf_nodes` record and mirror its config to the edge with `leaf-sync`.
+13. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
+14. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+15. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+16. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+17. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
 
 ---
 

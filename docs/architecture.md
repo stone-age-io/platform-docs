@@ -193,7 +193,7 @@ The org-level analogue of this idea is **Infrastructure-as-Tenant** — creating
 
 ### Authorization inside an Organization
 
-Cryptography draws the boundary *between* tenants. Inside one, access is governed by four roles on the Membership record — `owner`, `admin`, `member`, and `badge` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `badge` is the most restricted; editing the Organization record and reading the audit log are Operator-only.
+Cryptography draws the boundary *between* tenants. Inside one, access is governed by five roles on the Membership record — `owner`, `admin`, `member`, `viewer`, and `dashboard` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `viewer` reads it; `dashboard` reaches only the Visualizer; editing the Organization record and reading the audit log are Operator-only.
 
 **The PocketBase API rules declared on each collection are the only enforcement layer.** The provisioning libraries (`pb-nats`, `pb-nebula`) contain no tenancy logic — they never reference `organization` — and the console's capability map decides what renders, not what is permitted. The full model, the capability matrix, and the row-scoped credential design live on [Authorization & Roles](./authorization.md).
 
@@ -251,6 +251,42 @@ While PocketBase stores the **Inventory** (the identity/metadata about a thing),
 
 **Why this matters:**
 The UI connects directly to NATS via WebSockets. When a property changes in the KV store, the UI updates instantly without polling a database. This architecture allows the platform to handle high-frequency data with millisecond latency.
+
+### 4.1 Two buckets, one writer each
+
+There are **two** KV buckets per organization, split by who owns the data:
+
+| Bucket | Who writes it | Direction |
+| :--- | :--- | :--- |
+| `twin` | the device | edge → hub (**reported** state) |
+| `twin_desired` | an operator | hub → edge (**desired** state) |
+
+Keys are `<kind>.<code>.<prop>` — `thing.S01.temp`, `location.CHI-W-A.occupancy` — and the two buckets pair on the *same* key. Direction lives in the bucket, so keys carry no sync bookkeeping. Note that these are **organization-level buckets keyed by code**, not one bucket per Location or Thing.
+
+**One writer per bucket is the entire safety property**, and it is structural rather than a convention anyone has to remember. A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*, with the two values swapping back and forth across the leaf link indefinitely.
+
+Because reported state is written by the edge, **it is read-only in the console.** An edit button on a reported key would be a lie: the value comes back on the next sync. `twin_desired` is the writable half, and it is where an operator's actual control lives.
+
+### 4.2 What belongs in `twin_desired`, and what does not
+
+Four jobs, four homes. The last two are the ones people try to put in `twin_desired`:
+
+| Job | Where it goes |
+| :--- | :--- |
+| Reported state | `twin` KV, written by the device |
+| Setpoints and configuration | `twin_desired` KV — durable, so a device booting after three days offline reads the current value from its local mirror |
+| Commands (`reboot`) | A NATS message on `cmd.>`, **not** a KV value. A durable "reboot now" sitting in a bucket forever is a bug. |
+| Ranges, thresholds, alarms, hysteresis | A [rule](./automation.md) over `twin`. Not a desired value. |
+
+**Pair a desired key with an echo, never with a measurement.** Desired belongs on a property the device *echoes back* to acknowledge an instruction — `setpoint`, `mode`. Those converge exactly, so equality is the right question and a difference means "the device has not accepted my instruction". Desired `temp = 20` against reported `temp = 20.3` compares an instruction to a continuous reading; it differs forever, and no tolerance fixes that in general because the right tolerance varies by property, device and season. "Alarm when temp leaves 18–22" is a threshold over *reported* state — a rule, not a desired value.
+
+A desired value is a **partial assertion**: only the keys present in the desired object are compared, so extra fields in the reported object are ignored. Full-equality comparison rots — the day a device reports one new field, every assertion set months ago would flip to "differs". Subset semantics apply to objects; arrays and scalars compare exactly.
+
+### 4.3 The console says "differs", never "pending"
+
+**Nothing in this platform applies desired values to devices** — no hook, no agent, no subscription. `twin_desired` is a *delivery mechanism*: the platform's job ends when the value is readable in the edge's local KV. What consumes it is your firmware or your rules, the same boundary as minting a NATS credential and not caring what publishes with it.
+
+So the console states the difference and predicts nothing. A message like "waiting for the device" would assert a control loop that does not exist. It also shows the *values* rather than a word for them — `"auto" → "manual"` in the row, a reported/desired column pair in the detail pane — because "differs on: mode" is the same width and sends the reader off to look both values up.
 
 The KV store is also where Layer 1 rules keep durable state — alarm status, presence keys, debounce windows, rate-limit counters. See [Automation](./automation.md) for the canonical patterns.
 

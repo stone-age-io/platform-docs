@@ -142,7 +142,7 @@ Deleting a Thing Type does not delete its operations. The operations persist and
 
 Thing Types describe what a participant does on the fabric. NATS roles control what a NATS user is allowed to publish to or subscribe from. These are **independent concerns** — Thing Types do not derive role permissions.
 
-An organization's Owners and Admins author NATS role permissions directly on the `nats_roles` record — this is a tenant action, not a platform-operator one; `nats_roles` has no operator branch in its API rules. Members and badge holders cannot read the collection at all. A Thing Type's subject templates are a useful reference when authoring those permissions — the patterns a role needs to grant look like the resolved wildcard forms of the Thing Type's operations — but the translation is manual and deliberate.
+An organization's Owners and Admins author NATS role permissions directly on the `nats_roles` record — this is a tenant action, not a platform-operator one; `nats_roles` has no operator branch in its API rules. No role below admin can read the collection at all. A Thing Type's subject templates are a useful reference when authoring those permissions — the patterns a role needs to grant look like the resolved wildcard forms of the Thing Type's operations — but the translation is manual and deliberate.
 
 ---
 

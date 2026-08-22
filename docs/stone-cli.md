@@ -49,7 +49,7 @@ The division of labor in practice:
 
 ## 2. Install & build
 
-`stone` is a standalone Go module (`github.com/stone-age-io/stone-cli`, Go 1.25+).
+`stone` is a standalone Go module (`github.com/stone-age-io/stone-cli`, Go 1.25+ — its own module, tracked separately from the platform binary).
 
 ```sh
 go build -o stone        # local binary
@@ -148,9 +148,9 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 
 "Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, and both are now **read-only to every tenant role** — `update` requires a platform Operator, and neither can be created or deleted by hand. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is an operator operation.
 
-In the **Role required** column, *any* means any role in the current organization including `badge`, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
+In the **Role required** column, *any* means any role in the current organization including `dashboard`, the least privileged one, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
 
-- On the `nats-*` and `nebula-*` entities, a member or badge holder gets an **empty `ls`, not a filtered one** — the read rules themselves require owner or admin. The one exception is the single `nats-user` row linked to your own membership.
+- On the `nats-*` and `nebula-*` entities, any role below admin gets an **empty `ls`, not a filtered one** — the read rules themselves require owner or admin. The one exception is the single `nats-user` row linked to your own membership.
 - On `thing`, the `nats_user` and `nebula_host` relations are owner/admin only. A member can create and edit a Thing but any `--nats-user` / `--nebula-host` flag will be rejected.
 - On your **own** `membership` record the writable surface is the NATS identity link only. `--role`, `--user`, and `--invited-by` are rejected outright — self-promotion is not a supported path. Changing someone's role requires owner or admin.
 
@@ -313,10 +313,10 @@ stone org switch "Warehouse Ops" --set-nats-default   # also makes it the nats-c
 stone nats sync-context                               # re-issue after rotating keys
 ```
 
-Run `sync-context` after a credential rotation. Rotating *someone else's* credential is `stone nats-user update <id> --regenerate` and needs owner or admin — a member or badge holder gets a 404, because `nats_users` writes are owner/admin only. To rotate **your own**, use the dedicated route, which every role can use and which takes no id:
+Run `sync-context` after a credential rotation. Rotating *someone else's* credential is `stone nats-user update <id> --regenerate` and needs owner or admin — anyone below that gets a 404, because `nats_users` writes are owner/admin only. To rotate **your own**, use the dedicated route, which every role can use and which takes no id:
 
 ```sh
-stone nats creds rotate      # rotate my own credential (any role, incl. badge)
+stone nats creds rotate      # rotate my own credential (any role, incl. dashboard)
 stone nats sync-context      # then re-issue the local creds file
 ```
 

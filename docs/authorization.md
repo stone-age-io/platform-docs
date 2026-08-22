@@ -8,7 +8,7 @@ Authorization is enforced **solely by the PocketBase API rules** declared in the
 
 ---
 
-## 1. The Four Tenant Roles
+## 1. The Five Tenant Roles
 
 Roles live on `memberships.role` — the record that binds a User to an Organization. A user who belongs to three organizations has three memberships and can hold a different role in each.
 
@@ -17,13 +17,22 @@ Roles live on `memberships.role` — the record that binds a User to an Organiza
 | `owner` | Full tenant authority. Identical to `admin` in every API rule (see below). |
 | `admin` | Full tenant authority. |
 | `member` | Day-to-day operator of inventory: creates and edits Things and Locations, reads contracts, holds its own NATS credential. Cannot touch infrastructure collections. |
-| `badge` | The most restricted role. Confined to the Badge view and a badge-only dashboard — for kiosk- or wallet-style identity surfaces. Still holds its own NATS credential. |
+| `viewer` | Read-only staff. The inventory screens and dashboards, no write control anywhere. Still holds its own NATS credential. |
+| `dashboard` | An appliance login for an unattended screen. The Visualizer at `/` and its own `/settings`, nothing else. Holds no write capability at all. |
 
 `invites.role` offers every role except `owner` — owners are not created by invitation.
 
+> **Neither `viewer` nor `dashboard` is a NATS restriction.** A console role's real capability on the bus is whatever its linked `nats_users` role permits, and that is set independently. An unattended screen logged in as `dashboard` can hold a NATS credential that publishes anywhere its role allows.
+
 > **`owner` and `admin` are deliberately identical.** They are the same allowlist in every API rule. Only two things distinguish them: an owner cannot leave their own organization (a console guard, not a rule), and `organizations.deleteRule` still admits the user recorded as the org's owner. **Do not read "admin" as a lesser grant** — handing someone `admin` hands them full tenant authority, including every credential-bearing collection.
 
-> **Write allowlists, never deny-lists.** The rules name the roles that are permitted (`role ?= "owner" || role ?= "admin"`). An earlier deny-list form (`role ?!= "member"`) was satisfied by `badge` — the *most* restricted role — so badge holders passed every admin check. Copy the canonical snippet from a neighbouring rule rather than hand-writing a variant.
+> **Write allowlists, never deny-lists.** The rules name the roles that are permitted (`role ?= "owner" || role ?= "admin"`). An earlier deny-list form (`role ?!= "member"`) was satisfied by `dashboard` — the *least* privileged role — so its holders passed every admin check. Copy the canonical snippet from a neighbouring rule rather than hand-writing a variant.
+>
+> The same bug returned in a second costume: a write branch that constrained *which fields* could be written while naming no role. A branch that restricts what may be written still has to say who may write it. Every write branch names its roles.
+
+> **A read-only role costs one enum entry, and that is the point.** `viewer` was added with **zero changes to any rule text** — a role value that names itself in no write branch is denied everywhere by construction. That is the dividend of the allowlist discipline above, and it doubles as a test of it: if you ever find yourself editing a rule to keep a new read-only role *out*, that rule is a deny-list and it is the bug.
+
+> **Two roles, two purposes — do not merge them.** `dashboard` is the zero-authority probe: it holds no capability at all, which is what makes it the only role that can prove an allowlist works. `viewer` holds read capability, so a denial it passes proves less. The authorization suite uses `dashboard` for exactly this reason.
 
 ---
 
@@ -31,43 +40,47 @@ Roles live on `memberships.role` — the record that binds a User to an Organiza
 
 The authoritative summary. "—" means the API rules reject the operation, not that the UI hides it.
 
-| Capability | Owner | Admin | Member | Badge | Operator¹ | SuperUser² |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Read Things and Locations | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
-| Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | ✅ |
-| Delete a Thing or Location | ✅ | ✅ | — | — | — | ✅ |
-| Deactivate / reactivate a Thing or Leaf Node (§4.2) | ✅ | ✅ | — | — | — | ✅ |
-| Reset a Thing's or Leaf Node's PocketBase password | ✅ | ✅ | — | — | — | ✅ |
-| Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | ✅ |
-| Read Thing Types, Operations, Message Schemas | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| Manage Thing Types, Operations, Message Schemas | ✅ | ✅ | — | — | — | ✅ |
-| **Read** NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | ✅ |
-| Manage NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | ✅ |
-| **Read** Nebula networks and hosts | ✅ | ✅ | — | — | — | ✅ |
-| Manage Nebula networks and hosts | ✅ | ✅ | — | — | — | ✅ |
-| Read the org's NATS Account and Nebula CA | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edit the NATS Account or Nebula CA record directly | — | — | — | — | ✅ | ✅ |
-| Manage the account's signing keys (§4.1)⁶ | ✅ | ✅ | — | — | ✅ | ✅ |
-| Read own linked NATS identity | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| Rotate own NATS credential (§4) | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| Revoke someone else's NATS credential | ✅ | ✅ | — | — | — | ✅ |
-| View the Leaf Nodes list | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| Create / edit / delete Leaf Nodes, reset their credentials | ✅ | ✅ | — | — | — | ✅ |
-| Manage JetStream streams and KV buckets⁴ | ✅ | ✅ | — | — | — | — |
-| Invite users, manage memberships | ✅ | ✅ | — | — | invites only | ✅ |
-| Create / edit an Organization record | — | — | — | — | ✅ | ✅ |
-| Delete an Organization | ✅⁵ | — | — | — | ✅ | ✅ |
-| Read the audit log | — | — | — | — | ✅ | ✅ |
-| Schema imports, Operator key custody | — | — | — | — | — | ✅ |
+| Capability | Owner | Admin | Member | Viewer | Dashboard | Operator¹ | SuperUser² |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Read Things and Locations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
+| Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | — | ✅ |
+| Delete a Thing or Location | ✅ | ✅ | — | — | — | — | ✅ |
+| Deactivate / reactivate a Thing or Leaf Node (§4.2) | ✅ | ✅ | — | — | — | — | ✅ |
+| Reset a Thing's or Leaf Node's PocketBase password | ✅ | ✅ | — | — | — | — | ✅ |
+| Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | — | ✅ |
+| Read Thing Types, Operations, Message Schemas | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
+| Manage Thing Types, Operations, Message Schemas | ✅ | ✅ | — | — | — | — | ✅ |
+| **Read** NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | — | ✅ |
+| Manage NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | — | ✅ |
+| **Read** Nebula networks and hosts | ✅ | ✅ | — | — | — | — | ✅ |
+| Manage Nebula networks and hosts | ✅ | ✅ | — | — | — | — | ✅ |
+| Read the org's NATS Account and Nebula CA | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Edit the NATS Account or Nebula CA record directly | — | — | — | — | — | ✅ | ✅ |
+| Manage the account's signing keys (§4.1)⁶ | ✅ | ✅ | — | — | — | ✅ | ✅ |
+| Read own linked NATS identity | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| Rotate own NATS credential (§4) | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| Revoke someone else's NATS credential | ✅ | ✅ | — | — | — | — | ✅ |
+| Read the Leaf Nodes list | ✅ | ✅ | ✅³ | ✅³ | ✅³ | — | ✅ |
+| Create / edit / delete Leaf Nodes, reset their credentials | ✅ | ✅ | — | — | — | — | ✅ |
+| Manage JetStream streams and KV buckets⁴ | ✅ | ✅ | — | — | — | — | — |
+| Use dashboards | ✅ | ✅ | ✅ | ✅ | ✅⁷ | — | ✅ |
+| Invite users, manage memberships | ✅ | ✅ | — | — | — | invites only | ✅ |
+| Create / edit an Organization record | — | — | — | — | — | ✅ | ✅ |
+| Delete an Organization | ✅⁵ | — | — | — | — | ✅ | ✅ |
+| Read the audit log | — | — | — | — | — | ✅ | ✅ |
+| Schema imports, Operator key custody | — | — | — | — | — | — | ✅ |
 
 ¹ `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
 ² The `_superusers` collection bypasses API rules entirely. See §3.
-³ The rules let any user in the organization read Things and Locations. The console confines `badge` to the badge routes, but that is a UI decision — see the note at the top of this page.
+³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `message_schemas` and `leaf_nodes` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer, and it lists Leaf Nodes to owners and admins only. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across all eight collections, with a new failure mode where a relation expansion silently returns nothing.
 ⁴ JetStream operations run over the browser's own NATS connection, so they are bounded by the caller's **NATS** permissions, not by PocketBase API rules. The console surfaces the views to owners and admins.
 ⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are operator-only; see §3.
 ⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a platform-operator operation.
+⁷ Dashboards are the only screen `dashboard` reaches. That is the role's entire purpose: a login for an unattended display.
 
-**Members and badge holders get an empty list, not a filtered one.** For `nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, and `nebula_hosts`, the `listRule` itself requires owner or admin. A member querying those collections receives zero records — with the single, deliberate exception in §4.
+**The lower roles get an empty list, not a filtered one.** For `nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, and `nebula_hosts`, the `listRule` itself requires owner or admin. A member, viewer or dashboard holder querying those collections receives zero records — with the single, deliberate exception in §4.
+
+> **A membership is what keeps a read alive.** The inventory read rules above are scoped by `users.current_organization`, so deleting someone's membership has to clear it or they keep reading the tenant they were removed from. That is what `hooks/membership_lifecycle.go` does, as part of the same operation. Any future rule that leans on a stored context field needs the same pairing.
 
 ---
 
@@ -93,7 +106,7 @@ The one exception is deletion: `organizations.deleteRule` admits the organizatio
 
 `nats_users.creds_file` embeds the user seed, and `nebula_hosts.config_yaml` embeds the host key. Both stay **readable**, because the identity that owns them needs them: the browser opens its NATS connection with them, and the console's download button hands an operator a `.creds` file. What the rules restrict is **which rows a caller sees**. (Edge boxes are the exception that proves the rule — they read no row at all, and get their credential from the route in §6.)
 
-So there is exactly one exception to the owner/admin-only rule on `nats_users`: **a user of any role, including `badge`, can read the single `nats_users` row linked to their own membership in the active organization.** That is the credential their browser authenticates with. A Thing likewise sees only the NATS user and Nebula host assigned to it.
+So there is exactly one exception to the owner/admin-only rule on `nats_users`: **a user of any role, including `dashboard`, can read the single `nats_users` row linked to their own membership in the active organization.** That is the credential their browser authenticates with. A Thing likewise sees only the NATS user and Nebula host assigned to it.
 
 > **This is row scoping, not field hiding.** Marking `creds_file` or `config_yaml` hidden would break the browser's NATS connection and the console download button — and buy nothing, since the read rules already confine each caller to their own row.
 
@@ -103,7 +116,7 @@ So there is exactly one exception to the owner/admin-only rule on `nats_users`: 
 POST /api/me/nats-creds/rotate
 ```
 
-Available to **every role, including `badge`**, for callers in the `users`, `things`, and `leaf_nodes` collections. It takes **no id parameter** — it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. It responds with the identity's id; re-read that record to pick up the new credential.
+Available to **every role, including `dashboard`**, for callers in the `users`, `things`, and `leaf_nodes` collections. It takes **no id parameter** — it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. It responds with the identity's id; re-read that record to pick up the new credential.
 
 It exists as a route rather than a rule branch because **an API rule cannot express a single-field allowlist**. Permitting self-rotation through the update rule would mean asserting `:isset = false` on every *other* writable field — a deny-list that opens up silently the moment someone adds a field. And the field that must stay closed is consequential: `nats_users.publish_permissions` is copied **verbatim** into the JWT the platform signs, so write access to that collection is equivalent to granting NATS permissions. That is why it is owner/admin only.
 
@@ -172,9 +185,9 @@ A leaf-node identity reads **nothing** in any `nats_*` or `nebula_*` collection.
 GET /api/leaf/bootstrap
 ```
 
-It returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a leaf-node identity**, and the blast radius of a leaked edge credential is those six values regardless of how the collection rules later evolve. `GET /api/leaf/operator-jwt` still exists for older agents but is superseded by `/api/leaf/bootstrap`.
+It returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a leaf-node identity**, and the blast radius of a leaked edge credential is those eight values regardless of how the collection rules later evolve. The last two are there because the operator JWT names a system account and the leaf’s `resolver: MEMORY` has nowhere to fetch it: without the `$SYS` **account** JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing — connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `GET /api/leaf/operator-jwt` still exists for older agents but is superseded by `/api/leaf/bootstrap`.
 
-Managing Leaf Node records — creating, editing, deleting, and resetting their credentials via the collection's `manageRule` — is an owner/admin action. Any role in the org can view the list. See [Leaf Nodes](./leaf-nodes.md).
+Managing Leaf Node records — creating, editing, deleting, and resetting their credentials via the collection's `manageRule` — is an owner/admin action. The read rule admits any role in the organization, though the console lists them to owners and admins only — see footnote 3 in §2. See [Leaf Nodes](./leaf-nodes.md).
 
 ---
 
@@ -184,7 +197,7 @@ Two operational facts matter every time an API rule changes.
 
 - **A schema or rule change reaches existing deployments only via a new `migrations/schema_update_*.go` file.** Editing `schema.json` alone affects **freshly-created databases only** — an upgraded production deployment keeps its old rules. This is the single most common way a security fix fails to ship.
 - **A new column that a rule reads needs a backfill in the same migration.** PocketBase booleans have no schema-level default, so a new `active` field lands as `false` on every existing row. Importing `authRule: "active = true"` without an accompanying `UPDATE` would lock every already-provisioned device out of the API the moment the deployment restarts. Test the upgrade path against a database that has rows in it, not only a fresh one.
-- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, stands up a throwaway database, and asserts 97 authorization behaviours against a live server. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
+- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, stands up a throwaway database, and asserts every authorization behaviour it covers against a live server. The count lives in `EXPECTED_CHECKS` at the top of the script, where it guards against a suite that exits early — it is deliberately not repeated in prose here. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
 
 Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's `meta.requiresCapability` guards in step with the matrix in §2 — not because they enforce anything, but because a menu that offers an action the rules reject is a bug report waiting to happen.
 
