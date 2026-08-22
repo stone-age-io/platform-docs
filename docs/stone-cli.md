@@ -49,14 +49,23 @@ The division of labor in practice:
 
 ## 2. Install & build
 
-`stone` is a standalone Go module (`github.com/stone-age-io/stone-cli`, Go 1.25+ — its own module, tracked separately from the platform binary).
+Prebuilt binaries are attached to every release — linux, darwin and windows, amd64 and arm64 each:
+
+```sh
+VERSION=0.1.0
+curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
+tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
+./stone --version
+```
+
+Or build it yourself. `stone` is a standalone Go module (`github.com/stone-age-io/stone-cli`, Go 1.25+ — its own module, tracked separately from the platform binary), so a checkout and one command is the whole thing:
 
 ```sh
 go build -o stone        # local binary
 go vet ./...
 ```
 
-There's no daemon and nothing to install server-side — the binary is the whole client.
+A source build reports `dev` from `--version`; a release build reports the tag. Either way there's no daemon and nothing to install server-side — the binary is the whole client.
 
 ---
 
