@@ -152,10 +152,10 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `nebula-network` | yes | `name` | full | owner/admin — including reads |
 | `nebula-host` | yes | `hostname` | full | owner/admin — including reads |
 | `leaf-node` | yes | `code` | full | read: any · write: owner/admin |
-| `nats-account` | yes | `name` | `ls / get` | read: any · **all writes: operator** · signing keys: owner/admin via route |
-| `nebula-ca` | yes | `name` | `ls / get` | read: any · **all writes: operator** · no rotation trigger exists |
+| `nats-account` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: operator** · signing keys: owner/admin via route |
+| `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: operator** · no rotation trigger exists |
 
-"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, and both are now **read-only to every tenant role** — `update` requires a platform Operator, and neither can be created or deleted by hand. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is an operator operation.
+"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a platform **Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is an operator operation.
 
 In the **Role required** column, *any* means any role in the current organization including `dashboard`, the least privileged one, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
 
