@@ -21,6 +21,7 @@ nav:
     - Operations & Production: operations.md
   - Decisions:
     - 0001 Embedded NATS Server: decisions/0001-embedded-nats-server.md
+    - 0002 Organization Code Namespace: decisions/0002-organization-code-namespace.md
 theme:
   name: material
   logo: assets/logo.svg
