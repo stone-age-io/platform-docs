@@ -89,7 +89,7 @@ Controls the `pb-nats` library: NATS account/user/role provisioning, exports/imp
 | `server_url` | string | `"nats://localhost:4222"` | Where the Control Plane connects to NATS as a System Account client. **Not** the browser address — see §2.1. |
 | `websocket_urls` | string list | `[]` | The WebSocket addresses a **browser** dials, served to the console at runtime by `GET /api/client-config`. See §2.1. |
 | `encryption_key` | string | `""` | 32-character key encrypting NATS account and user **seeds** at rest. Empty means plaintext in SQLite. See §2.2. |
-| `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the operator hub account. Must end in `.>`; the platform refuses to start otherwise. |
+| `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the operator hub account. The matching hub-side import remaps it to `<subtree>.<organization code>.>`, so the tenant token is baked into the operator-signed account JWT and provenance is unforgeable — which means a managed organization needs a [code](./platform-ui-entities.md#organizations) before its export routes anywhere. Must end in `.>`; the platform refuses to start otherwise. See [ADR 0002](./decisions/0002-organization-code-namespace.md). |
 | `log_to_console` | bool | `false` | Verbose NATS-library logging. |
 | `default_limits.max_connections` | int | `10` | Default max connections for new Org accounts. |
 | `default_limits.max_subscriptions` | int | `50` | Default max subscriptions for new Org accounts. |

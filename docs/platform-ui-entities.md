@@ -13,6 +13,7 @@ Organizations are the top-level container for all data and infrastructure. Every
 ### Organizations
 
 - **Isolation:** Each Organization receives its own private NATS Account and Nebula Certificate Authority.
+- **Organization Code:** A short slug (`acme`, `northwind`) that is the **one globally unique identifier in the ecosystem** — every other code on the platform is unique only *within* an Organization. It is derived from the name when you don't supply one, and it roots the public namespace: the managed-org subject rewrite carries it, sibling apps name a tenant by it, and it is the handle that lets a consumer join their data to the platform's without a mapping table. **Optional, but immutable once set** — creation refuses a colliding code rather than inventing `acme-2`, because a wrong code would be baked into signed account JWTs and printed on labels long before anyone noticed. `system` and `operator` are reserved. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 - **Ownership:** An organization has an **Owner** — the identity that may delete it. Creating and *editing* the organization record are platform-**Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, so no tenant role has an update path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
 - **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding. Invitations can offer any role except `owner`.
 
@@ -69,7 +70,7 @@ Locations define the physical or logical hierarchy of your environment. They ans
 ### Concepts
 
 - **Hierarchy:** Locations support parent/child relationships (e.g., `Global > North America > Chicago > Warehouse A > Row 4`).
-- **Location Code:** A unique, URL-friendly identifier (e.g., `CHI-W-A`). This code is used to namespace the **Digital Twin** in the NATS Key-Value store.
+- **Location Code:** A unique, URL-friendly identifier (e.g., `CHI-W-A`), unique within the Organization. It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it.
 - **Metadata:** A flexible JSON field for storing site-specific data like time zones, contact info, or local gateway IPs.
 
 ### Mapping & Visualization
@@ -90,7 +91,7 @@ A **Thing** is any entity that produces or consumes data — or just an asset yo
 ### Concepts
 
 - **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration. An Owner or Admin can reset that password from the detail view if it is lost — it is shown once, and the old one stops working immediately.
-- **Thing Code:** Similar to the Location code, this is used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`).
+- **Thing Code:** Similar to the Location code, this is used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`), and it is likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons.
 - **Metadata:** Used to store device-specific state that doesn't change often, such as hardware revision, install date, or calibration offsets.
 - **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, and its NATS credential is revoked. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
@@ -164,6 +165,18 @@ Owners and Admins can manage the org's JetStream resources directly from the UI 
 - **KV Buckets** (`/nats/kv`): create, configure, and inspect Key-Value buckets. The form covers history depth, max bucket size, max value size, TTL, and replicas. The detail view embeds a **KV Dashboard** that lets you browse keys, view current values, and watch live updates as keys change.
 
 Both views appear in the sidebar only when the browser is connected to NATS — the operations execute against the live cluster, not against PocketBase. Layer 1 rules and stream processors consume the same streams and buckets you create here; the UI is a convenience surface, not a separate runtime.
+
+### Codes and QR Labels
+
+Any Location or Thing with a **Code** gets a **Label** button on its detail view, producing an operator-branded QR label to print and stick on the equipment. A record with no code gets no button — the payload *is* the code.
+
+- **The payload is the bare code.** Not a web address, not `org/kind/code` — just `DOOR-1`. A sticker on a wall in a public corridor is something a stranger can replace, and a payload containing a URL would let a forged label send a person to arbitrary content. A bare in-system identifier means the worst a forged label achieves is opening the wrong record inside an app you were already signed in to. It also buys error correction: a short code at the highest correction level is a 21×21 symbol where the URL form of the same identifier needs 41×41 — four times the modules on an identically sized sticker, all of it spent on surviving scratches and grease rather than on repeating a hostname.
+- **Scanning happens inside an app.** The [Scanner widget](./dashboards.md) reads these labels here; sibling apps read the *same* label with their own scanners and land on their own view of the record — a work-order history rather than a live state panel. Nothing ever fetches the decoded string as a destination, and there is deliberately no resolver service to look one up.
+- **Sized to real stock.** 2″ × 1″ and 4″ × 2″, in millimetres rather than pixels, and both reserve a clear band down the centre for an RFID inlay's chip so one layout prints correctly on plain *or* RFID media. The **RFID stock** toggle reveals that reserved band so you can check it against your inlay's datasheet; it does not change the layout. Inlay geometry varies by vendor — treat the default as conservative, and print one before committing to a roll.
+- **Every label prints its code in readable text.** That is not decoration. The symbol will eventually be scratched, greasy, or in a closet too dark to focus in, and reading the code aloud or typing it into a scanner's manual field is a designed path, not a fallback.
+- **The Organization name is deliberately not printed.** A tenant name beside a device naming convention is free reconnaissance for anyone walking past. The operator's brand *is* printed — whoever finds broken equipment needs to know who services it.
+
+Because codes are unique only within an Organization, a scanner resolves a code **globally and then disambiguates** rather than assuming a tenant: `DOOR-1` is exactly the code every organization independently invents, so a match list with a picker is honest where a silent guess would be somebody else's door. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 
 ### CRUD & Management
 
