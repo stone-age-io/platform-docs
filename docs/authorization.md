@@ -16,7 +16,7 @@ Roles live on `memberships.role` — the record that binds a User to an Organiza
 | :--- | :--- |
 | `owner` | Full tenant authority. Identical to `admin` in every API rule (see below). |
 | `admin` | Full tenant authority. |
-| `member` | Day-to-day operator of inventory: creates and edits Things and Locations, reads contracts, holds its own NATS credential. Cannot touch infrastructure collections. |
+| `member` | Day-to-day custodian of inventory: creates and edits Things and Locations, reads contracts, holds its own NATS credential. Cannot touch infrastructure collections. |
 | `viewer` | Read-only staff. The inventory screens and dashboards, no write control anywhere. Still holds its own NATS credential. |
 | `dashboard` | An appliance login for an unattended screen. The Visualizer at `/` and its own `/settings`, nothing else. Holds no write capability at all. |
 
@@ -40,7 +40,7 @@ Roles live on `memberships.role` — the record that binds a User to an Organiza
 
 The authoritative summary. "—" means the API rules reject the operation, not that the UI hides it.
 
-| Capability | Owner | Admin | Member | Viewer | Dashboard | Operator¹ | SuperUser² |
+| Capability | Owner | Admin | Member | Viewer | Dashboard | Platform Operator¹ | SuperUser² |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Read Things and Locations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
 | Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | — | ✅ |
@@ -68,14 +68,14 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Create / edit an Organization record | — | — | — | — | — | ✅ | ✅ |
 | Delete an Organization | ✅⁵ | — | — | — | — | ✅ | ✅ |
 | Read the audit log | — | — | — | — | — | ✅ | ✅ |
-| Schema imports, Operator key custody | — | — | — | — | — | — | ✅ |
+| Schema imports, NATS Operator key custody | — | — | — | — | — | — | ✅ |
 
-¹ `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
+¹ **Platform Operator.** `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
 ² The `_superusers` collection bypasses API rules entirely. See §3.
 ³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `message_schemas` and `leaf_nodes` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer, and it lists Leaf Nodes to owners and admins only. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across all eight collections, with a new failure mode where a relation expansion silently returns nothing.
 ⁴ JetStream operations run over the browser's own NATS connection, so they are bounded by the caller's **NATS** permissions, not by PocketBase API rules. The console surfaces the views to owners and admins.
-⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are operator-only; see §3.
-⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a platform-operator operation.
+⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are Platform-Operator-only; see §3.
+⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a Platform Operator action.
 ⁷ Dashboards are the only screen `dashboard` reaches. That is the role's entire purpose: a login for an unattended display.
 
 **The lower roles get an empty list, not a filtered one.** For `nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, and `nebula_hosts`, the `listRule` itself requires owner or admin. A member, viewer or dashboard holder querying those collections receives zero records — with the single, deliberate exception in §4.
@@ -88,23 +88,23 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 
 Two identities exist *outside* the Membership model.
 
-**Operator** (`users.is_operator = true`) is a regular user account with platform-administration authority. Operators create and edit Organization records and can invite users into any org. An Operator with no Membership in a given org still cannot read that org's tenant data — Membership is what grants tenant-data access; the flag grants org-management authority.
+**Platform Operator** (`users.is_operator = true`) is a regular user account with platform-administration authority. A Platform Operator creates and edits Organization records and can invite users into any org. A Platform Operator with no Membership in a given org still cannot read that org's tenant data — Membership is what grants tenant-data access; the flag grants org-management authority.
 
 **SuperUser** (the `_superusers` collection) is a backend service account whose access bypasses API rules entirely. It exists for infrastructure-level work — schema imports, NATS Operator key custody, troubleshooting — and signs in at the embedded admin UI (`/_/`). SuperUsers are not members of any organization.
 
-> **Operator status cannot be granted through the API.** The only two paths are the `bootstrap` command and the embedded admin panel. No API rule permits writing `is_operator`, so no tenant role — and no Operator — can mint another Operator over REST. See [Getting Started §2](./getting-started.md#2-initialize-the-control-plane).
+> **Platform Operator status cannot be granted through the API.** The only two paths are the `bootstrap` command and the embedded admin panel. No API rule permits writing `is_operator`, so no tenant role — and no Platform Operator — can mint another one over REST. See [Getting Started §2](./getting-started.md#2-initialize-the-control-plane).
 
-### The organization record is operator territory
+### The organization record is Platform Operator territory
 
-`organizations.updateRule` is `@request.auth.is_operator = true` and nothing else. **No tenant role, not even `owner`, can edit the organization record.** That record carries the tenancy flags (`managed`, `is_operator_org`, `is_system_org`) and drives NATS Account and Nebula CA provisioning, so editing it is a platform-operator action rather than a tenant one. `organizations.createRule` is likewise operator-only.
+`organizations.updateRule` is `@request.auth.is_operator = true` and nothing else. **No tenant role, not even `owner`, can edit the organization record.** That record carries the tenancy flags (`managed`, `is_operator_org`, `is_system_org`) and drives NATS Account and Nebula CA provisioning, so editing it is a Platform Operator action rather than a tenant one. `organizations.createRule` is likewise Platform-Operator-only.
 
-The one exception is deletion: `organizations.deleteRule` admits the organization's own `owner` as well as any Operator.
+The one exception is deletion: `organizations.deleteRule` admits the organization's own `owner` as well as any Platform Operator.
 
 ---
 
 ## 4. The Row-Scoped Credential Model
 
-`nats_users.creds_file` embeds the user seed, and `nebula_hosts.config_yaml` embeds the host key. Both stay **readable**, because the identity that owns them needs them: the browser opens its NATS connection with them, and the console's download button hands an operator a `.creds` file. What the rules restrict is **which rows a caller sees**. (Edge boxes are the exception that proves the rule — they read no row at all, and get their credential from the route in §6.)
+`nats_users.creds_file` embeds the user seed, and `nebula_hosts.config_yaml` embeds the host key. Both stay **readable**, because the identity that owns them needs them: the browser opens its NATS connection with them, and the console's download button hands a console user a `.creds` file. What the rules restrict is **which rows a caller sees**. (Edge boxes are the exception that proves the rule — they read no row at all, and get their credential from the route in §6.)
 
 So there is exactly one exception to the owner/admin-only rule on `nats_users`: **a user of any role, including `dashboard`, can read the single `nats_users` row linked to their own membership in the active organization.** That is the credential their browser authenticates with. A Thing likewise sees only the NATS user and Nebula host assigned to it.
 
@@ -124,7 +124,7 @@ Revocation is **not** part of the route. Setting the regenerate flag on a revoke
 
 ### 4.1 Account signing keys
 
-The organization's NATS Account record has the same problem one level up, and the same answer. `nats_accounts.updateRule` is **operator-only**, because the record mixes fields a tenant may legitimately trigger with fields it must not touch — the account limits it was sold, and the signed account `jwt`. An owner or admin manages its signing keys through:
+The organization's NATS Account record has the same problem one level up, and the same answer. `nats_accounts.updateRule` is **Platform-Operator-only**, because the record mixes fields a tenant may legitimately trigger with fields it must not touch — the account limits it was sold, and the signed account `jwt`. An owner or admin manages its signing keys through:
 
 ```
 POST /api/org/nats-account/keys      { "action": "rotate" | "add_signing" | "remove_signing" }
@@ -138,7 +138,7 @@ POST /api/org/nats-account/keys      { "action": "rotate" | "add_signing" | "rem
 
 Like the credential route it takes no record id — the account is derived from the caller's active organization, so it cannot be aimed at another tenant — and each action writes exactly one field. Reach for `add_signing` for routine rotation; `rotate` is for suspected key compromise.
 
-`nebula_ca.updateRule` is operator-only for the same reason and has no tenant route, because the collection has no rotation trigger. Rolling a CA is an operator operation.
+`nebula_ca.updateRule` is Platform-Operator-only for the same reason and has no tenant route, because the collection has no rotation trigger. Rolling a CA is a Platform Operator action.
 
 ### 4.2 Taking a device out of service
 
@@ -162,11 +162,11 @@ And the second half: **a device's real capability is its NATS credential, not it
 
 ---
 
-## 5. The Audit Log Is Operator-Only
+## 5. The Audit Log Is Platform-Operator-Only
 
-`audit_logs` list and view are `@request.auth.is_operator = true`. **No tenant role — including `owner` — can read the audit log**, and the console's `/audit` route is operator-gated to match. Creates, updates, and deletes are closed to everyone; the log is written by the platform.
+`audit_logs` list and view are `@request.auth.is_operator = true`. **No tenant role — including `owner` — can read the audit log**, and the console's `/audit` route is gated on the same flag to match. Creates, updates, and deletes are closed to everyone; the log is written by the platform.
 
-The practical consequence for MSP deployments: **a tenant admin cannot self-serve an audit export.** Requests for "who changed this record" go through a platform operator. Retention is configured in `audit.retention` — see [Configuration §2](./configuration.md#2-section-reference).
+The practical consequence for MSP deployments: **a tenant admin cannot self-serve an audit export.** Requests for "who changed this record" go through a Platform Operator. Retention is configured in `audit.retention` — see [Configuration §2](./configuration.md#2-section-reference).
 
 ---
 
@@ -179,13 +179,13 @@ A leaf-node identity **can** read:
 - its own `leaf_nodes` record, and
 - the allowlisted collections it mirrors, within its own organization: `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations`, `message_schemas`.
 
-A leaf-node identity reads **nothing** in any `nats_*` or `nebula_*` collection. The four values an edge box cannot derive locally — its own creds, the org's account JWT and public key, and the operator JWT — come from a dedicated, leaf-node-authenticated route:
+A leaf-node identity reads **nothing** in any `nats_*` or `nebula_*` collection. The four values an edge box cannot derive locally — its own creds, the org's account JWT and public key, and the NATS Operator JWT — come from a dedicated, leaf-node-authenticated route:
 
 ```
 GET /api/leaf/bootstrap
 ```
 
-It returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a leaf-node identity**, and the blast radius of a leaked edge credential is those eight values regardless of how the collection rules later evolve. The last two are there because the operator JWT names a system account and the leaf’s `resolver: MEMORY` has nowhere to fetch it: without the `$SYS` **account** JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing — connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `GET /api/leaf/operator-jwt` still exists for older agents but is superseded by `/api/leaf/bootstrap`.
+It returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a leaf-node identity**, and the blast radius of a leaked edge credential is those eight values regardless of how the collection rules later evolve. The last two are there because the NATS Operator JWT names a system account and the leaf’s `resolver: MEMORY` has nowhere to fetch it: without the `$SYS` **account** JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing — connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `GET /api/leaf/operator-jwt` still exists for older agents but is superseded by `/api/leaf/bootstrap`.
 
 Managing Leaf Node records — creating, editing, deleting, and resetting their credentials via the collection's `manageRule` — is an owner/admin action. The read rule admits any role in the organization, though the console lists them to owners and admins only — see footnote 3 in §2. See [Leaf Nodes](./leaf-nodes.md).
 
@@ -197,7 +197,7 @@ Two operational facts matter every time an API rule changes.
 
 - **A schema or rule change reaches existing deployments only via a new `migrations/schema_update_*.go` file.** Editing `schema.json` alone affects **freshly-created databases only** — an upgraded production deployment keeps its old rules. This is the single most common way a security fix fails to ship.
 - **A new column that a rule reads needs a backfill in the same migration.** PocketBase booleans have no schema-level default, so a new `active` field lands as `false` on every existing row. Importing `authRule: "active = true"` without an accompanying `UPDATE` would lock every already-provisioned device out of the API the moment the deployment restarts. Test the upgrade path against a database that has rows in it, not only a fresh one.
-- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, stands up a throwaway database, and asserts every authorization behaviour it covers against a live server. The count lives in `EXPECTED_CHECKS` at the top of the script, where it guards against a suite that exits early — it is deliberately not repeated in prose here. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
+- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It builds the binary, creates a throwaway database, and asserts every authorization behaviour it covers against a live server. The count lives in `EXPECTED_CHECKS` at the top of the script, where it guards against a suite that exits early — it is deliberately not repeated in prose here. The rules are the only tenancy enforcement in the platform, and nothing else type-checks them. Pair every "cannot" with a "can" on the same record — otherwise a blanket deny passes the suite. Note that PocketBase answers **404**, not 403, when an update rule rejects.
 
 Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's `meta.requiresCapability` guards in step with the matrix in §2 — not because they enforce anything, but because a menu that offers an action the rules reject is a bug report waiting to happen.
 
@@ -209,5 +209,5 @@ Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's `me
 - **The same rules from the terminal:** [Stone CLI](./stone-cli.md).
 - **The edge identity model in context:** [Leaf Nodes](./leaf-nodes.md).
 - **NATS roles and permission fields:** [Connectivity](./connectivity.md).
-- **First-time operator and SuperUser creation:** [Getting Started](./getting-started.md).
+- **First-time Platform Operator and SuperUser creation:** [Getting Started](./getting-started.md).
 - **Audit retention keys:** [Configuration Reference](./configuration.md).

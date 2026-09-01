@@ -272,7 +272,7 @@ The same principle — rule reads KV, acts, optionally writes KV — supports a 
 
 - **Be Specific with Subjects:** Avoid triggering on `>` (all messages). Use narrow subjects like `telemetry.*.temp` to reduce unnecessary CPU cycles.
 - **Use Field Paths Wisely:** The engine supports nested field access (e.g., `{user.profile.email}`). Keep your JSON structures reasonably flat to maximize readability and evaluation speed.
-- **Leverage KV for Context:** Don't embed static data (like "Unit Location") in every message. Store that metadata in a KV bucket and have rules hydrate the alert using a `{@kv.lookup}`.
+- **Use KV for context:** Don't embed static data (like "Unit Location") in every message. Store that metadata in a KV bucket and have rules hydrate the alert using a `{@kv.lookup}`.
 - **Keep State in KV, Not in Rules:** If you find yourself trying to remember something across messages, the answer is a KV key, not a more complex rule.
 - **Name Subjects Consistently:** Subject names are contracts between layers. Rule authors, stream processors, and Telegraf all address the same subjects. Pick a hierarchical convention and stick to it.
 

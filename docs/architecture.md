@@ -89,7 +89,7 @@ The minimum viable deployment is two binaries: the Control Plane and a NATS serv
 
 ### Bootstrapping the NATS Server from the Control Plane
 
-The Control Plane's role isn't limited to runtime credential management — it also produces the server-side artifacts you need to stand up NATS in the first place. When you initialize PocketBase, the platform generates an Operator JWT, a System Account JWT, a System User, a resolver configuration, and a ready-to-use `nats-server` config file. You export these with a single command:
+The Control Plane's role isn't limited to runtime credential management — it also produces the server-side artifacts you need to start NATS in the first place. When you initialize PocketBase, the platform generates a NATS Operator JWT, a System Account JWT, a System User, a resolver configuration, and a ready-to-use `nats-server` config file. You export these with a single command:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
@@ -97,9 +97,9 @@ The Control Plane's role isn't limited to runtime credential management — it a
 
 The exported directory contains everything needed to run `nats-server -c ./nats-config/nats.conf` against the Control Plane's identity hierarchy. From that point on, PocketBase's connection to the System Account propagates any account or user changes you make in the UI to the running cluster in real-time — no config file edits, no server restarts.
 
-This is a deliberate design choice: the Control Plane owns the Operator key and stamps the server's identity artifacts, but once NATS is running it takes over its own lifecycle. You can run multiple NATS servers or an entire cluster from a single Control Plane, scale them independently, and rotate their config without touching PocketBase. The Control Plane's ongoing role is the admin-subject connection described below, not server supervision.
+This is a deliberate design choice: the Control Plane owns the NATS Operator key and stamps the server's identity artifacts, but once NATS is running it takes over its own lifecycle. You can run multiple NATS servers or an entire cluster from a single Control Plane, scale them independently, and rotate their config without touching PocketBase. The Control Plane's ongoing role is the admin-subject connection described below, not server supervision.
 
-Small deployments can collapse the two processes with `stone-age serve --nats`, which runs a NATS server inside the Control Plane from that same exported config. Nothing above changes — same operator, same identity hierarchy, same file — except that the Data Plane's independence from the Control Plane is suspended while they share a process. Off by default; see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) and [ADR 0001](./decisions/0001-embedded-nats-server.md).
+Small deployments can collapse the two processes with `stone-age serve --nats`, which runs a NATS server inside the Control Plane from that same exported config. Nothing above changes — same NATS Operator, same identity hierarchy, same file — except that the Data Plane's independence from the Control Plane is suspended while they share a process. Off by default; see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) and [ADR 0001](./decisions/0001-embedded-nats-server.md).
 
 The getting-started doc walks through this workflow end-to-end. See [Getting Started](./getting-started.md) for the runnable commands.
 
@@ -193,7 +193,7 @@ The org-level analogue of this idea is **Infrastructure-as-Tenant** — creating
 
 ### Authorization inside an Organization
 
-Cryptography draws the boundary *between* tenants. Inside one, access is governed by five roles on the Membership record — `owner`, `admin`, `member`, `viewer`, and `dashboard` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `viewer` reads it; `dashboard` reaches only the Visualizer; editing the Organization record and reading the audit log are Operator-only.
+Cryptography draws the boundary *between* tenants. Inside one, access is governed by five roles on the Membership record — `owner`, `admin`, `member`, `viewer`, and `dashboard` — plus two cross-organization identities, the platform **Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `viewer` reads it; `dashboard` reaches only the Visualizer; editing the Organization record and reading the audit log are Platform-Operator-only.
 
 **The PocketBase API rules declared on each collection are the only enforcement layer.** The provisioning libraries (`pb-nats`, `pb-nebula`) contain no tenancy logic — they never reference `organization` — and the console's capability map decides what renders, not what is permitted. The full model, the capability matrix, and the row-scoped credential design live on [Authorization & Roles](./authorization.md).
 
@@ -259,13 +259,13 @@ There are **two** KV buckets per organization, split by who owns the data:
 | Bucket | Who writes it | Direction |
 | :--- | :--- | :--- |
 | `twin` | the device | edge → hub (**reported** state) |
-| `twin_desired` | an operator | hub → edge (**desired** state) |
+| `twin_desired` | a console user | hub → edge (**desired** state) |
 
 Keys are `<kind>.<code>.<prop>` — `thing.S01.temp`, `location.CHI-W-A.occupancy` — and the two buckets pair on the *same* key. Direction lives in the bucket, so keys carry no sync bookkeeping. Note that these are **organization-level buckets keyed by code**, not one bucket per Location or Thing.
 
 **One writer per bucket is the entire safety property**, and it is structural rather than a convention anyone has to remember. A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*, with the two values swapping back and forth across the leaf link indefinitely.
 
-Because reported state is written by the edge, **it is read-only in the console.** An edit button on a reported key would be a lie: the value comes back on the next sync. `twin_desired` is the writable half, and it is where an operator's actual control lives.
+Because reported state is written by the edge, **it is read-only in the console.** An edit button on a reported key would be a lie: the value comes back on the next sync. `twin_desired` is the writable half, and it is where a console user's actual control lives.
 
 ### 4.2 What belongs in `twin_desired`, and what does not
 
@@ -324,8 +324,8 @@ The Stone-Age.io Platform uses a "Chain of Trust" model based on Private Key Inf
 
 The platform acts as a NATS **Account Server**.
 
-1.  The platform holds the **Operator** key.
-2.  Each Org has an **Account** key signed by the Operator.
+1.  The platform holds the **NATS Operator** key.
+2.  Each Org has an **Account** key signed by the NATS Operator.
 3.  Each Thing/User has a **User** key signed by their Account.
 
 Authentication happens via **JWTs** and **nKeys**. Accounts are distributed to the cluster in real-time. Users sign a challenge during the connection handshake, and the chain of trust is verified.

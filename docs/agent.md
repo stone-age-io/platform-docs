@@ -38,7 +38,7 @@ The per-platform guides in the agent repository (`docs/linux.md`, `docs/windows.
 
 ## 2. Provisioning & Credential Lifecycle
 
-One of the most powerful features for MSPs is the automated provisioning flow. Instead of manually copying credential files to every device, the Agent authenticates to the Control Plane **as its own Thing** and fetches its NATS credentials itself — then keeps them current for the life of the device.
+The automated provisioning flow is what makes the Agent practical at MSP scale. Instead of manually copying credential files to every device, the Agent authenticates to the Control Plane **as its own Thing** and fetches its NATS credentials itself — then keeps them current for the life of the device.
 
 This is `auth.type: "stone-age"` in the Agent's config. It is deliberately named after the platform rather than after PocketBase: the Agent depends on the Stone-Age.io schema (`things` → `nats_user` → `creds_file`) and on a route the platform defines itself, not on anything generic.
 
@@ -171,7 +171,7 @@ For custom logic, the Agent can execute local scripts or shell commands.
 
 ## 4. Security & Isolation
 
-Security at the edge is handled through strict cryptographic isolation.
+Three mechanisms enforce cryptographic isolation at the edge:
 
 - **NKey Authentication:** The Agent signs every NATS connection challenge locally with the nkey seed in its `.creds` file. Be precise about where that key comes from, though: the Control Plane mints the keypair (`pb-nats` generates it and embeds the seed in `creds_file`), so the private key originates on the platform and is *delivered* to the device — it is not generated there. That is exactly why the credential lifecycle in §2 is built the way it is: HTTPS is required, the key is re-transmitted only when it has actually changed, it is written `0600` through an atomic replace, and platform response bodies are never logged.
 - **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — the `nats_roles` and `nats_users` collections are closed to every role below admin for reads as well as writes, precisely because a role's permission fields are copied verbatim into the JWT the platform signs.

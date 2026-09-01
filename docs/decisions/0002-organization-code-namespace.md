@@ -21,7 +21,7 @@ Two things spoil it.
 
 **There is no organization code to root at.** `organizations` carries a unique `name` and nothing else that is stable and machine-safe. A name has spaces, case, and a habit of changing when marketing gets involved. So the only tenant token available today is a PocketBase id — a single database's primary key, which is exactly the wrong thing to embed in a signed account JWT or print on a sticker that will outlive the app.
 
-**And `code`, which everything already depends on, is mutable.** `UNIQUE (organization, code) WHERE code != ''` (`migrations/schema_update_unique_org_code.go`) makes it unique when present, and the partial predicate is deliberate — a code is *optional*, because both the platform's pre-onboarding inventory and an operator's service work cover gear with no upstream record. What is not deliberate is that nothing except `leaf_nodes` stops a code from being edited after consumers have started resolving by it. Consumers treat it as an identifier while the schema treats it as a label.
+**And `code`, which everything already depends on, is mutable.** `UNIQUE (organization, code) WHERE code != ''` (`migrations/schema_update_unique_org_code.go`) makes it unique when present, and the partial predicate is deliberate — a code is *optional*, because both the platform's pre-onboarding inventory and a provider's service work cover gear with no upstream record. What is not deliberate is that nothing except `leaf_nodes` stops a code from being edited after consumers have started resolving by it. Consumers treat it as an identifier while the schema treats it as a label.
 
 ---
 
@@ -71,7 +71,7 @@ helpdesk.{org}.tickets.create
 
 > A NATS subject may elide the organization token, because the account supplies it. A URL or a physical label cannot, because they have no ambient context.
 
-That is relative versus absolute addressing, and it is why the same identity has two encodings without either being wrong. It also means the namespace survives a deployment-mode change: an organization that starts on an operator's helpdesk and later stands up its own loses a subject token and nothing else. No re-slugging, no reprinting.
+That is relative versus absolute addressing, and it is why the same identity has two encodings without either being wrong. It also means the namespace survives a deployment-mode change: an organization that starts on a provider's helpdesk and later runs its own loses a subject token and nothing else. No re-slugging, no reprinting.
 
 <center>
 ```mermaid
@@ -79,7 +79,7 @@ graph LR
     subgraph ORG["Customer NATS account"]
         APP["app publishes<br/><code>helpdesk.tickets.create</code>"]
     end
-    subgraph HUB["Operator hub account"]
+    subgraph HUB["Provider hub account"]
         IMP["signed import injects the org token<br/><code>helpdesk.acme.tickets.create</code>"]
     end
     LBL["Physical label<br/><code>DOOR-1</code>"]
@@ -100,7 +100,7 @@ The helpdesk's ingest filter is `helpdesk.*.tickets.>` (`internal/subjects`, `St
 - No flag day. The consumer resolves token 2 as "try `code`, fall back to `platform_org_id`" and drops the fallback once every org has a code.
 - No coordination between the platform and its consumers about when to switch.
 
-The security property is unchanged. Provenance comes from the rewrite being **operator-signed**, not from what the token contains — a publisher can no more forge `acme` than it could forge an org id. Ingestion still parses the organization from the subject and never from the payload.
+The security property is unchanged. Provenance comes from the rewrite being signed by the **NATS Operator**, not from what the token contains — a publisher can no more forge `acme` than it could forge an org id. Ingestion still parses the organization from the subject and never from the payload.
 
 ---
 
@@ -135,7 +135,7 @@ Two consequences follow, and the second is the one that costs something:
 
 Two facts decided this, and both are properties of the system as it exists rather than arguments about how it ought to work.
 
-**The platform already has a QR scanner, and it is generic.** `ui/src/components/widgets/ScannerWidget.vue` resolves a scanned value through an operator-configured `pbFilter` and `kvKeyTemplate` with a `{value}` placeholder (`replacePlaceholder`), with `html5-qrcode` already a declared dependency. A bare code works with it **now**, via `code = "{value}"` against PocketBase or `thing.{value}.status` against twin KV. A structured payload would require parsing the widget does not do. The decision that needs no new code is the one the existing consumer already implements.
+**The platform already has a QR scanner, and it is generic.** `ui/src/components/widgets/ScannerWidget.vue` resolves a scanned value through an admin-configured `pbFilter` and `kvKeyTemplate` with a `{value}` placeholder (`replacePlaceholder`), with `html5-qrcode` already a declared dependency. A bare code works with it **now**, via `code = "{value}"` against PocketBase or `thing.{value}.status` against twin KV. A structured payload would require parsing the widget does not do. The decision that needs no new code is the one the existing consumer already implements.
 
 **A sticker in a public hallway is an attacker-writable surface.** Anyone can print one and stick it over yours. With a URL payload, a forged sticker redirects a human to arbitrary content — and scan-and-tap is trained behaviour, which is what makes the attack work. With a bare in-system identifier, the worst a forged sticker achieves is resolving a different record inside an already-authenticated session. That is a data-integrity annoyance, not a phishing vector.
 
@@ -169,13 +169,13 @@ Each of these is small, independently useful, and does not wait on the rest.
 
 **4. Resolve, don't assume.** Consumers should look an organization code up rather than assume it equals `organizations.code`. That is one line of difference now and it is the hedge for organizational mergers: when one org absorbs another, an alias set keeps existing labels and subjects resolving, and it can be added later without touching a single caller. Build the lookup, not the alias table.
 
-**5. Retire the second org slug.** `hooks/thing_routes.go` derived its own slug from the organization NAME, freshly on every call, to build the synthetic emails identifying a Thing and its NATS / Nebula records. Two bugs in one function: renaming an organization silently split its devices across two identifier domains, and names are unique while their slugs are not ("Acme Inc" and "Acme, Inc." both give `acme-inc`), so two legal organizations could collide in a namespace carrying a global unique index — a hazard the code there documented and worked around with an apologetic error telling the operator to rename an organization. Reading `organizations.code` closes both, and the emails become literally the `(organization, code)` join key with each half immutable. This is the smallest illustration of the whole ADR: the identifier already existed, it was just being derived twice, differently.
+**5. Retire the second org slug.** `hooks/thing_routes.go` derived its own slug from the organization NAME, freshly on every call, to build the synthetic emails identifying a Thing and its NATS / Nebula records. Two bugs in one function: renaming an organization silently split its devices across two identifier domains, and names are unique while their slugs are not ("Acme Inc" and "Acme, Inc." both give `acme-inc`), so two legal organizations could collide in a namespace carrying a global unique index — a hazard the code there documented and worked around with an apologetic error telling a Platform Operator to rename an organization. Reading `organizations.code` closes both, and the emails become literally the `(organization, code)` join key with each half immutable. This is the smallest illustration of the whole ADR: the identifier already existed, it was just being derived twice, differently.
 
 **6. Fix the subject a consumer *emits*, not only the one it reads.** The helpdesk publishes its own outbound event stream, and token 2 there was the helpdesk's own record id for the customer — a local primary key in a subject that crosses to other applications, which is this ADR's problem in the opposite direction. Reading it is only half the boundary. Once it carries the tenant code, both directions name a tenant the same way and a consumer can join events to platform data without a mapping table that only one database could produce.
 
 Worth stating because it is the tempting shortcut: where the code is absent, **skip and log rather than falling back to the local id**. A token that is sometimes an ecosystem-wide code and sometimes one app's primary key is not a token at all — the consumer cannot tell which it is holding, and the two namespaces have no reason to stay disjoint.
 
-**7. Restate pull-and-seed as a choice rather than a limitation.** Consumer docs currently describe the absence of live inventory sync as architecturally closed. It is not — it is correct in both deployment modes for different reasons. In operator mode the app spans tenants, so live query would mean holding one credential per organization. In customer mode it could live-query and still should not, because a synchronous cross-app dependency in the ticket path is worse than a stale inventory row. Worth noting that customer mode gets sync nearly free: the existing `things` list rule already admits `@request.auth.collectionName = "users" && organization = @request.auth.current_organization`, so an ordinary org-scoped user credential can pull inventory with no new endpoint, no new export, and no new credential class.
+**7. Restate pull-and-seed as a choice rather than a limitation.** Consumer docs currently describe the absence of live inventory sync as architecturally closed. It is not — it is correct in both deployment modes for different reasons. In provider mode the app spans tenants, so live query would mean holding one credential per organization. In customer mode it could live-query and still should not, because a synchronous cross-app dependency in the ticket path is worse than a stale inventory row. Worth noting that customer mode gets sync nearly free: the existing `things` list rule already admits `@request.auth.collectionName = "users" && organization = @request.auth.current_organization`, so an ordinary org-scoped user credential can pull inventory with no new endpoint, no new export, and no new credential class.
 
 ---
 
@@ -216,7 +216,7 @@ Two ordering constraints, and both bite silently if ignored.
 
 **Immutability is a promise the database cannot keep.** A rule term guards the record API. It does not guard a superuser in the PocketBase dashboard, and it never will.
 
-That is tolerable while a code is only a lookup handle. It stops being tolerable once the same string is printed on labels across a customer's buildings and baked into signed account JWTs — at which point an edit is a site visit with a label printer *and* a re-signed export, and the failure in between is silent. The mitigation is not technical: codes are operator-assigned at creation, and the reason they cannot be changed belongs in a comment next to the rule, the way `leaf_nodes` already does it.
+That is tolerable while a code is only a lookup handle. It stops being tolerable once the same string is printed on labels across a customer's buildings and baked into signed account JWTs — at which point an edit is a site visit with a label printer *and* a re-signed export, and the failure in between is silent. The mitigation is not technical: codes are assigned by a Platform Operator at creation, and the reason they cannot be changed belongs in a comment next to the rule, the way `leaf_nodes` already does it.
 
 ---
 
@@ -249,7 +249,7 @@ All six steps shipped across `platform` and `helpdesk`. The decision itself surv
 
 **Presence is guaranteed by a hook, not by `required`, and the index is partial.** Documented in rule 1, but worth repeating as the thing that made it one migration instead of two: a required column plus a total unique index cannot be imported over existing rows that have no code, and a column cannot be backfilled before it exists.
 
-**Hook errors are invisible unless they are the right type.** The create hook pre-checks code uniqueness specifically so an operator gets a useful message instead of a driver constraint violation. A plain `fmt.Errorf` from `OnRecordCreate` reaches the client as `{"message":"Failed to create record."}` and nothing else — so the check bought exactly nothing until it was switched to `apis.NewBadRequestError`. Worth knowing before writing the next guard hook.
+**Hook errors are invisible unless they are the right type.** The create hook pre-checks code uniqueness specifically so a Platform Operator gets a useful message instead of a driver constraint violation. A plain `fmt.Errorf` from `OnRecordCreate` reaches the client as `{"message":"Failed to create record."}` and nothing else — so the check bought exactly nothing until it was switched to `apis.NewBadRequestError`. Worth knowing before writing the next guard hook.
 
 **The freeze reports 404, not 403.** A record failing its update rule is indistinguishable from one that does not exist, by PocketBase's design. The stored value is provably unchanged and the UI disables the field, but anything hitting the rule from outside the UI gets a confusing status.
 
@@ -271,11 +271,11 @@ The density argument for a bare payload turned out to be stronger than the estim
 
 So the bare code does not merely produce a smaller symbol: it makes **maximum** error correction free. The URL form at the same recovery level would put roughly four times the modules on an identically sized sticker, halving the width of each one. A label that lives in a plant room and gets scratched, painted and wiped wants that headroom spent on recovery.
 
-Label generation shipped in both apps as the same component, operator-branded — the brand is on the sticker because whoever finds a broken device needs to know who services it, while the *tenant* name deliberately is not, since a sticker in a public hallway is readable by anyone walking past. The scanner shipped in the helpdesk only; the platform already had a generic dashboard scanner that resolves a scanned value through a configured filter, and a bare code works with it unmodified — which is the clearest evidence available that the payload decision matched what a real consumer already expected.
+Label generation shipped in both apps as the same component, provider-branded — the brand is on the sticker because whoever finds a broken device needs to know who services it, while the *tenant* name deliberately is not, since a sticker in a public hallway is readable by anyone walking past. The scanner shipped in the helpdesk only; the platform already had a generic dashboard scanner that resolves a scanned value through a configured filter, and a bare code works with it unmodified — which is the clearest evidence available that the payload decision matched what a real consumer already expected.
 
 One constraint surfaced only once the labels were real, and it is worth recording because nothing above anticipated it. **A label has a physical size, and the first cut did not.** Artwork laid out in CSS pixels printed at roughly 4.7″ × 1.7″ — matching no stock anyone sells. Labels are now dimensioned in **millimetres** at 2″ × 1″ and 4″ × 2″, the two sizes that exist in both plain and UHF RFID media, with the per-size `@page` box written from script (`@page` cannot be interpolated from a template or a scoped style block, so a template-driven layout silently prints onto whatever paper the browser has selected).
 
-The RFID variant is what makes one layout serve both. A centred UHF dipole's chip bump causes print voids and can crack the die under a thermal head, so both sizes reserve a clear **keep-out band** across the centre and the artwork straddles it — QR to one side, text to the other. That costs nothing on plain stock and means an operator never has to choose a label design based on which media is loaded. Inlay geometry varies by vendor, so the reserved widths are conservative defaults rather than a guarantee; the UI can reveal the band for checking against a datasheet.
+The RFID variant is what makes one layout serve both. A centred UHF dipole's chip bump causes print voids and can crack the die under a thermal head, so both sizes reserve a clear **keep-out band** across the centre and the artwork straddles it — QR to one side, text to the other. That costs nothing on plain stock and means a provider never has to choose a label design based on which media is loaded. Inlay geometry varies by vendor, so the reserved widths are conservative defaults rather than a guarantee; the UI can reveal the band for checking against a datasheet.
 
 This interacts with the density finding above rather than sitting beside it. At a 4-module quiet zone the worst-case realistic code is 33 modules across, giving 0.61 mm per module on the small stock — above the ~0.5 mm a phone camera needs, but not by much. The URL form's 41×41 symbol would have pushed the small size below that floor, so on 2″ × 1″ stock the bare payload is not merely a better choice, it is the difference between a label that scans and one that does not.
 

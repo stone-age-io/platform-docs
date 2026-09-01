@@ -16,7 +16,7 @@ Before introducing the layers, a quick clarification — the docs use two archit
 - **The Data Plane** (NATS, JetStream, KV, Nebula) is the runtime: every byte of telemetry, every command, every live state update flows through it.
 - **The Data Plane is composed of four layers** (0–3). Layer 0 is the always-on substrate; Layers 1–3 are tiers you add as needed.
 - **The Control Plane sits alongside the Data Plane**, not inside any layer. It provisions the identities and credentials that the Data Plane uses at runtime. PocketBase is itself a narrow NATS client on the System Account — it publishes credential updates on admin subjects like `$SYS.REQ.CLAIMS.UPDATE` so cluster state stays in sync with the Control Plane in real-time — but it does not participate in tenant-level event flow (telemetry, rule traffic, device commands).
-- **The Control Plane's own access control is role-scoped and rule-based.** Who may read or change a record is decided entirely by the PocketBase API rules on each collection, evaluated against four per-organization roles plus a platform-Operator flag. That is the Control Plane's boundary; the Data Plane's is cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
+- **The Control Plane's own access control is role-scoped and rule-based.** Who may read or change a record is decided entirely by the PocketBase API rules on each collection, evaluated against four per-organization roles plus a Platform Operator flag. That is the Control Plane's boundary; the Data Plane's is cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
 
 This distinction matters. When something goes wrong with a PocketBase upgrade, the Data Plane keeps running and your devices keep talking. When a Layer 3 TSDB goes offline, the Control Plane and the rest of the Data Plane are unaffected. The planes separate management concerns from runtime concerns; the layers separate runtime concerns into composable tiers.
 
@@ -83,7 +83,7 @@ The substrate is the always-on foundation. It handles message transport, durable
 - **Durable state.** JetStream streams for "at-least-once" delivery, KV buckets for live state (the Digital Twin pattern — see [Architecture](./architecture.md)).
 - **Connectivity.** Nebula mesh for secure, peer-to-peer edge connectivity with outbound-only traffic.
 
-**Bootstrapped from the Control Plane.** Layer 0 isn't a component you install and point at PocketBase — it's produced by PocketBase. When you initialize the Control Plane, it generates the Operator JWT, System Account, resolver configuration, and `nats-server` config that you use to stand up the NATS server or cluster. Similarly, each Organization you create yields a Nebula CA that can issue host certificates. You can export these artifacts with a single command and run NATS (and Nebula Lighthouses) wherever you want — on the same host, on separate hosts, in a cluster, at the edge. See [Architecture](./architecture.md) for the component topology and [Getting Started](./getting-started.md) for the runnable commands.
+**Bootstrapped from the Control Plane.** Layer 0 isn't a component you install and point at PocketBase — it's produced by PocketBase. When you initialize the Control Plane, it generates the NATS Operator JWT, System Account, resolver configuration, and `nats-server` config that you use to start the NATS server or cluster. Similarly, each Organization you create yields a Nebula CA that can issue host certificates. You can export these artifacts with a single command and run NATS (and Nebula Lighthouses) wherever you want — on the same host, on separate hosts, in a cluster, at the edge. See [Architecture](./architecture.md) for the component topology and [Getting Started](./getting-started.md) for the runnable commands.
 
 **Provisioned and kept in sync by the Control Plane at runtime.** Once Layer 0 is running, PocketBase stays connected to NATS on the System Account and publishes credential and account updates (`$SYS.REQ.CLAIMS.UPDATE`) so the cluster reflects Control Plane changes in real-time — no restarts, no config reloads. Crucially, PocketBase does *not* participate in tenant-level event flow. No telemetry, no rules, no device commands. Its NATS traffic is narrow and administrative. Rule engines, stream processors, agents, and users see each other on the bus; they do not see PocketBase there.
 
@@ -147,7 +147,7 @@ Layer 2 is where genuinely stateful computation happens — the kind that needs 
 - **Joins.** Correlating two streams by key within a time window.
 - **Continuous queries.** SQL-like expressions that continuously evaluate over streams rather than finite tables.
 - **Built-in windowing and retraction semantics.** Proper handling of late-arriving events and intermediate result updates.
-- **Rich operator libraries.** Filters, projections, enrichments, CEP (complex event processing) operators that would be tedious to express declaratively.
+- **Rich libraries of stream operators.** Filters, projections, enrichments, and CEP (complex event processing) operators that would be tedious to express declaratively.
 
 **The handoff from Layer 1 to Layer 2:**
 

@@ -9,7 +9,7 @@
 
 ## Context
 
-The Control Plane and the NATS server are configured separately today. `stone-age nats export` reads the operator JWT and System Account out of the database and writes an `operator.jwt`, an `operator.conf`, and a `nats.conf`; you then run `nats-server -c nats.conf` yourself. That is [Getting Started §3](../getting-started.md#3-stand-up-the-nats-server), and §4 exists only because §3 does.
+The Control Plane and the NATS server are configured separately today. `stone-age nats export` reads the NATS Operator JWT and System Account out of the database and writes an `operator.jwt`, an `operator.conf`, and a `nats.conf`; you then run `nats-server -c nats.conf` yourself. That is [Getting Started §3](../getting-started.md#3-start-the-nats-server), and §4 exists only because §3 does.
 
 That split costs us three things:
 
@@ -126,7 +126,7 @@ Roughly in this order. Each step is useful on its own and none of them requires 
 **2. `--nats` on the serve command.** One new file, in the region of 150 lines:
 
 - `server.ProcessConfigFile(path)` → set `NoSigs = true` → `NewServer` → `go Start()` → `ReadyForConnections(15s)`
-- Bind `OnServe`, not `OnBootstrap`. pb-nats calls `e.Next()` *before* it seeds the operator, so a handler registered after `pbnats.Setup` runs **earlier**, when the operator JWT does not exist yet.
+- Bind `OnServe`, not `OnBootstrap`. pb-nats calls `e.Next()` *before* it seeds the NATS Operator, so a handler registered after `pbnats.Setup` runs **earlier**, when the NATS Operator JWT does not exist yet.
 - Bind `OnTerminate` → `Shutdown()`.
 - `NoSigs = true` is not optional. Without it `nats-server` installs its own `SIGINT`/`SIGTERM` handlers and fights PocketBase for them.
 - Route `server.Logger` into PocketBase's logger, or the two log streams interleave into noise.
@@ -145,7 +145,7 @@ Roughly in this order. Each step is useful on its own and none of them requires 
 
 - The ordering problem disappears at rung 1. So does the class of bug the port mismatch belongs to: the server and the client are configured from one artifact.
 - Getting Started gets **shorter**. §3 loses its second process and §4 folds into it, at the cost of one extra command.
-- Tests get a real bus in-process. `scripts/test-authz.sh` and any integration test can stand up genuine NATS with no external dependency — worth having even if nobody runs `--nats` in production.
+- Tests get a real bus in-process. `scripts/test-authz.sh` and any integration test can start a genuine NATS server with no external dependency — worth having even if nobody runs `--nats` in production.
 - Moving between topologies is config editing, not data migration.
 - `nats export` stops being a step people run once and forget.
 
@@ -175,7 +175,7 @@ This needs a written runbook before `--nats` ships, not after. People hit this e
 
 ## As implemented
 
-Shipped as `stone-age serve --nats` (`nats.embedded` in `config.yaml`), off by default, loading `./nats-config/nats.conf`. Operator guidance lives in [Operations §2.1](../operations.md#21-where-the-nats-server-runs) and the migration runbook in [§5.5](../operations.md#55-moving-the-nats-server-out-of-the-control-plane).
+Shipped as `stone-age serve --nats` (`nats.embedded` in `config.yaml`), off by default, loading `./nats-config/nats.conf`. Guidance for running it lives in [Operations §2.1](../operations.md#21-where-the-nats-server-runs) and the migration runbook in [§5.5](../operations.md#55-moving-the-nats-server-out-of-the-control-plane).
 
 Two deviations from the plan above, both forced:
 

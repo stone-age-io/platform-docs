@@ -12,7 +12,7 @@ Operational state lives in different places, with different owners and different
 
 | State | Where it lives | Loss impact | Protected by |
 | :--- | :--- | :--- | :--- |
-| **Identity hierarchy** — Operator key, NATS Accounts, Nebula CAs, user/Thing credentials | Control Plane (`pb_data`) | **Severe.** The Operator key is the root of the entire chain of trust — losing it orphans every Account and credential it signed. | This page (§3). |
+| **Identity hierarchy** — NATS Operator key, NATS Accounts, Nebula CAs, user/Thing credentials | Control Plane (`pb_data`) | **Severe.** The NATS Operator key is the root of the entire chain of trust — losing it orphans every Account and credential it signed. | This page (§3). |
 | **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
 | **Live state** — Digital Twin KV, JetStream streams | NATS servers (JetStream storage) | Low to moderate. Twins repopulate from device heartbeats; stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
 | **Historical telemetry** | Your Layer 3 TSDB | Your call — it's [BYO](./observability.md). | Your TSDB's own backup tooling. |
@@ -20,7 +20,7 @@ Operational state lives in different places, with different owners and different
 
 The takeaway: **`pb_data` is the crown jewels.** It's also a single directory dominated by one SQLite database, which makes protecting it straightforward.
 
-> **Backups contain secrets.** A Control Plane backup includes the Operator key, every org's Nebula CA private key, and credential material. Treat backup artifacts with the same care as the live database: restrict the S3 bucket, encrypt at rest, and don't leave downloaded copies on workstations. Consider `--encryptionEnv` (see [Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
+> **Backups contain secrets.** A Control Plane backup includes the NATS Operator key, every org's Nebula CA private key, and credential material. Treat backup artifacts with the same care as the live database: restrict the S3 bucket, encrypt at rest, and don't leave downloaded copies on workstations. Consider `--encryptionEnv` (see [Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
 
 ---
 
@@ -53,7 +53,7 @@ Nothing in that bottom half is latency-critical. So instead of running an HA dat
 
 ### 2.1 Where the NATS server runs
 
-The table above assumes the classic split: Control Plane in one process, `nats-server` in another. `stone-age serve --nats` runs the NATS server inside the Control Plane process instead, from the same `nats.conf` that `nats export` writes ([Getting Started §3](./getting-started.md#3-stand-up-the-nats-server)).
+The table above assumes the classic split: Control Plane in one process, `nats-server` in another. `stone-age serve --nats` runs the NATS server inside the Control Plane process instead, from the same `nats.conf` that `nats export` writes ([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
 
 That is a real deployment option, not a development toy, but it changes the first row of that table. There are three rungs and you move between them by editing config:
 
@@ -159,16 +159,20 @@ Or equivalently: admin UI → **Settings → Backups** → restore. Or, if the d
 
 Total host loss. You need: the platform binary (or the means to build it) and any backup artifact.
 
-1. Stand up the new host; install the `stone-age` binary.
-2. Recover `pb_data` — restore the ZFS replica, unzip a native backup into place, or start the binary empty and use `pb backup upload` + `pb backup restore` against it.
-3. `./stone-age serve` with your existing `config.yaml` / `STONE_AGE_*` env vars.
-4. Re-point DNS / the reverse proxy.
+1. Prepare the new host.
+2. Install the `stone-age` binary on it.
+3. Recover `pb_data`. Use whichever of these applies:
+    - Restore the ZFS replica.
+    - Unzip a native backup into place.
+    - Start the binary empty, then run `pb backup upload` followed by `pb backup restore` against it.
+4. Run `./stone-age serve` with your existing `config.yaml` and `STONE_AGE_*` env vars.
+5. Re-point DNS and the reverse proxy at the new host.
 
 The NATS cluster needs **no changes** — it kept running the whole time, and every credential it validates was signed by keys that are back in place. The restored Control Plane reconnects on the System Account and resumes propagating changes in real time, exactly as described in [Architecture §2](./architecture.md#2-component-topology).
 
 ### Verify after any restore
 
-- Console login works (Operator user) and the **NATS Status: Connected** indicator is green.
+- Console login works (Platform Operator user) and the **NATS Status: Connected** indicator is green.
 - Create a throwaway Thing in a test org — confirms the provisioning hooks and the System Account connection end-to-end.
 - `leaf-sync` heartbeats reappear on the Leaf Nodes list within a few sync intervals.
 
@@ -186,11 +190,20 @@ The platform binary embeds its schema and runs **migrations** automatically: rep
 
 The procedure:
 
-1. **Read the release notes.** Pre-1.0, breaking changes can occur; they're called out per release and have so far been minimal.
-2. **Back up.** `pb backup create --name "pre-upgrade-vX.Y.Z"` — and/or take a ZFS snapshot. Thirty seconds of discipline that makes step 5 trivial.
-3. **Swap the binary** and restart the service. Migrations run; the server comes up.
-4. **Verify** — the same checklist as §4.
-5. **If it went wrong:** stop the service, put the previous binary back, restore the pre-upgrade backup (or `zfs rollback`), start. Migrations are forward-only — **rollback is always *old binary + restored data*, never the new binary against old data.**
+1. **Read the release notes.** Pre-1.0, breaking changes can occur. They are called out per release and have so far been minimal.
+2. **Back up.** Run `pb backup create --name "pre-upgrade-vX.Y.Z"`, or take a ZFS snapshot, or both. Thirty seconds of discipline that makes the rollback below trivial.
+3. **Swap the binary.**
+4. **Restart the service.** Migrations run, then the server comes up.
+5. **Verify** — the same checklist as §4.
+
+**If it went wrong**, roll back in this order:
+
+1. Stop the service.
+2. Put the previous binary back.
+3. Restore the pre-upgrade backup, or run `zfs rollback`.
+4. Start the service.
+
+Migrations are forward-only. **Rollback is always *old binary + restored data*, never the new binary against old data.**
 
 ### 5.2 Pre-1.0 expectations
 
@@ -225,7 +238,7 @@ The Control Plane is the only component with a database and migrations. Everythi
 
 ### 5.5 Moving the NATS server out of the Control Plane
 
-Going from `serve --nats` to a standalone `nats-server` ([§2.1](#21-where-the-nats-server-runs)). Almost all of it is free: the operator JWT, every account, and every user credential live in the Control Plane database and are re-derived, not migrated. Devices keep the credentials they already hold.
+Going from `serve --nats` to a standalone `nats-server` ([§2.1](#21-where-the-nats-server-runs)). Almost all of it is free: the NATS Operator JWT, every account, and every user credential live in the Control Plane database and are re-derived, not migrated. Devices keep the credentials they already hold.
 
 **JetStream data is the exception.** Streams, consumers, and the KV buckets holding Digital Twin state live in the embedded server's store directory. An R1 stream on the embedded node dies with that node. Plan for it before you start.
 
@@ -235,24 +248,32 @@ The easiest version of this migration is the one where there is nothing to move:
 
 Otherwise, replicate before you drain:
 
-1. **Add the external node.** Give both configs a matching `cluster` block with a shared `name` and routes pointing at each other. Restart both. Confirm the route formed — `nats server list` should show two servers in the cluster.
+1. **Add the external node.**
+    - Give both NATS configs a matching `cluster` block. Use the same `name` in both, and point each one's routes at the other.
+    - Restart both servers.
+    - Confirm the route formed. `nats server list` must show two servers in the cluster.
 
-2. **Raise replicas on anything you intend to keep.** For each stream and KV bucket on the embedded node, set `replicas: 2` and wait for the new peer to report current. Nothing is safe to drain until it is replicated.
-   ```bash
-   nats stream update <name> --replicas 2
-   nats kv status <bucket>          # confirm the peer is current, not catching up
-   ```
+2. **Raise replicas on anything you intend to keep.** Nothing is safe to drain until it is replicated.
+    - Set `replicas: 2` on every stream on the embedded node: `nats stream update <name> --replicas 2`.
+    - Set `replicas: 2` on every KV bucket on the embedded node.
+    - Confirm each one reports the new peer as **current**, not catching up: `nats kv status <bucket>`.
 
-3. **Drain the embedded node**, so JetStream moves leadership off it rather than losing it abruptly:
-   ```bash
-   nats server raft step-down
-   ```
+3. **Drain the embedded node.** This moves JetStream leadership off the node, rather than losing it abruptly.
+    - Step down its raft leadership: `nats server raft step-down`.
 
-4. **Stop the embedded server** — drop `--nats` (or set `nats.embedded: false`) and restart the Control Plane. Point `nats.server_url` at the external node.
+4. **Stop the embedded server.**
+    - Drop `--nats`, or set `nats.embedded: false`.
+    - Point `nats.server_url` at the external node.
+    - Restart the Control Plane.
 
-5. **Return replicas to their intended value.** A single remaining node cannot hold `replicas: 2`; set them back to 1, or add the third node now and go to 3.
+5. **Return replicas to their intended value.** A single remaining node cannot hold `replicas: 2`. Do one of the following:
+    - Set the replica count back to `1` on every stream and bucket you changed in step 2.
+    - Add the third node now, then set the replica count to `3`.
 
-6. **Verify before deleting anything.** Devices reconnect, twins update, `nats stream report` shows every stream present with the expected message counts. Only then remove the old store directory.
+6. **Verify before you delete anything.**
+    - Confirm devices reconnect and twins update.
+    - Confirm `nats stream report` shows every stream present, with the expected message counts.
+    - Remove the old store directory. Do this last, and only once the two checks above pass.
 
 > **Rehearse this on a copy first** (§5.3). Steps 2 and 3 are where data is lost if the peer was not actually current, and "it looked fine" is not the same as a message count that matches.
 
@@ -270,7 +291,7 @@ Stone-Age.io is a set of independent binaries, so the compatibility question is 
 | **Agent** | PocketBase auth API (bootstrap only) + NATS protocol | After bootstrap it's a pure NATS client. |
 | **`rule-router`** | NATS subjects + KV only | Knows nothing about PocketBase. Versioned independently. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Fully platform-agnostic. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported operator/resolver config ([Getting Started §3](./getting-started.md#3-stand-up-the-nats-server)) | Any modern NATS 2.x with JetStream and JWT/operator-mode auth. Follow upstream support guidance. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Any modern NATS 2.x with JetStream and JWT/operator-mode auth. Follow upstream support guidance. |
 | **`nebula`** | Certificates issued by the org CAs | Stock upstream; the platform only mints standard Nebula certs and configs. |
 
 Practical guidance:
@@ -290,12 +311,12 @@ A condensed pre-flight list for taking a deployment to production:
 - [ ] **`pb_data` on its own dataset/volume**, ideally ZFS with automatic snapshots (§3.3).
 - [ ] **App-settings encryption** enabled via `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP, S3 and OAuth2 secrets — **and nothing else**.
 - [ ] **Column encryption set separately** — `nats.encryption_key` and `nebula.encryption_key` in `config.yaml` are what encrypt NATS account and user seeds and Nebula CA and host private keys. They are empty by default, they cannot be applied retroactively to rows that already exist, and losing a key loses the material it protected. A checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
-- [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)). Remember the log is **operator-only**: no tenant role can read it, so plan for who fields "who changed this?" requests ([Authorization §5](./authorization.md#5-the-audit-log-is-operator-only)).
+- [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)). Remember the log is **Platform-Operator-only**: no tenant role can read it, so plan for who fields "who changed this?" requests ([Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only)).
 - [ ] **NATS account limits reviewed** — the shipped defaults (`max_connections: 10`, `max_subscriptions: 50`) are conservative; size them for your real per-org fleets ([Configuration §2](./configuration.md#2-section-reference)).
 - [ ] **NATS clustered** (3+ nodes) with `replicas: 3` on JetStream streams and KV buckets that matter.
 - [ ] **Credential expiry reviewed** — the NATS Users and Nebula Hosts lists flag anything expiring within 30 days, and anything already expired. Nebula host certificates always carry an expiry (`validity_years`); NATS user JWTs carry one only if it was set. Expired device credentials fail silently and, because a fleet is usually provisioned in a batch, they tend to fail *together*. Regenerate before the date, not after the outage. **Nebula’s expiry is the worse one**, because Nebula is the out-of-band path: reissuing a host certificate needs the Control Plane you were trying to reach over the mesh in the first place, so an expired fleet takes away the route you would have used to fix it.
 - [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing or Leaf Node is the control that actually cuts a device off (session killed, credential revoked), and that reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
-- [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through an Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
+- [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through a Platform Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
 - [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).
 - [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the only tenancy enforcement in the platform, and the suite is the only thing that checks them. If the release changed a rule, confirm it also shipped a migration (§5.1).
 - [ ] **A `stone pull` workspace in git** for reviewable, diffable tenant configuration ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).

@@ -127,19 +127,19 @@ This is the first command you run on a fresh install. It creates a **SuperUser**
 
 This applies the embedded migrations, which import `schema.json` — the collections **and the API rules that are the platform's only authorization layer** ([Authorization](./authorization.md)). Skipping this step is the classic first-install mistake; the next step depends on the fields it creates.
 
-### Step 3: Bootstrap the first Organization and Operator user
+### Step 3: Bootstrap the first Organization and Platform Operator user
 
 ```bash
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "Acme MSP"
 ```
 
-The `bootstrap` command creates your first **Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, links the pre-existing NATS System Account/User/Role to it, and — via `--operator-org` — creates the platform operator's *own* organization, whose NATS account is the hub for shared operator services. `--org` defaults to `System`; omit `--email`, `--password`, or `--operator-org` and it prompts.
+The `bootstrap` command creates your first **Platform Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, links the pre-existing NATS System Account/User/Role to it, and — via `--operator-org` — creates the provider's *own* organization, whose NATS account is the hub for shared provider services. `--org` defaults to `System`; omit `--email`, `--password`, or `--operator-org` and it prompts.
 
-Together with the embedded admin panel, `bootstrap` is the **only** way to grant Operator status. No API rule permits writing `is_operator`, so an Operator cannot be minted over REST — not by an Owner, and not by another Operator.
+Together with the embedded admin panel, `bootstrap` is the **only** way to grant Platform Operator status. No API rule permits writing `is_operator`, so a Platform Operator cannot be minted over REST — not by an Owner, and not by another Platform Operator.
 
-From here forward, use the **Operator** user to administer the platform from the UI. The SuperUser is best reserved for infrastructure-level management (schema imports, NATS Operator key custody, troubleshooting via the embedded admin UI at `/_/`).
+From here forward, use the **Platform Operator** user to administer the platform from the UI. The SuperUser is best reserved for infrastructure-level management (schema imports, NATS Operator key custody, troubleshooting via the embedded admin UI at `/_/`).
 
-> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org`, and `is_operator_org` — fields that don't exist until Step 2 has imported the schema. PocketBase **silently drops** writes to fields that don't exist, so running `bootstrap` before `migrate up` used to "succeed" while producing a platform with no Operator and no error anywhere. The command now refuses to run before the migrations, but the order is still the thing to remember.
+> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org`, and `is_operator_org` — fields that don't exist until Step 2 has imported the schema. PocketBase **silently drops** writes to fields that don't exist, so running `bootstrap` before `migrate up` used to "succeed" while producing a platform with no Platform Operator and no error anywhere. The command now refuses to run before the migrations, but the order is still the thing to remember.
 
 ### Checkpoint — you have a working inventory
 
@@ -149,7 +149,7 @@ Start the server:
 ./stone-age serve
 ```
 
-Sign in at `http://localhost:8090` as your Operator user. NATS isn't up yet — §3 handles that — and everything below works regardless:
+Sign in at `http://localhost:8090` as your Platform Operator user. NATS isn't up yet — §3 handles that — and everything below works regardless:
 
 - Create Organizations, and invite users into them with roles.
 - Create Locations, Location Types, and Thing Types.
@@ -186,9 +186,9 @@ curl -s -X POST http://localhost:8090/api/org/things \
 
 ---
 
-## 3. Stand Up the NATS Server
+## 3. Start the NATS Server
 
-Everything above this line is depth 1 — inventory, no messaging. This section starts depth 2: standing up the fabric so the inventory records you just created can hold identities and talk. It also drains anything §2 left queued.
+Everything above this line is depth 1 — inventory, no messaging. This section starts depth 2: starting the fabric so the inventory records you just created can hold identities and talk. It also drains anything §2 left queued.
 
 Now that the Control Plane database has been seeded with the NATS Operator and System Account, export the matching server-side config:
 
@@ -196,7 +196,7 @@ Now that the Control Plane database has been seeded with the NATS Operator and S
 ./stone-age nats export --output ./nats-config/
 ```
 
-The exported directory contains the operator JWT, the operator config, and a ready-to-use `nats.conf`. Paths inside it are absolute, so it works from any working directory, and the JWT and JetStream directories are created on first run.
+The exported directory contains the NATS Operator JWT, the NATS Operator config, and a ready-to-use `nats.conf`. Paths inside it are absolute, so it works from any working directory, and the JWT and JetStream directories are created on first run.
 
 Now run a server against it. There are two ways, and they use the same config file.
 
@@ -232,9 +232,9 @@ If you used **Option A**, the platform is already running and you can skip strai
 ./stone-age serve
 ```
 
-The UI is available at `http://localhost:8090` (sign in with your Operator user). The embedded admin UI is at `http://localhost:8090/_/` (sign in with your SuperUser).
+The UI is available at `http://localhost:8090` (sign in with your Platform Operator user). The embedded admin UI is at `http://localhost:8090/_/` (sign in with your SuperUser).
 
-With NATS now running, the console can hold a live connection to the bus — this is what turns the static inventory from §2 into a live view. Once you're signed in as the Operator, point the browser at NATS:
+With NATS now running, the console can hold a live connection to the bus — this is what turns the static inventory from §2 into a live view. Once you're signed in as the Platform Operator, point the browser at NATS:
 
 1. Navigate to **Settings** in the sidebar.
 2. Under **NATS Connection**, add your NATS WebSocket URL — usually `ws://localhost:9222` for a local server, or `wss://...` once TLS is in place.
@@ -243,7 +243,7 @@ With NATS now running, the console can hold a live connection to the bus — thi
 
 You should see a green **Status: Connected** indicator.
 
-> **For real workloads, create a new Organization (and its NATS Account/User) rather than reusing the System account.** The System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data. Note that **creating an Organization requires an Operator** — `organizations.createRule` admits nothing else, so do this while signed in as the Operator user from Step 3 ([Authorization §3](./authorization.md#3-cross-organization-identities)).
+> **For real workloads, create a new Organization (and its NATS Account/User) rather than reusing the System account.** The System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data. Note that **creating an Organization requires a Platform Operator** — `organizations.createRule` admits nothing else, so do this while signed in as the Platform Operator user from Step 3 ([Authorization §3](./authorization.md#3-cross-organization-identities)).
 
 ---
 

@@ -8,7 +8,7 @@ You can use it as a plain multi-tenant inventory and stop there, or grow it into
 
 ## What We Call Things
 
-The docs use these five names precisely. They are not interchangeable, and mixing them up is the fastest way to misread an architecture diagram.
+The docs use these eight names precisely. They are not interchangeable, and mixing them up is the fastest way to misread an architecture diagram.
 
 | Name | What it means | What it is *not* |
 | :--- | :--- | :--- |
@@ -17,8 +17,13 @@ The docs use these five names precisely. They are not interchangeable, and mixin
 | **Stone Age Console** (or "the console") | The Vue web UI embedded in the Control Plane binary. | Not the security boundary — it renders what the API rules already permit. |
 | **`stone`** | The client CLI you run from a laptop or CI runner. | Not the server. See [Stone CLI](./stone-cli.md) for the `stone` vs `stone-age` distinction. |
 | **Data Plane** | The runtime: NATS, JetStream, KV, and Nebula. Organized internally as [four layers](./platform-layers.md). | Not managed *by* the Control Plane at runtime — it is provisioned by it, then runs independently. |
+| **NATS Operator** | The root key and JWT of the NATS trust chain. The Control Plane holds it and signs every organization's NATS Account with it. Config key: `operator_name`. | Not a person. Nobody signs in as the NATS Operator. |
+| **Platform Operator** | A human user account with `is_operator = true`. Creates and edits Organizations, invites users into any org, reads the audit log. | Not a tenant role — it is a flag on the user, independent of any Membership. Not the NATS Operator key. |
+| **the provider** | Whoever runs this deployment for its tenants — an MSP, an integrator, or an internal IT group. | Not a record in the database. The provider's *own* organization is the one created by `--operator-org`. |
 
 When this page says "the platform provides X," it means the system as a whole. When it says "the Control Plane does X," it means that specific binary.
+
+**"Operator" always carries a qualifier in these docs** — **NATS Operator** for the key, **Platform Operator** for the person. Bare "operator" appears only inside literal identifiers you type or configure (`is_operator`, `operator_name`, `--operator-org`, `operator_jwt`), where it is the code's spelling rather than ours.
 
 ---
 
@@ -102,7 +107,7 @@ Stone-Age.io is not one monolithic executable — it's a small set of independen
 - **NATS** and **Nebula** are their own upstream binaries.
 - **Stream processors** (eKuiper, Benthos, custom) and **Layer 3 components** (Telegraf, TSDB) are additional single-binary components you add only when you need them.
 
-Each component communicates with the others through NATS subjects. There's no service mesh to configure, no Docker Compose hell, no Kubernetes cluster to stand up just to get off the ground. Deploy each binary where it belongs — the Control Plane centrally, the Agent at the edge, the rule engine wherever makes operational sense — and let NATS handle the wiring.
+Each component communicates with the others through NATS subjects. There's no service mesh to configure, no Docker Compose hell, no Kubernetes cluster to run just to get started. Deploy each binary where it belongs — the Control Plane centrally, the Agent at the edge, the rule engine wherever makes operational sense — and let NATS handle the wiring.
 
 ### 2. Built-in Multi-Tenancy
 
@@ -110,7 +115,7 @@ Multi-tenancy is the foundational core. Every Organization created in the UI aut
 
 ### 3. Edge-First Connectivity
 
-By leveraging **NATS.io** for messaging and **Nebula** for overlay networking, the platform excels in unreliable environments. Things connect via outbound-only traffic, punching through firewalls and CGNATs (LTE/5G/Satellite/etc.) without requiring complex port forwarding or static IPs.
+The platform uses **NATS.io** for messaging and **Nebula** for overlay networking, which is what makes it work on unreliable links. Things connect with outbound-only traffic, crossing firewalls and CGNATs (LTE/5G/Satellite) with no port forwarding and no static IPs.
 
 ### 4. Principled Layering, Not Feature Sprawl
 

@@ -14,7 +14,7 @@ Organizations are the top-level container for all data and infrastructure. Every
 
 - **Isolation:** Each Organization receives its own private NATS Account and Nebula Certificate Authority.
 - **Organization Code:** A short slug (`acme`, `northwind`) that is the **one globally unique identifier in the ecosystem** — every other code on the platform is unique only *within* an Organization. It is derived from the name when you don't supply one, and it roots the public namespace: the managed-org subject rewrite carries it, sibling apps name a tenant by it, and it is the handle that lets a consumer join their data to the platform's without a mapping table. **Optional, but immutable once set** — creation refuses a colliding code rather than inventing `acme-2`, because a wrong code would be baked into signed account JWTs and printed on labels long before anyone noticed. `system` and `operator` are reserved. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
-- **Ownership:** An organization has an **Owner** — the identity that may delete it. Creating and *editing* the organization record are platform-**Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, so no tenant role has an update path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
+- **Ownership:** An organization has an **Owner** — the identity that may delete it. Creating and *editing* the organization record are **Platform Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, so no tenant role has an update path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
 - **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding. Invitations can offer any role except `owner`.
 
 ### Memberships
@@ -34,7 +34,7 @@ A Membership binds a PocketBase User to an Organization.
 
 Two roles exist *outside* the per-organization Membership model and apply to the user account itself:
 
-- **Operator** (`users.is_operator = true`): Can create, edit, and delete Organizations and invite users into any Org. Editing the organization record is **exclusively** an Operator action — no tenant role, not even Owner, has an update path to it. Operators are also the only identities that can read the **audit log** (`audit_logs`); no tenant role can. They are the day-to-day platform administrators and the recommended identity for managing the system from the UI. The first Operator is created by the `bootstrap` command, which — along with the embedded admin panel — is the only way to grant Operator status; the API cannot.
+- **Platform Operator** (`users.is_operator = true`): Can create, edit, and delete Organizations and invite users into any Org. Editing the organization record is **exclusively** a Platform Operator action — no tenant role, not even Owner, has an update path to it. A Platform Operator is also the only identity that can read the **audit log** (`audit_logs`); no tenant role can. Platform Operators are the day-to-day platform administrators and the recommended identity for managing the system from the UI. The first one is created by the `bootstrap` command, which — along with the embedded admin panel — is the only way to grant Platform Operator status. The API cannot.
 - **SuperUser** (`_superusers` collection): A backend service account with full database access regardless of API rules. Created via `./stone-age superuser upsert` and intended for infrastructure-level management — schema imports, NATS Operator/System Account seeding, and other platform-level concerns. SuperUsers are not members of any organization; they sign in at the embedded admin UI (`/_/`).
 
 ### Permissions
@@ -46,7 +46,7 @@ Authorization is enforced **solely** by PocketBase API rules on each collection.
 - `Owner` and `Admin` are the same allowlist in every rule. Granting `admin` grants full tenant authority.
 - `Member` **does** create and edit Things and Locations. It cannot delete them, deactivate them, or attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path, and one who could clear `active` could take any device in the org off the network. Members create and edit inventory; **decommissioning it is a management action.**
 - `Member`, `Viewer` and `Dashboard` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
-- Editing the Organization record, and reading the audit log, are Operator-only.
+- Editing the Organization record, and reading the audit log, are Platform-Operator-only.
 - Every role, including `Dashboard`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`).
 
 ### Self-Service Credential Rotation
@@ -147,7 +147,7 @@ Every Location and Thing with a valid **Code** gets a **Live State** panel on it
 It has two tabs, because there are [two buckets](./architecture.md#41-two-buckets-one-writer-each):
 
 - **Reported** (`twin`) is what the device says. It is **read-only** — the edge overwrites it, so an edit button here would be a lie: the value returns on the next sync.
-- **Desired** (`twin_desired`) is what you want. This is the writable half, and it is the operator's actual control. Setpoints and configuration belong here; commands like `reboot` do not (send those as a message on `cmd.>` — a durable "reboot now" is a bug), and neither do thresholds or alarm ranges (those are [rules](./automation.md) over reported state).
+- **Desired** (`twin_desired`) is what you want. This is the writable half, and it is a console user's actual control. Setpoints and configuration belong here; commands like `reboot` do not (send those as a message on `cmd.>` — a durable "reboot now" is a bug), and neither do thresholds or alarm ranges (those are [rules](./automation.md) over reported state).
 
 Where the two disagree, the row shows the values themselves — `"auto" → "manual"` — rather than a status word, and the detail pane pairs them in adjacent columns. It says **differs**, never "pending": nothing in the platform pushes a desired value into a device, so a word implying a control loop in progress would be describing something that does not exist. `twin_desired` delivers the value to the edge's local KV; what acts on it is your firmware or your rules.
 
@@ -155,7 +155,7 @@ Only the keys present in a desired value are compared, so extra fields a device 
 
 The same KV buckets are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the full model, and [Automation](./automation.md) for the KV-state patterns.
 
-> **Neither the console nor the platform server creates these buckets on its own.** The Control Plane holds the NATS operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or `leaf-sync` at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
+> **Neither the console nor the platform server creates these buckets on its own.** The Control Plane holds the NATS Operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or `leaf-sync` at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
 
 ### JetStream Streams and KV Buckets
 
@@ -168,13 +168,13 @@ Both views appear in the sidebar only when the browser is connected to NATS — 
 
 ### Codes and QR Labels
 
-Any Location or Thing with a **Code** gets a **Label** button on its detail view, producing an operator-branded QR label to print and stick on the equipment. A record with no code gets no button — the payload *is* the code.
+Any Location or Thing with a **Code** gets a **Label** button on its detail view, producing a provider-branded QR label to print and stick on the equipment. A record with no code gets no button — the payload *is* the code.
 
 - **The payload is the bare code.** Not a web address, not `org/kind/code` — just `DOOR-1`. A sticker on a wall in a public corridor is something a stranger can replace, and a payload containing a URL would let a forged label send a person to arbitrary content. A bare in-system identifier means the worst a forged label achieves is opening the wrong record inside an app you were already signed in to. It also buys error correction: a short code at the highest correction level is a 21×21 symbol where the URL form of the same identifier needs 41×41 — four times the modules on an identically sized sticker, all of it spent on surviving scratches and grease rather than on repeating a hostname.
 - **Scanning happens inside an app.** The [Scanner widget](./dashboards.md) reads these labels here; sibling apps read the *same* label with their own scanners and land on their own view of the record — a work-order history rather than a live state panel. Nothing ever fetches the decoded string as a destination, and there is deliberately no resolver service to look one up.
 - **Sized to real stock.** 2″ × 1″ and 4″ × 2″, in millimetres rather than pixels, and both reserve a clear band down the centre for an RFID inlay's chip so one layout prints correctly on plain *or* RFID media. The **RFID stock** toggle reveals that reserved band so you can check it against your inlay's datasheet; it does not change the layout. Inlay geometry varies by vendor — treat the default as conservative, and print one before committing to a roll.
 - **Every label prints its code in readable text.** That is not decoration. The symbol will eventually be scratched, greasy, or in a closet too dark to focus in, and reading the code aloud or typing it into a scanner's manual field is a designed path, not a fallback.
-- **The Organization name is deliberately not printed.** A tenant name beside a device naming convention is free reconnaissance for anyone walking past. The operator's brand *is* printed — whoever finds broken equipment needs to know who services it.
+- **The Organization name is deliberately not printed.** A tenant name beside a device naming convention is free reconnaissance for anyone walking past. The provider's brand *is* printed — whoever finds broken equipment needs to know who services it.
 
 Because codes are unique only within an Organization, a scanner resolves a code **globally and then disambiguates** rather than assuming a tenant: `DOOR-1` is exactly the code every organization independently invents, so a match list with a picker is honest where a silent guess would be somebody else's door. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 

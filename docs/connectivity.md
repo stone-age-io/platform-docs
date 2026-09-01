@@ -20,7 +20,7 @@ In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by N
 
 - **Examples:** `temp_sensor.warehouse-a.sensor-01.reading`, `camera.warehouse-a.cam-042.motion`, `gateway.chicago.gw-99.heartbeat`.
 - **Where the segments come from:** `{location}` and `{thing}` are the codes on the Location and Thing records; `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
-- **Wildcards:** Wildcards are powerful tools for subject tokens. Subscribe to `camera.>` to see every camera event across every site, or `camera.warehouse-a.*.motion` to see every camera's motion events at one site. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
+- **Wildcards:** Wildcards match subject tokens. Subscribe to `camera.>` to see every camera event across every site, or `camera.warehouse-a.*.motion` to see every camera's motion events at one site. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
 
 **Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
 
@@ -90,9 +90,9 @@ Imports/exports are the right tool when you want **cryptographically separated t
 
 ## 2. Nebula
 
-Nebula is a scalable overlay networking tool with a focus on performance, simplicity, and security. It allows your devices to talk to each other as if they were on the same local network, even if they are scattered across the globe behind restrictive firewalls. Again, this is just a brief overview. Refer to the official Nebula documentation for a more in-depth understanding.
+Nebula is an overlay networking tool. It lets your devices talk to each other as if they were on the same local network, even when they sit on different continents behind restrictive firewalls. Again, this is just a brief overview. Refer to the official Nebula documentation for a more in-depth understanding.
 
-> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so every role below admin gets an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a platform Operator, and there is no tenant-triggered CA rotation — rolling a CA is an operator operation. See [Authorization](./authorization.md).
+> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so every role below admin gets an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a Platform Operator, and there is no tenant-triggered CA rotation — rolling a CA is a Platform Operator action. See [Authorization](./authorization.md).
 
 ### Mesh VPN Fundamentals
 

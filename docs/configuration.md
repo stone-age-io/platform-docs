@@ -85,11 +85,11 @@ Controls the `pb-nats` library: NATS account/user/role provisioning, exports/imp
 | `account_collection_name` | string | `"nats_accounts"` | NATS Account collection name. |
 | `user_collection_name` | string | `"nats_users"` | NATS User collection name. |
 | `role_collection_name` | string | `"nats_roles"` | NATS Role collection name. |
-| `operator_name` | string | `"stone-age.io"` | The NATS Operator name stamped into the Operator JWT at first run. |
+| `operator_name` | string | `"stone-age.io"` | The NATS Operator name stamped into the NATS Operator JWT at first run. |
 | `server_url` | string | `"nats://localhost:4222"` | Where the Control Plane connects to NATS as a System Account client. **Not** the browser address — see §2.1. |
 | `websocket_urls` | string list | `[]` | The WebSocket addresses a **browser** dials, served to the console at runtime by `GET /api/client-config`. See §2.1. |
 | `encryption_key` | string | `""` | 32-character key encrypting NATS account and user **seeds** at rest. Empty means plaintext in SQLite. See §2.2. |
-| `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the operator hub account. The matching hub-side import remaps it to `<subtree>.<organization code>.>`, so the tenant token is baked into the operator-signed account JWT and provenance is unforgeable — which means a managed organization needs a [code](./platform-ui-entities.md#organizations) before its export routes anywhere. Must end in `.>`; the platform refuses to start otherwise. See [ADR 0002](./decisions/0002-organization-code-namespace.md). |
+| `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the provider's hub account. The matching hub-side import remaps it to `<subtree>.<organization code>.>`, so the tenant token is baked into the NATS-Operator-signed account JWT and provenance is unforgeable — which means a managed organization needs a [code](./platform-ui-entities.md#organizations) before its export routes anywhere. Must end in `.>`; the platform refuses to start otherwise. See [ADR 0002](./decisions/0002-organization-code-namespace.md). |
 | `log_to_console` | bool | `false` | Verbose NATS-library logging. |
 | `default_limits.max_connections` | int | `10` | Default max connections for new Org accounts. |
 | `default_limits.max_subscriptions` | int | `50` | Default max subscriptions for new Org accounts. |
@@ -116,7 +116,7 @@ This is the configuration mistake with the least helpful symptom, so it is worth
 
 Different port, often a different host, and **never derive one from the other** — a Control Plane publishing to `nats://nats:4222` inside a container says nothing about what a browser on someone’s laptop can reach.
 
-`websocket_urls` is served to the console at runtime by `GET /api/client-config` rather than compiled in, deliberately: the console is embedded in the binary, so a build-time constant would mean a frontend rebuild per operator — the same problem `branding.dir` exists to avoid. The endpoint is authenticated; there is no pre-login need for the bus address.
+`websocket_urls` is served to the console at runtime by `GET /api/client-config` rather than compiled in, deliberately: the console is embedded in the binary, so a build-time constant would mean a frontend rebuild per provider — the same problem `branding.dir` exists to avoid. The endpoint is authenticated; there is no pre-login need for the bus address.
 
 The console resolves the address in three tiers: a per-device override in localStorage, then this key, then a compiled-in `ws://localhost:9222`. Four rules follow from that:
 
@@ -166,7 +166,7 @@ Controls the `pb-nebula` library: CA, network, and host certificate management.
 
 ### `audit`
 
-Controls the `pb-audit` library: comprehensive audit logging of create/update/delete/auth events.
+Controls the `pb-audit` library: audit logging of create, update, delete, and auth events.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
@@ -176,7 +176,7 @@ Controls the `pb-audit` library: comprehensive audit logging of create/update/de
 | `retention.max_records` | int | `0` | Max records to keep. `0` disables count-based pruning. |
 | `retention.interval` | string | `"0 2 * * *"` | Cron expression for the retention sweep job. |
 
-> **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is operator-gated to match. A tenant admin cannot self-serve an audit export; the request has to go through a platform operator. See [Authorization §5](./authorization.md#5-the-audit-log-is-operator-only).
+> **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is gated on the same flag to match. A tenant admin cannot self-serve an audit export. The request has to go through a Platform Operator. See [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only).
 
 ### `branding`
 
@@ -184,7 +184,7 @@ Controls the `pb-audit` library: comprehensive audit logging of create/update/de
 |---|---|---|---|
 | `dir` | string | `""` | A host directory whose `branding.json`, `logo.svg` and `theme.css` override the embedded defaults, served at `/branding/*`. Empty disables the overlay. |
 
-The point of the overlay is that re-skinning the console needs no frontend rebuild — the console is embedded in the binary, so a compiled-in brand would mean one build per operator. Missing files fall back individually. A starting template ships in `branding.example/` in the repository.
+The point of the overlay is that re-skinning the console needs no frontend rebuild — the console is embedded in the binary, so a compiled-in brand would mean one build per provider. Missing files fall back individually. A starting template ships in `branding.example/` in the repository.
 
 ---
 
@@ -244,7 +244,7 @@ These apply uniformly to all subcommands (`serve`, `migrate`, `bootstrap`, `nats
 
 ## 5. Operational Notes
 
-- **Changing `operator_name` after first run is not safe** — the Operator JWT is generated once at first SuperUser creation. Renaming would orphan the existing identity hierarchy.
+- **Changing `operator_name` after first run is not safe** — the NATS Operator JWT is generated once at first SuperUser creation. Renaming would orphan the existing identity hierarchy.
 - **`server_url` is for the Control Plane’s own System Account connection.** The address a browser dials is `websocket_urls`, which is a deployment default here and can be overridden per device in the console’s Settings page. See §2.1 — conflating the two is the configuration mistake with the least helpful symptom.
 - **Set the encryption keys at install time.** `nats.encryption_key` and `nebula.encryption_key` cannot be introduced retroactively for rows that already exist, and losing one loses the material it protected. They are also **not** what `--encryptionEnv` covers. See §2.2.
 - **Audit retention runs on a schedule, not on every write.** A misconfigured `interval` will just delay cleanup, not break ingestion.

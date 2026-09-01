@@ -142,9 +142,9 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `thing-type` | yes | `code` | full | read: any · write: owner/admin |
 | `thing-type-operation` | yes | `name` | full | read: any · write: owner/admin |
 | `message-schema` | yes | `name` | full | read: any · write: owner/admin |
-| `organization` | no | `name` | full | read: any member, or operator · create/update: **operator only** · delete: operator or the org's `owner` |
+| `organization` | no | `name` | full | read: any member, or Platform Operator · create/update: **Platform Operator only** · delete: Platform Operator or the org's `owner` |
 | `membership` | no | — (id only) | full | read: your own, or owner/admin of the org · write: owner/admin |
-| `invite` | yes | `email` | full | owner/admin (operator may create) |
+| `invite` | yes | `email` | full | owner/admin (Platform Operator may create) |
 | `nats-user` | yes | `nats_username` | full | owner/admin — **including reads** (plus your own one row) |
 | `nats-role` | yes | `name` | full | owner/admin — including reads |
 | `nats-import` | yes | `name` | full | owner/admin — including reads |
@@ -152,10 +152,10 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `nebula-network` | yes | `name` | full | owner/admin — including reads |
 | `nebula-host` | yes | `hostname` | full | owner/admin — including reads |
 | `leaf-node` | yes | `code` | full | read: any · write: owner/admin |
-| `nats-account` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: operator** · signing keys: owner/admin via route |
-| `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: operator** · no rotation trigger exists |
+| `nats-account` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: Platform Operator** · signing keys: owner/admin via route |
+| `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: Platform Operator** · no rotation trigger exists |
 
-"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a platform **Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is an operator operation.
+"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a **Platform Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is a Platform Operator action.
 
 In the **Role required** column, *any* means any role in the current organization including `dashboard`, the least privileged one, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
 
@@ -344,7 +344,7 @@ See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). T
 | Reason | Meaning |
 | :--- | :--- |
 | `no NATS URL on this stone context` | `nats_url` was never set — re-create the context or pass `--nats-url` to a future `org switch`. |
-| `no membership found for this user+org` | You're acting as an Operator on an org you aren't a member of — NATS creds are per-membership. |
+| `no membership found for this user+org` | You're acting as a Platform Operator on an org you aren't a member of — NATS creds are per-membership. |
 | `membership has no linked nats_user` | The platform's hooks haven't provisioned a NATS user for this membership yet. |
 | `(--no-nats)` | You passed the flag. |
 
@@ -398,7 +398,7 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 - Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags.
 - `apply` never deletes server records that are missing locally. Delete explicitly.
 - No JetStream **consumer** management — use the `nats` CLI.
-- `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require operator-level credentials server-side. Signing-key operations go through `stone nats account-keys` (owner/admin), not `stone nats-account update`.
+- `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require Platform Operator credentials server-side. Signing-key operations go through `stone nats account-keys` (owner/admin), not `stone nats-account update`.
 - `auth login` is interactive by design — credentials can't be discovered by the CLI.
 - File fields have no CLI upload path: a Location's `floorplan` and an Organization's `logo` must be set from the console.
 - **The CLI's field list is hand-maintained, not derived from the platform's `schema.json`.** It can drift behind a platform release. If a field exists in the console but has no flag, that is the reason — check `cmd/entity.go` in the `stone-cli` repo.
@@ -407,7 +407,7 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 
 ## 11. Where to Go Next
 
-- **Stand up a server for `stone` to talk to:** [Getting Started](./getting-started.md).
+- **Start a server for `stone` to talk to:** [Getting Started](./getting-started.md).
 - **The entities the CLI manages, and the console that mirrors it:** [Platform Entities & UI](./platform-ui-entities.md).
 - **Which of those entities your role can actually touch:** [Authorization & Roles](./authorization.md).
 - **The contract graph behind Thing Types and message schemas:** [Thing Types](./thing-types.md).

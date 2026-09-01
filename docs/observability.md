@@ -19,7 +19,7 @@ Traditional IoT platforms often bundle a time-series database directly into thei
 
 Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of Layers 0–2.
 
-> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane's `audit_logs` collection, and reading it is restricted to platform **Operators**: no tenant role, not even `owner`, can query it. Retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)), and the boundary is described in [Authorization §5](./authorization.md#5-the-audit-log-is-operator-only). Don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
+> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane's `audit_logs` collection, and reading it is restricted to **Platform Operators**: no tenant role, not even `owner`, can query it. Retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)), and the boundary is described in [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only). Don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
 
 ---
 
@@ -27,7 +27,7 @@ Because all layers communicate through NATS subjects, Layer 3 is a **pure consum
 
 If you do not have an existing observability stack, we recommend the following based on speed, simplicity, and efficiency. Each component below is its own single-binary process — you deploy them alongside your NATS cluster and they connect as NATS clients.
 
-> **A turnkey reference deployment is on the roadmap.** We're planning to publish a "Stone-Age Reference Stack" — an opinionated Docker Compose (and/or systemd unit file) bundle that provisions the Control Plane, NATS, Nebula Lighthouse, rule-router, Telegraf, VictoriaMetrics, and Grafana with preconfigured dashboards, so teams who don't want to make architectural decisions on day one can get a complete working stack in one command. Until then, the sections below describe the pieces you'd assemble yourself.
+> **A reference deployment is on the roadmap.** We're planning to publish a "Stone-Age Reference Stack" — an opinionated Docker Compose (and/or systemd unit file) bundle that provisions the Control Plane, NATS, Nebula Lighthouse, rule-router, Telegraf, VictoriaMetrics, and Grafana with preconfigured dashboards, so teams who don't want to make architectural decisions on day one can get a complete working stack in one command. Until then, the sections below describe the pieces you'd assemble yourself.
 
 ### A. Telegraf 
 
@@ -39,7 +39,7 @@ If you do not have an existing observability stack, we recommend the following b
 
 ### B. VictoriaMetrics 
 
-**VictoriaMetrics** is a high-performance, cost-effective, and scalable time-series database. It is fully compatible with the Prometheus API.
+**VictoriaMetrics** is a time-series database that is fully compatible with the Prometheus API.
 
 - **Operationally simple:** Like Stone-Age.io, VictoriaMetrics ships as a single binary and runs comfortably on modest hardware.
 - **Retention:** Use it to store months or years of historical data.

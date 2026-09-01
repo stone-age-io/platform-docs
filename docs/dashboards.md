@@ -1,6 +1,6 @@
 # Dashboards & Widgets
 
-The Visualizer is the console's dashboard surface: a resizable grid of widgets, each bound to a NATS subject, a JetStream consumer, a KV key, or a PocketBase query. It is the screen you put in front of someone who does not administer the platform — an operator watching a site, or an unattended display in a control room.
+The Visualizer is the console's dashboard surface: a resizable grid of widgets, each bound to a NATS subject, a JetStream consumer, a KV key, or a PocketBase query. It is the screen you put in front of someone who does not administer the platform — a technician watching a site, or an unattended display in a control room.
 
 Everything on it runs over **the browser's own NATS connection**. There is no server-side rendering step and no polling loop against the database: a value changes on the bus, and the widget bound to it updates. That also means a widget can only see what the caller's NATS credential permits, which is set per identity in [Connectivity](./connectivity.md) and is independent of the console role.
 

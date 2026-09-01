@@ -56,7 +56,7 @@ A lightweight, SQL-based edge stream processor. Good fit for IoT-shaped problems
 
 **Strengths:**
 
-- SQL syntax is approachable for operators who aren't full-time developers.
+- SQL syntax is approachable for analysts and technicians who aren't full-time developers.
 - Runs comfortably at the edge (Raspberry Pi-class hardware).
 - Native NATS source and sink.
 - Built-in sliding, tumbling, and session window semantics.
