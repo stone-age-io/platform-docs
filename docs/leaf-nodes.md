@@ -6,7 +6,7 @@ What turns a bare NATS process into a Stone-Age.io **Leaf Node** is **`leaf-sync
 
 This page covers both: the Leaf Node entity and the `leaf-sync` agent that brings it to life.
 
-> # "Leaf node" means two related things — keep them straight
+> ## "Leaf node" means two related things — keep them straight
 >    | Term | What it is |
 >    | :--- | :--- |
 >    | **NATS leaf node** | The stock `nats-server` running at the site in leaf mode, dialing the hub outbound. A Layer 0 transport primitive — see [Connectivity](./connectivity.md#leaf-nodes). |
