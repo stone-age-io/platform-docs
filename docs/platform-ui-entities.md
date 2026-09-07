@@ -24,7 +24,7 @@ A Membership binds a PocketBase User to an Organization.
 - **Roles (per-organization):**
     - `Owner`: Full tenant authority. **Identical to `Admin` in every API rule** — the only differences are that an Owner cannot leave their own organization and may delete it.
     - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, Leaf Nodes, and the identity links on a Thing.
-    - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations, Message Schemas). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
+    - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
     - `Viewer`: Read-only staff. Browses the inventory screens and uses dashboards, and writes nothing anywhere. Adding it needed no rule change at all — a role that names itself in no write branch is denied by construction.
     - `Dashboard`: An appliance login for an unattended screen — the Visualizer and its own settings page, nothing else. It holds no write capability, which is exactly why the authorization suite uses it as the probe that proves an allowlist works.
     - Both, like every role, can still read the one NATS identity linked to their own membership, which is what the browser connects with. Neither restriction is a NATS restriction: what a login can do on the bus is whatever its linked `nats_users` role permits, set independently.
@@ -121,9 +121,8 @@ Types provide a way to categorize your inventory and locations. They act as blue
 Thing Types compose from two other collections that the UI also manages directly:
 
 - **Thing Operations:** Shareable records describing individual verbs on the fabric. A single `heartbeat` operation record is typically linked from every Thing Type that emits heartbeats.
-- **Message Schemas:** JSON Schema documents describing operation payloads, versioned via `(namespace, name, version)`.
 
-All three (Thing Types, Thing Operations, Message Schemas) live under the **Types** menu group in the sidebar alongside Location Types. **Reading them is open to every role in the organization** — a member needs the contract to resolve subjects and validate payloads. **Creating, editing, and deleting them is Owner/Admin only.**
+Both (Thing Types, Thing Operations) live under the **Types** menu group in the sidebar alongside Location Types. **Reading them is open to every role in the organization** — a member needs the contract to resolve subjects. **Creating, editing, and deleting them is Owner/Admin only.**
 
 ---
 

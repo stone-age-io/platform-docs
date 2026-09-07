@@ -98,7 +98,7 @@ sequenceDiagram
 ```
 </center>
 
-Records are keyed in KV the same way the Control Plane handles them: `message_schemas` by `namespace__name__version`, everything else by `code` (then `name`), falling back to the PocketBase record id when no stable handle exists. The id always stays inside the stored JSON so relation fields resolve, and server-only noise fields (`collectionId`, `collectionName`, `expand`) are stripped from the value.
+Records are keyed in KV the same way the Control Plane handles them: by `code`, then `name`, falling back to the PocketBase record id when no stable handle exists. The id always stays inside the stored JSON so relation fields resolve, and server-only noise fields (`collectionId`, `collectionName`, `expand`) are stripped from the value.
 
 ### 4.1 Liveness heartbeat
 
@@ -125,13 +125,12 @@ The write is **best-effort**: a heartbeat failure (e.g. a WAN outage) is logged 
 A hard allowlist, enforced both by the server's API rules and by `leaf-sync`:
 
 ```
-things   locations   thing_types   location_types
-thing_type_operations   message_schemas
+things   locations   thing_types   location_types   thing_type_operations
 ```
 
-This is exactly the **Thing contract graph**: `thing_type` → `thing_type_operation` → `message_schema` (see [Thing Types](./thing-types.md)), plus the Things and Locations that instantiate it. With these mirrored locally, a site can resolve what a Thing's Type is allowed to do — and validate the messages it exchanges — **entirely offline**.
+This is exactly the **Thing contract graph**: `thing_type` → `thing_type_operation` (see [Thing Types](./thing-types.md)), plus the Things and Locations that instantiate it. With these mirrored locally, a site can resolve the subject any Thing at that site publishes to or listens on **entirely offline**.
 
-A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the six allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the NATS Operator JWT, and the `$SYS` account JWT and public key) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
+A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the five allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the NATS Operator JWT, and the `$SYS` account JWT and public key) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
 
 ---
 

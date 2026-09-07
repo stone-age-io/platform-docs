@@ -48,8 +48,8 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Deactivate / reactivate a Thing or Leaf Node (§4.2) | ✅ | ✅ | — | — | — | — | ✅ |
 | Reset a Thing's or Leaf Node's PocketBase password | ✅ | ✅ | — | — | — | — | ✅ |
 | Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | — | ✅ |
-| Read Thing Types, Operations, Message Schemas | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
-| Manage Thing Types, Operations, Message Schemas | ✅ | ✅ | — | — | — | — | ✅ |
+| Read Thing Types, Operations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
+| Manage Thing Types, Operations | ✅ | ✅ | — | — | — | — | ✅ |
 | **Read** NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | — | ✅ |
 | Manage NATS users, roles, imports, exports | ✅ | ✅ | — | — | — | — | ✅ |
 | **Read** Nebula networks and hosts | ✅ | ✅ | — | — | — | — | ✅ |
@@ -72,7 +72,7 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 
 ¹ **Platform Operator.** `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
 ² The `_superusers` collection bypasses API rules entirely. See §3.
-³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `message_schemas` and `leaf_nodes` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer, and it lists Leaf Nodes to owners and admins only. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across all eight collections, with a new failure mode where a relation expansion silently returns nothing.
+³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations` and `leaf_nodes` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer, and it lists Leaf Nodes to owners and admins only. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across every one of those collections, with a new failure mode where a relation expansion silently returns nothing.
 ⁴ JetStream operations run over the browser's own NATS connection, so they are bounded by the caller's **NATS** permissions, not by PocketBase API rules. The console surfaces the views to owners and admins.
 ⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are Platform-Operator-only; see §3.
 ⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a Platform Operator action.
@@ -177,7 +177,7 @@ A Leaf Node authenticates as a record in the `leaf_nodes` collection — "a spec
 A leaf-node identity **can** read:
 
 - its own `leaf_nodes` record, and
-- the allowlisted collections it mirrors, within its own organization: `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations`, `message_schemas`.
+- the allowlisted collections it mirrors, within its own organization: `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations`.
 
 A leaf-node identity reads **nothing** in any `nats_*` or `nebula_*` collection. The four values an edge box cannot derive locally — its own creds, the org's account JWT and public key, and the NATS Operator JWT — come from a dedicated, leaf-node-authenticated route:
 

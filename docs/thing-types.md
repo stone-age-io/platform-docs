@@ -4,7 +4,9 @@ Thing Types are the **contract layer** of the Stone-Age.io fabric. They describe
 
 If a **Thing** is an instance of something on the fabric, a **Thing Type** is the contract that defines how that kind of thing behaves. A single IP camera is a Thing. The description "an IP camera publishes motion events, answers snapshot requests, and accepts PTZ commands" is the Thing Type.
 
-This page explains what's in a Thing Type, how it composes with operations and message schemas, how consumers resolve its subject templates, and where the boundary lies between contract (what belongs here) and platform behavior (what doesn't).
+This page explains what's in a Thing Type, how it composes with operations, how consumers resolve its subject templates, and where the boundary lies between contract (what belongs here) and platform behavior (what doesn't).
+
+> **Dropped in the 2026-09 cleanup.** A third collection, `message_schemas`, used to hold a JSON Schema per operation. Nothing validated against it — there is no JSON Schema validator anywhere in the platform — and its only reader was the Publisher widget's payload form. `thing_types.capabilities` (a hand-maintained union of its operations' capabilities) and `thing_types.nats_role` (a relation read by nothing) went with it. Operations, subject prefixes, and per-operation capabilities all stay.
 
 Thing Types are purely declarative — they describe the message contract. NATS roles and their permissions are managed directly on the `nats_roles` collection, which is **Owner/Admin only** for reads as well as writes: a role's permission fields are copied verbatim into the JWT the platform signs, so write access to that collection is equivalent to granting NATS permissions. See [Authorization](./authorization.md).
 
@@ -23,9 +25,9 @@ This separation is the key to the whole design. Contracts are shared across many
 
 ---
 
-## 2. The Three Collections
+## 2. The Two Collections
 
-Thing Types compose from three collections that work together.
+Thing Types compose from two collections that work together.
 
 ### `thing_types`
 
@@ -38,7 +40,6 @@ Key fields:
 | `code` | URL-safe identifier, e.g. `ip_camera`. Used in subject templates and as a stable reference. |
 | `name`, `description` | Human-readable labels. |
 | `subject_prefix` | Template string like `camera.{location}.{thing}`. Stored literally. Empty values default to `{thing_type_code}.{location}.{thing}` when consumers resolve. |
-| `capabilities` | Coarse-grained summary of what this Thing Type does. Values: `publish`, `subscribe`, `request`, `reply`. Typically maintained as the union of its operations' capabilities. |
 | `operations` | Multi-relation to `thing_type_operations` — the verbs this Thing Type declares. |
 
 ### `thing_type_operations`
@@ -52,30 +53,13 @@ Key fields:
 | `name` | Operation identifier, lowercase snake_case, e.g. `motion`, `heartbeat`, `ptz`. |
 | `capability` | One of `publish`, `subscribe`, `request`, `reply`. |
 | `subject_suffix` | Appended to the Thing Type's `subject_prefix` to form the full subject. Stored literally. |
-| `schema` | Relation to `message_schemas` describing the operation's payload. |
 | `description` | Human-readable purpose. |
 
 Operations are uniquely identified by `(organization, name, capability)`, which means the *same name* can exist for different capabilities — a `heartbeat` publish operation and a hypothetical `heartbeat` subscribe operation can coexist, since they describe genuinely different verbs.
 
 **Operations are shareable across Thing Types.** A single `heartbeat` publish operation is typically linked from every Thing Type in the org that emits heartbeats — cameras, gateways, sensors, VMS servers. This is the feature, not a side effect (§4).
 
-### `message_schemas`
-
-The payload shapes referenced by operations. Each record is a JSON Schema document.
-
-Key fields:
-
-| Field | Purpose |
-|---|---|
-| `namespace` | Grouping identifier, e.g. `common` or `ip_camera`. |
-| `name` | Schema identifier within its namespace, e.g. `heartbeat` or `motion`. |
-| `version` | Semver, e.g. `1.0.0`. |
-| `format` | `json_schema` in v1. |
-| `schema` | The actual JSON Schema document. |
-
-Schemas are uniquely identified by `(organization, namespace, name, version)`. A new version is a new record; old versions remain valid for existing operations. No auto-migration — if a schema's semantics change, publish a new version and update the operation(s) that should use it.
-
-All three collections are org-scoped via the standard tenancy API rules.
+Both collections are org-scoped via the standard tenancy API rules.
 
 ---
 
@@ -128,11 +112,10 @@ Consider `heartbeat`. Nearly every kind of participant on the fabric emits one �
 With shareable operations, there's exactly one `heartbeat` operation record in the organization, linked from every Thing Type that emits one. The benefits are direct:
 
 - **One canonical definition** across the deployment. No drift between Thing Types.
-- **Schema updates propagate.** Bumping the heartbeat schema to a new version and updating the operation updates every Thing Type that uses it.
 - **Rules generalize.** A rule that reacts to "anything emitting a heartbeat" can do so cleanly because the operation is the same record everywhere.
 - **Thing Types stay compositional.** A new Thing Type is primarily a list of existing operations plus any novel ones it introduces.
 
-The tradeoff: a shared operation's `subject_suffix` and `schema` must be Thing-Type-agnostic. A shared `heartbeat` has suffix `heartbeat` everywhere. When that's not what you want — for example, a specialized operation with a schema that only makes sense for one Thing Type — create a Thing-Type-specific operation with a distinct name.
+The tradeoff: a shared operation's `subject_suffix` must be Thing-Type-agnostic. A shared `heartbeat` has suffix `heartbeat` everywhere. When that's not what you want, create a Thing-Type-specific operation with a distinct name.
 
 Deleting a Thing Type does not delete its operations. The operations persist and may still be linked from other Thing Types. If an operation becomes fully unlinked, it remains as a harmless orphan until someone cleans it up.
 
@@ -156,13 +139,11 @@ Records in `thing_type_operations`:
 name:              heartbeat
 capability:        publish
 subject_suffix:    heartbeat
-schema:            → common/heartbeat@1.0.0
 description:       Generic liveness heartbeat.
 
 name:              status
 capability:        publish
 subject_suffix:    status
-schema:            → common/status@1.0.0
 description:       Online/offline + status message.
 ```
 
@@ -172,22 +153,18 @@ description:       Online/offline + status message.
 name:              motion
 capability:        publish
 subject_suffix:    motion
-schema:            → ip_camera/motion@1.0.0
 
 name:              snapshot_request
 capability:        request
 subject_suffix:    snapshot
-schema:            → ip_camera/snapshot_request@1.0.0
 
 name:              snapshot_reply
 capability:        reply
 subject_suffix:    snapshot
-schema:            → ip_camera/snapshot_reply@1.0.0
 
 name:              ptz
 capability:        subscribe
 subject_suffix:    cmd.ptz
-schema:            → ip_camera/ptz_command@1.0.0
 ```
 
 Note that `snapshot_request` and `snapshot_reply` are two separate operations that share a subject suffix. A Thing Type that *offers* snapshots links `snapshot_reply`; a Thing Type that *asks for* them links `snapshot_request`.
@@ -199,28 +176,7 @@ code:              ip_camera
 name:              IP Camera
 description:       Network camera with motion detection and PTZ
 subject_prefix:    camera.{location}.{thing}
-capabilities:      [publish, subscribe, reply]
 operations:        [heartbeat, status, motion, snapshot_reply, ptz]
-```
-
-### A referenced schema
-
-```
-namespace:   common
-name:        heartbeat
-version:     1.0.0
-format:      json_schema
-description: Generic liveness + identity heartbeat used by any Thing.
-schema:
-  {
-    "type": "object",
-    "required": ["timestamp", "uptime_seconds"],
-    "properties": {
-      "timestamp":        { "type": "string", "format": "date-time" },
-      "uptime_seconds":   { "type": "integer", "minimum": 0 },
-      "firmware_version": { "type": "string" }
-    }
-  }
 ```
 
 ### Resolved subjects for an IP camera instance
@@ -241,21 +197,19 @@ Thing: `code = cam-042`, `type = ip_camera`, located at `warehouse-a`.
 
 The three collections live under the **Types** menu group in the sidebar, alongside Location Types. **Every role in the organization can read them** — a member needs the contract to resolve subjects and validate payloads — but the create/edit/delete forms below are **Owner/Admin only** ([Authorization](./authorization.md)):
 
-- **Thing Types** — list and edit Thing Types. The form includes identity fields (name, description, code), subject prefix, capabilities multi-select, and an operations multi-select with a quick-add modal for creating new operations inline.
-- **Thing Operations** — list and edit the shareable operation records. The form enforces the `^[a-z0-9_]+$` name pattern, requires a `capability`, requires a `subject_suffix`, and offers an optional schema relation with a quick-add modal.
-- **Message Schemas** — list and edit JSON Schema documents. The form enforces the namespace/name pattern and a semver `version`. A built-in **"Infer from sample"** helper accepts a JSON sample and generates a starting schema, which you can then refine in either the visual schema builder or the raw JSON editor.
+- **Thing Types** — list and edit Thing Types. The form includes identity fields (name, description, code), subject prefix, an operations multi-select with a quick-add modal for creating new operations inline, and the type's inventory-field schema (`metadata_schema`), which has an **"Infer from sample"** helper: paste one example record and every key becomes a typed field to review.
+- **Thing Operations** — list and edit the shareable operation records. The form enforces the `^[a-z0-9_]+$` name pattern, requires a `capability`, and requires a `subject_suffix`.
 
 ### Publisher widget integration
 
 The dashboard `publisher` widget can bind to a **Thing + Operation** pair in its configuration. When bound:
 
 - **Subject auto-resolves** from the Thing's context (org, location, thing, thing_type_code) against the Thing Type's prefix and the operation's suffix. The resolved subject renders read-only in the widget.
-- **Payload input is schema-driven** if the operation has a linked message schema. Top-level primitive properties render as form fields via `JsonSchemaForm.vue`; nested objects and arrays fall back to JSON input.
-- **On send**, the form model serializes to JSON and publishes.
+- **Payload stays free text.** A bound operation used to render a typed form from its linked message schema; that went with `message_schemas`.
 
 Without a binding, the Publisher widget falls back to free-text subject and payload inputs.
 
-This integration is a direct consumer of the Thing Type primitive — the widget knows the subject because it resolved the template, and it knows the payload shape because it read the schema. Other widgets (Gauge, Chart, Console) will gain similar bindings as they evolve; the primitive is already in place.
+This is the one direct consumer of the Thing Type primitive: the widget knows the subject because it resolved the template. Subject resolution is what the contract is *for* — typing `camera.warehouse-a.cam-042.motion` by hand is exactly the error-prone chore a control plane should absorb.
 
 ---
 
@@ -275,6 +229,18 @@ Not in a Thing Type or its operations:
 
 The test for any proposed new field: *does it describe the message contract between a Thing and the fabric, or does it describe platform behavior around that contract?* Contract fields (like `content_type` or `qos`) are in scope. Everything else has a better home and that home already exists.
 
+### Operations stay a collection, not a JSON field
+
+Folding `thing_type_operations` into a JSON array on `thing_types` was considered during the 2026-09 cleanup and rejected. The rule that settled it: **a fixed shape belongs in columns; a freeform document belongs in JSON.**
+
+An operation is four keys, the same four every time. A `metadata_schema` is a user-authored document with no shape to migrate — which is why THAT one is correctly a JSON field on the same record. Three costs decided it:
+
+1. **Nothing validates a PocketBase JSON field.** A typo’d `subject_sufix` would save clean, render nothing in the Publisher picker, and raise no error anywhere. That is the exact failure mode `message_schemas` was dropped for; trading a validated relation for an unvalidated blob to save two screens is cutting the wrong thing.
+2. **Migrations move from PocketBase to you, permanently.** Adding `content_type` to a relation is a column PocketBase applies. In a blob it is a data migration walking every `thing_types` record — or, more likely, heterogeneous shapes tolerated forever with no error.
+3. **The admin panel stops helping.** A bad operation is fixable at `/_/` in seconds today; in a blob it is hand-editing JSON in a textarea.
+
+What the cleanup actually removed was the *third* collection and the framing that called two-thirds of it a contract layer — not the operations table.
+
 ---
 
 ## 9. Optional Fields
@@ -282,9 +248,9 @@ The test for any proposed new field: *does it describe the message contract betw
 `subject_prefix` and `operations` are both optional:
 
 - A Thing Type with no operations is a pure inventory/categorization record — it emits no subjects and defines no contract.
-- A Thing Type with operations describes contracts that consumers (UI widgets, CLI tools, rules) can use for subject resolution and schema awareness.
+- A Thing Type with operations describes contracts that consumers (UI widgets, CLI tools, rules) can use for subject resolution.
 
-The `capabilities` field accepts `publish`, `subscribe`, `request`, and `reply`.
+Each operation's `capability` accepts `publish`, `subscribe`, `request`, and `reply`. It is a property of the OPERATION, not of the type: it is what tells a `request` apart from a `reply` on the same subject suffix (see §6). `thing_types.capabilities` used to carry the union of them as well, hand-maintained and read by nothing, and was dropped.
 
 ---
 

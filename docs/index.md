@@ -38,7 +38,7 @@ Now the inventory is load-bearing: the record you created in depth 1 *is* the id
 
 ### 3. A contract layer
 
-Declare what participants actually say. A **Thing Type** carries a subject prefix, its **operations** declare capabilities (`publish` / `subscribe` / `request` / `reply`) and subject suffixes, and **message schemas** version the payloads as JSON Schema.
+Declare what participants actually say. A **Thing Type** carries a subject prefix, and its **operations** declare a capability (`publish` / `subscribe` / `request` / `reply`) and a subject suffix each. Together they resolve the exact subject any given Thing uses.
 
 This is the step that makes the fabric self-describing: a consumer can resolve, from data alone, which subjects a given device uses and what shape its messages take. See [Thing Types](./thing-types.md).
 
