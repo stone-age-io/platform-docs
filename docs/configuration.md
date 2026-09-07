@@ -186,6 +186,56 @@ Controls the `pb-audit` library: audit logging of create, update, delete, and au
 
 The point of the overlay is that re-skinning the console needs no frontend rebuild — the console is embedded in the binary, so a compiled-in brand would mean one build per provider. Missing files fall back individually. A starting template ships in `branding.example/` in the repository.
 
+### `readiness`
+
+The background prober behind `GET /api/ready`.
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `interval` | string | `"15s"` | How often the checks re-run. The endpoint serves the last snapshot, so this is also how stale an answer can be. |
+| `timeout` | string | `"5s"` | Deadline for one full probe. Checks run concurrently, so this bounds the slowest one, not their sum. |
+
+The endpoint is always registered — there is no key to disable it. Readiness is a
+contract with your orchestrator, and a deployment that had quietly turned it off
+is one nobody could explain later. Closing it to the outside is a proxy's job.
+
+### `metrics`
+
+The Prometheus exposition at `GET /metrics`.
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `enabled` | bool | `true` | Register the route at all. |
+| `token` | string | `""` | Shared secret. Empty means **open**, which is the default. |
+
+`token` is accepted as `Authorization: Bearer <token>` *or* HTTP Basic with any
+username, which between them cover every scraper in use. It deliberately does
+not use PocketBase auth: those tokens are JWTs that expire and no scraper has a
+refresh flow, so it would take a custom sidecar to read a standard format.
+
+Nothing here is labelled per organization. The Control Plane holds the NATS
+operator and `$SYS` and has no credential inside a tenant's account, so
+per-org data is reduced to row counts — and a tenant label on a row count is a
+customer name attached to an inventory number, on an endpoint that is open by
+default.
+
+See [Health & Metrics](./health-metrics.md) for the checks, the metric names and
+the alert expressions.
+
+### `observability` (leaf-sync only)
+
+The edge agent's own `/ready` and `/metrics`, in `leaf-sync.yaml`. **Off by default.**
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `addr` | string | `""` | Listen address, e.g. `"127.0.0.1:9101"`. Empty creates no listener at all. |
+| `metrics_token` | string | `""` | As `metrics.token` above. |
+| `interval` | string | `"15s"` | Probe interval. |
+
+This is the only place per-site health is visible: the Control Plane cannot read
+an organization's `leaf_status` heartbeats, because it holds no credential
+inside that account. See [Leaf Nodes](./leaf-nodes.md).
+
 ---
 
 ## 3. Environment Variable Overrides

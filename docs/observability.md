@@ -19,6 +19,14 @@ Traditional IoT platforms often bundle a time-series database directly into thei
 
 Because all layers communicate through NATS subjects, Layer 3 is a **pure consumer**. It can fail, be taken offline for maintenance, or be entirely replaced — none of which affects the operational path of Layers 0–2.
 
+> **This page is about your TELEMETRY, not about the platform's own health.** Layer 3
+> answers "what did my devices report last Tuesday". The question "is my Control
+> Plane in a state where it can do its job, and is that edge site still syncing"
+> is answered by the binaries themselves, on `GET /api/ready` and `GET /metrics`
+> — unauthenticated, no NATS connection needed, and scraped by the same
+> Prometheus-compatible stack described below. See
+> [Health & Metrics](./health-metrics.md).
+
 > **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane's `audit_logs` collection, and reading it is restricted to **Platform Operators**: no tenant role, not even `owner`, can query it. Retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)), and the boundary is described in [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only). Don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
 
 ---
@@ -165,4 +173,4 @@ By decoupling observability from the core platform, Stone-Age.io stays:
 3.  **Scalable:** You can scale your storage independently of your Control Plane as your device count grows.
 4.  **Resilient:** Layer 3 failures never affect Layers 0–2. The operational pipeline keeps running; only historical recency lags until the TSDB returns.
 
-For the layer model in full, see [Platform Layers](./platform-layers.md). For the Layer 1 alerting patterns that hand off to Layer 3, see [Automation](./automation.md).
+For the layer model in full, see [Platform Layers](./platform-layers.md). For the Layer 1 alerting patterns that hand off to Layer 3, see [Automation](./automation.md). For the platform's own readiness checks and process metrics — a second `scrape_config` for the same stack, not a second system — see [Health & Metrics](./health-metrics.md).

@@ -17,6 +17,7 @@ nav:
     - Automation: automation.md
     - Stream Processing: stream-processing.md
     - Observability: observability.md
+    - Health & Metrics: health-metrics.md
     - Configuration Reference: configuration.md
     - Operations & Production: operations.md
   - Decisions:

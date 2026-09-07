@@ -172,6 +172,11 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
 
 ### Verify after any restore
 
+- **`curl -s localhost:8090/api/ready | jq`** first. One request answers most of
+  this list: whether the schema imported, whether an operator exists, whether the
+  NATS server still trusts this database’s operator, and whether the binary is
+  older than the `pb_data` you just restored. Every non-OK check carries the
+  command that fixes it. See [Health & Metrics](./health-metrics.md).
 - Console login works (Platform Operator user) and the **NATS Status: Connected** indicator is green.
 - Create a throwaway Thing in a test org — confirms the provisioning hooks and the System Account connection end-to-end.
 - `leaf-sync` heartbeats reappear on the Leaf Nodes list within a few sync intervals.
@@ -308,6 +313,7 @@ A condensed pre-flight list for taking a deployment to production:
 
 - [ ] **TLS everywhere outward-facing** — HTTPS in front of the Control Plane; `wss://` on the NATS WebSocket listener; TLS on client/leaf ports per the NATS docs.
 - [ ] **Backups scheduled** (admin UI cron) **with S3 offsite** configured — and a restore actually rehearsed (§4).
+- [ ] **The readiness probe wired into whatever runs the process** — `GET /api/ready`, which returns `503` only when something is genuinely broken and `200` for warnings, so it is safe to put in front of a load balancer. Point your scraper at `GET /metrics` while you are there. Both are unauthenticated by default and neither needs a NATS connection or a session; `metrics.token` closes the second one, and a proxy closes either ([Health & Metrics](./health-metrics.md)).
 - [ ] **`pb_data` on its own dataset/volume**, ideally ZFS with automatic snapshots (§3.3).
 - [ ] **App-settings encryption** enabled via `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP, S3 and OAuth2 secrets — **and nothing else**.
 - [ ] **Column encryption set separately** — `nats.encryption_key` and `nebula.encryption_key` in `config.yaml` are what encrypt NATS account and user seeds and Nebula CA and host private keys. They are empty by default, they cannot be applied retroactively to rows that already exist, and losing a key loses the material it protected. A checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
