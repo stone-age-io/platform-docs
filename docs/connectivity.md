@@ -78,6 +78,24 @@ The platform manages both sides as first-class collections (`nats_account_export
 
 Both views — **including their lists** — are Owner/Admin only. A member, viewer or dashboard holder querying `nats_account_exports` or `nats_account_imports` receives an empty result, not a filtered one.
 
+**Platform-managed records are read-only.** Flagging an Organization `managed`
+provisions a pair of these records automatically — a `helpdesk-events` export on
+the tenant's Account, and a matching import on the operator hub Account. Both
+show a **Managed** badge and offer **View** instead of Edit or Delete.
+
+That is not a permission — an Owner has write access to the collection — it is
+the console declining to offer an edit that would not last. The platform
+reconciles `subject`, `type`, `description` (and the import's source `account`
+and `local subject`) every time the Organization record is saved, so a change
+made here is overwritten with no error and no warning. Deleting one does not
+retire it either: the next save recreates it. **To remove the pair, clear
+`managed` on the Organization,** which deletes both sides together.
+
+The two records land on different screens: the export lives on the tenant's own
+Account, so a managed tenant's Owner sees it under their Exports; the import
+lives on the operator hub Account, so only someone in the operator Organization
+sees it under Imports.
+
 **When to reach for it:**
 
 - A **shared "system events" Account** that publishes to many tenants — each tenant Account adds an import to receive the feed.
