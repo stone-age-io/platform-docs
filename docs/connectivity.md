@@ -147,7 +147,7 @@ The most significant benefit of the Stone-Age.io connectivity stack is the secur
 - **No Port Forwarding:** Both NATS and Nebula initiate connections *outbound* to your central infrastructure.
 - **Reduced Attack Surface:** Since no ports are listening on the public internet, your devices are invisible to standard port scanners and automated bot attacks.
 
-By combining the cryptographic identity of NATS with the secure tunneling of Nebula, the Stone-Age.io Platform provides a level of security that traditional IoT platforms/protocols simply cannot match.
+Combining the cryptographic identity of NATS with the tunnelling of Nebula means a device presents signed material at both layers, and a compromised device is revoked at both — without a shared secret, a VPN concentrator, or an inbound port on the site.
 
 ---
 

@@ -80,7 +80,7 @@ The minimum viable deployment is two binaries: the Control Plane and a NATS serv
 | **Control Plane** | Identity, inventory, provisioning, embedded UI | `stone-age` | Always required |
 | **NATS** | Messaging substrate, streams, KV | `nats-server` | Always required |
 | **Nebula Lighthouse** | Mesh VPN directory / hole-punching | `nebula` | Secure edge connectivity |
-| **Agent** | Edge telemetry, service checks, remote exec | `stone-age-agent` | You have devices or servers to manage |
+| **Agent** | Edge telemetry, service checks, remote exec | `agent` | You have devices or servers to manage |
 | **Rule engine** | Layer 1 declarative event logic (router, gateway, scheduler) | `rule-router` | Automation, webhook I/O, scheduled publishing |
 | **Stream processor** | Layer 2 windowed/stateful computation | eKuiper, Benthos, custom Go/Rust | Time-window aggregations, stream joins, anomaly detection |
 | **Telegraf** | Layer 3 TSDB ingestion bridge | `telegraf` | Long-term historical storage |

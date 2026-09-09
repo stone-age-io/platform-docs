@@ -91,7 +91,7 @@ See [Platform Layers](./platform-layers.md) for the architectural picture of how
 
 ## Target Audience
 
-- **Managed Service Providers (MSPs):** Build your own branded RMM (Remote Monitoring and Management) or IoT platform for hundreds of clients using a single deployment.
+- **Managed Service Providers (MSPs):** Build your own branded RMM (Remote Monitoring and Management) or IoT platform, with each customer isolated in its own NATS account and Nebula CA. Note the Control Plane is a single-writer SQLite database and scales vertically — it is a low-traffic metadata store, and the device traffic never touches it — so size a deployment against the console and API load, not the fleet. There are no production deployments to quote figures from yet.
 - **System Integrators (SIs):** Deploy reliable, edge-first logic for smart buildings, industrial automation, or fleet management.
 - **Enterprise IT:** Manage internal distributed infrastructure across multiple buildings/offices/factories or cloud providers while maintaining absolute data sovereignty.
 

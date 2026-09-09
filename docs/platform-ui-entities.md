@@ -13,7 +13,7 @@ Organizations are the top-level container for all data and infrastructure. Every
 ### Organizations
 
 - **Isolation:** Each Organization receives its own private NATS Account and Nebula Certificate Authority.
-- **Organization Code:** A short slug (`acme`, `northwind`) that is the **one globally unique identifier in the ecosystem** — every other code on the platform is unique only *within* an Organization. It is derived from the name when you don't supply one, and it roots the public namespace: the managed-org subject rewrite carries it, sibling apps name a tenant by it, and it is the handle that lets a consumer join their data to the platform's without a mapping table. **Optional, but immutable once set** — creation refuses a colliding code rather than inventing `acme-2`, because a wrong code would be baked into signed account JWTs and printed on labels long before anyone noticed. `system` and `operator` are reserved. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
+- **Organization Code:** A short slug (`acme`, `northwind`) that is the **one globally unique identifier in the ecosystem** — every other code on the platform is unique only *within* an Organization. It is derived from the name when you don't supply one, and it roots the public namespace: the managed-org subject rewrite carries it, sibling apps name a tenant by it, and it is the handle that lets a consumer join their data to the platform's without a mapping table. **Optional, but immutable once set** — creation refuses a colliding code rather than inventing `acme-2`, because a wrong code would be baked into signed account JWTs and printed on labels long before anyone noticed. A leading digit is fine (`816tech` is a valid code). See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 - **Ownership:** An organization has an **Owner** — the identity that may delete it. Creating and *editing* the organization record are **Platform Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, so no tenant role has an update path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
 - **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding. Invitations can offer any role except `owner`.
 
@@ -116,9 +116,9 @@ The subjects a Thing publishes to become the inputs to your Layer 1 rules — pi
 Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering. Location Types are purely for organization; Thing Types have grown into the platform's primary **contract layer** for describing what a participant does on the fabric.
 
 - **Location Types:** Categorize your sites (e.g., `Campus`, `Building`, `Room`, `Cabinet`).
-- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{location}.{thing}`), a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a message schema), and an optional **NATS role** that turns those operations into runtime permissions. See [Thing Types](./thing-types.md) for the full model.
+- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{location}.{thing}`), and a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a subject suffix). See [Thing Types](./thing-types.md) for the full model.
 
-Thing Types compose from two other collections that the UI also manages directly:
+Thing Types compose from one other collection that the UI also manages directly:
 
 - **Thing Operations:** Shareable records describing individual verbs on the fabric. A single `heartbeat` operation record is typically linked from every Thing Type that emits heartbeats.
 
