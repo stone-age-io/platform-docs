@@ -182,6 +182,39 @@ curl -s -X POST http://localhost:8090/api/org/things \
 >
 > **Don't read this as a steady state.** Running indefinitely without NATS just grows the queue while the cluster's claims sit stale relative to the database. Harmless while nothing is connected, but it isn't a topology to design around — bring NATS up in §3.
 
+### Or seed a whole demo estate in one command
+
+Everything above builds one Location and one Thing by hand, which is the right
+way to understand what a record is. If what you want is a populated platform to
+look at — three tenants, a type taxonomy, locations on a real map, things
+spanning devices, gateways, applications and unattended screens, NATS roles and
+signed identities, a Nebula network with a lighthouse, and edge sites — there is
+a command for that:
+
+```bash
+./stone-age demo-seed --confirm
+```
+
+It runs **in-process, through the same provisioning hooks** the console and the
+API use, so a seeded organization is indistinguishable from one you built by
+hand: creating it mints its NATS account and Nebula CA, and creating an edge
+site mints that leaf node's NATS user. It needs no running NATS server —
+account claims queue in `nats_publish_queue` and drain when one appears.
+
+Seeding is **idempotent**: everything is found-or-created by its per-organization
+`code`, so re-running converges rather than duplicating, and `--things` raises
+the fleet size on a later run without colliding.
+
+`--confirm` is required, and it is the whole safety mechanism — this ships in
+the binary you run in production and the command writes real signed
+credentials. Point it at a throwaway database, not a live one.
+
+It also seeds the same three sites, by the same codes, that the sibling
+access-control app seeds. Run both and a door in one and a Thing in the other
+are the same door, which is what a globally unique organization code and a
+per-organization code namespace are *for* — see
+[ADR 0002](./decisions/0002-organization-code-namespace.md).
+
 **If an inventory is what you needed, you're done for now.** Skip to [§6 Next Steps](#6-next-steps). Otherwise continue to §3 and give those records identities on the fabric.
 
 ---
