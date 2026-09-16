@@ -245,16 +245,19 @@ The check **warns and never fails**, for the same reason an islanded edge warns:
 
 The [Agent](./agent.md) serves the same two endpoints from its own registry, under the `agent` namespace. **This is where per-site health is actually visible in detail** — the Control Plane cannot see it, by design ([§1](#1-why-this-exists-at-all)) — and it keeps answering with the WAN down, which is exactly when you want it. `cmd.health` travels over NATS, the link that breaks; the box you most need to ask is the one that has just gone quiet.
 
-It is **off by default**. Set `observability.addr` to enable it:
+It is **on by default, on loopback** — `observability.addr` defaults to `127.0.0.1:9100`. Set it empty to serve neither endpoint:
 
 ```yaml
 observability:
-  addr: "127.0.0.1:9100"    # empty (the default) = no listener at all
-  metrics_token: ""
+  addr: "127.0.0.1:9100"    # the default; "" = no listener at all
+  metrics_token: ""         # set this before moving addr off loopback
   interval: 15s
 ```
 
-Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router. Empty `addr` serves neither, but the checks still run and still log; a bind failure is logged rather than fatal.
+Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router. Empty `addr` serves neither, but the checks still run and still log; a bind failure is logged rather than fatal, because a monitoring port that cannot bind must not stop the agent doing its job.
+
+!!! warning "9100 is also node_exporter's port"
+    On Linux and FreeBSD the default collides with `node_exporter`, which [§3 of the Agent guide](./agent.md#3-capabilities) offers as an alternative metrics source. On a box running both, move one of them — and since a bind failure is only logged, the symptom is a scrape target that quietly never came up rather than a crash. `windows_exporter` uses 9182, so Windows is unaffected.
 
 | Check | State when it trips | Notes |
 |---|---|---|
@@ -287,6 +290,12 @@ scrape_configs:
     static_configs:
       - targets: ["site-01:9101", "site-02:9101"]
 ```
+
+The edge targets are on **9101**, not the default 9100, for two reasons: it keeps
+clear of `node_exporter`, and a scrapeable target means `addr` has been moved off
+loopback anyway. Do that with `metrics_token` set — these endpoints carry no
+per-organization labels, but they do carry a named device's health, and
+`/metrics` is open when the token is empty.
 
 The default `metrics_path` is `/metrics`, which is where both binaries serve. Point the same stack at these that you use for [Layer 3](./observability.md) — VictoriaMetrics speaks the Prometheus API, so this is a second `scrape_config`, not a second system.
 

@@ -225,13 +225,19 @@ the alert expressions.
 ### `observability` (the Agent, not this file)
 
 The edge agent's own `/ready` and `/metrics`, in the **Agent's** `config.yaml` —
-not in the Control Plane's. **Off by default.**
+not in the Control Plane's. **On by default, on loopback.**
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `addr` | string | `""` | Listen address, e.g. `"127.0.0.1:9100"`. Empty creates no listener at all; the checks still run and still log. |
-| `metrics_token` | string | `""` | As `metrics.token` above. |
+| `addr` | string | `"127.0.0.1:9100"` | Listen address. Set it empty to create no listener at all; the checks still run and still log either way. |
+| `metrics_token` | string | `""` | As `metrics.token` above. Set this before moving `addr` off loopback. |
 | `interval` | string | `"15s"` | Probe interval. |
+
+Two things to know about that default. It is **not** a gateway setting — every
+Agent serves these, because the reason to answer locally is that `cmd.health`
+travels over NATS and NATS is the link that breaks. And **9100 is node_exporter's
+own default port** on Linux and FreeBSD, so on a box running both, move one of
+them. (`windows_exporter` uses 9182, so Windows is unaffected.)
 
 This is where per-site health is visible in detail, and it keeps answering with
 the WAN down — which is exactly when you want it. The Control Plane cannot

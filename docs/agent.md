@@ -1,6 +1,6 @@
 # The Agent
 
-The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It acts as a resilient, outbound-only executor that connects your physical hardware to the Data Plane.
+The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It connects your physical hardware to the Data Plane, and it takes its instructions only over a connection it dialed itself — there is no inbound management API to expose, forward a port to, or firewall.
 
 The Agent is what turns a bare server or IoT gateway into a participant in the Data Plane. Once connected, it publishes telemetry that Layer 1 rules can react to, Layer 2 stream processors can aggregate, and Layer 3 tools can archive. See [Platform Layers](./platform-layers.md) for the complete picture.
 
@@ -11,7 +11,7 @@ The Agent is what turns a bare server or IoT gateway into a participant in the D
 The agent is a single Go binary with zero external dependencies (other than the optional Prometheus exporters). Its design philosophy is simple: **Stay invisible until needed.**
 
 - **Lightweight:** Consumes < 50MB of RAM and negligible CPU.
-- **Secure:** No listening ports. It initiates all connections outbound via NATS.
+- **Secure:** No inbound management API — every instruction arrives over the authenticated NATS connection the Agent dialed outbound, so no port forward is ever needed to manage a device. (It is not, however, "no listening ports": `/ready` and `/metrics` bind `127.0.0.1:9100` unless you set `observability.addr` empty, and a site gateway hosts a NATS server that local devices connect *in* to. See [§6](#6-what-listens-and-what-dials-out).)
 - **Resilient:** Automatically handles NATS reconnections and backoffs.
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
@@ -137,16 +137,17 @@ The Agent publishes on a schedule and answers commands on request. Everything it
 
 Every telemetry payload carries `code`, `location`, and `ts`, so a message is self-describing to any direct subscriber.
 
-Beyond the bus, the Agent has four capabilities that only apply on a box which is also a **site gateway**. Each is independently switchable and none of them is a mode:
+Beyond the bus, the Agent has three capabilities that apply on a box which is also a **site gateway**. Each is independently switchable and none of them is a mode:
 
 | Capability | Turned on by | What it does |
 |---|---|---|
 | Leaf bootstrap | `agent -leaf-config` | Writes `nats-leaf.conf` + creds from `GET /api/me/leaf-config` |
 | Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
 | Digital twin sync | `twin.enabled` | Relays reported state up, mirrors desired state down |
-| Local health | `observability.addr` | Serves `/ready` and `/metrics` on the box |
 
 There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first. See [Leaf Nodes](./leaf-nodes.md).
+
+**Local health is not one of them**, though it is often listed beside them. `observability.addr` serves `/ready` and `/metrics` on **every** Agent, defaulted to `127.0.0.1:9100`, because the reason to answer locally has nothing to do with running a leaf node: `cmd.health` travels over NATS, which is the link that breaks, so the box you most want to ask is the one that has just gone quiet. Nebula is the same shape — `nebula.enabled` is a per-device capability, not a gateway one.
 
 !!! note "Heartbeats are deliberately not JetStream"
     A missed beat is the signal consumers care about, so last-write-wins is the correct semantic — a backlog of stale beats replayed after a reconnect would be actively misleading. This is why the server-side stream must bind `{prefix}.*.telemetry.>` rather than `{prefix}.>`: the heartbeat stays outside the stream by subject construction.
@@ -233,8 +234,46 @@ commands:
     - "uptime"
 ```
 
-A site gateway adds `nats.server_config`, `twin.enabled` and/or `observability.addr` to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
+A site gateway adds `nats.server_config` and/or `twin.enabled` to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and `nebula` are not gateway keys and may be set on any device.
 
 Full per-platform installation guides, including how to set `AGENT_PLATFORM_PASSWORD` under systemd, Windows Services, and rc.d, ship in the Agent repository (`docs/credentials.md`).
+
+---
+
+## 6. What listens, and what dials out
+
+This is the table to hand whoever writes the firewall rules. It is also the
+correction to a claim that stood in these docs for a long time: the Agent used to
+have no listening sockets at all, and that stopped being true when local
+readiness and the embedded NATS server arrived.
+
+| | Direction | Port | When |
+|---|---|---|---|
+| NATS — telemetry, commands, heartbeats | **outbound** | 4222 (or your hub's) | always |
+| Platform HTTPS — credentials, Nebula config, leaf bootstrap | **outbound** | 443 | when the `platform:` block is set |
+| Nebula overlay | **outbound** UDP to a lighthouse | the lighthouse's configured port, commonly 4242 | when `nebula.enabled` |
+| `/ready` + `/metrics` | **listens** | `127.0.0.1:9100` | unless `observability.addr` is empty |
+| Embedded `nats-server` | **listens** | per its own config | only when `nats.server_config` is set |
+
+The property worth relying on is the first row's direction, not a count of open
+sockets: **nothing can instruct an Agent except over the NATS connection it
+dialed itself.** A device on a customer network needs no inbound rule and no port
+forward to be managed, which is what makes a fleet behind NAT or CGNAT tractable.
+
+An ordinary Agent binds an **ephemeral** local UDP port for the overlay — `pb-nebula` writes `listen.port: 0` for anything that is not a lighthouse or a relay, since only those two are reached at a fixed address through `static_host_map`. So there is nothing to open inbound for Nebula either.
+
+Two footnotes that matter in practice:
+
+- **Loopback is not an authorization boundary** when other users share the box.
+  `/metrics` carries no per-organization labels by design, but it does carry this
+  device's health. Set `observability.metrics_token` (accepted as Bearer or as
+  Basic with any username) before moving `addr` off loopback, or set `addr` empty
+  and let `cmd.health` over NATS be the only answer.
+- **9100 is also node_exporter's default port** on Linux and FreeBSD. If you run
+  the exporter on the same box — which [§3](#3-capabilities) offers as an
+  alternative metrics source — move one of the two, or neither will bind
+  reliably. Windows is unaffected: `windows_exporter` uses 9182.
+
+---
 
 The Stone Age Agent turns a raw server or IoT gateway into a managed entity that is secure by default and easy to operate at scale — a first-class participant in the layered platform rather than a bolted-on endpoint.
