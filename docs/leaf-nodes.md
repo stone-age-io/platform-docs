@@ -1,221 +1,186 @@
 # Leaf Nodes
 
-A **Leaf Node** is how Stone-Age.io models a customer site that runs its own local NATS server. The transport underneath is a stock NATS leaf node ([Connectivity §1](./connectivity.md#leaf-nodes)) — it dials the hub outbound and gives the site local autonomy when the WAN drops. On its own, though, that leaf node is just an empty pipe: it has a local JetStream domain but knows nothing about *what's at the site* — which Things exist, what their Types can do, which Locations they live in.
+A site that runs its own local NATS server keeps working when the WAN does not. The transport underneath is a stock NATS leaf node ([Connectivity §1](./connectivity.md#leaf-nodes)) — it dials the hub outbound and gives the site local autonomy during an outage.
 
-What turns a bare NATS process into a Stone-Age.io **Leaf Node** is **`leaf-sync`**: a small, opinionated edge agent that runs at the site, authenticates as the site's own identity, and mirrors that organization's configuration into the leaf node's local KV. The platform tracks each site as a **`leaf_nodes`** record — "a special Thing" with one NATS identity — so a Leaf Node is a provisioned, RBAC-scoped, audited entity, not a hand-assembled pile of config files.
-
-This page covers both: the Leaf Node entity and the `leaf-sync` agent that brings it to life.
+**The platform models that site as a Thing.** Not a special record type, not a separate collection: a Thing whose [Thing Type](./thing-types.md) says it is a gateway, and whose [Agent](./agent.md) happens to have its leaf-node capabilities turned on. One inventory, one identity model, one set of API rules.
 
 > ## "Leaf node" means two related things — keep them straight
 >    | Term | What it is |
 >    | :--- | :--- |
 >    | **NATS leaf node** | The stock `nats-server` running at the site in leaf mode, dialing the hub outbound. A Layer 0 transport primitive — see [Connectivity](./connectivity.md#leaf-nodes). |
->    | **Leaf Node** (this page) | The *platform's* model of the site: a PocketBase record with one NATS identity, an optional Nebula host, and an allowlist of config to mirror. Built **on** a NATS leaf node, but adds  provisioning, RBAC, and config sync. This is what the UI and PocketBase call a "Leaf Node." |
->    | **`leaf-sync`** | The binary that bootstraps the leaf node's config and continuously mirrors central config → local KV. The subject of this page. |
->    | **The [Agent](./agent.md)** (`agent`) | A *per-Thing* executor (telemetry, service checks, remote exec). Different binary, different job. A site often runs both: `leaf-sync` keeps the site's config in  sync; Agents report on individual devices. |
+>    | **A gateway** | The *platform's* model of such a site: an ordinary **Thing**, with a Thing Type that says gateway, one NATS identity, and optionally a Nebula host. This page is about how one gets configured and how you tell whether it is up. |
+>    | **The [Agent](./agent.md)** | The binary on the box. It manages the device *and*, when configured to, bootstraps and hosts the leaf node. One agent, not two. |
 
 ---
 
-## 1. More than a NATS leaf node
+## 1. There is no gateway flag
 
-A vanilla NATS leaf node is unopinionated by design — it's transport, and nothing more. Stone-Age.io's Leaf Node is the opposite: it's a leaf node with a point of view, and `leaf-sync` is what gives it one. Four things make it *platform-specific* rather than a bare process:
+This is the design decision the rest of the page follows from, so it is worth stating plainly: **nothing on the platform marks a Thing as a gateway.**
 
-- **Pre-loaded config.** `leaf-sync` populates the local KV with the org's Thing contract graph and inventory (§4), so the site can resolve what its devices are and what they're allowed to do — offline, with no round-trip to the hub.
-- **A managed identity.** The Leaf Node is provisioned with its own NATS user by a server-side hook. You never hand-mint keys; you create a record.
-- **A bounded sync scope.** What a site mirrors is an enforced allowlist (§4), not "whatever's in PocketBase." Secret-bearing collections can never reach it.
-- **The same control surface as everything else.** Rotating credentials or narrowing the site's NATS role are record edits in the console — not SSH sessions on the edge box. (Those edits *are* audited, but reading `audit_logs` is a Platform Operator action: no tenant role, not even `owner`, can read it — see [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only).)
+A `leaf_nodes` collection used to exist — "a special Thing" with its own `domain` column, its own sync allowlist, and its own screens. It was removed, for three separate reasons that happened to arrive together:
 
-The payoff: a Leaf Node *understands its own configuration*, where a plain leaf node only moves bytes.
+- **`thing_types` already says what a device is.** A second marker is a second thing to get wrong, and two markers that disagree have no correct interpretation.
+- **The `domain` column was a second copy of the code.** It could drift from the code it was derived from, and when it did, the symptom was a site that silently stopped appearing rather than an error.
+- **Nothing consumed the mirrored config.** The old agent copied an organization's `things`, `locations` and type collections into the edge's local KV so devices could read them offline — but no rule, no firmware and no tool ever read those rows. It was the reason an edge identity needed read grants spread across the inventory, and it bought nothing.
 
----
-
-## 2. Why the edge pulls its config
-
-There are two distinct sync planes at a site, and `leaf-sync` owns only one of them.
-
-- **Config plane** — PocketBase records → `leaf-sync` (HTTPS pull) → local KV. This exists because the Control Plane is the **NATS Operator** and only ever touches the **SYSTEM account**. It deliberately has no presence inside any tenant's account data plane (see [Architecture §2](./architecture.md#key-properties-of-this-topology)), so it *cannot* push config into an org's buckets. Instead, the site pulls its own config, authenticated as its own identity.
-- **Data plane** — live data already in NATS (digital twin state, telemetry) replicates between hub and edge via cross-domain JetStream **mirror/source**, configured by the account's own users. This is ordinary JetStream replication, not `leaf-sync`.
-
-The split matters: `leaf-sync` moves *metadata* (the inventory and contracts a site needs to make sense of its traffic), while JetStream moves the *traffic itself*.
+What is left is one route. Everything an agent needs to stand up a leaf server comes from `GET /api/me/leaf-config`, and **that route gates on nothing** — see §3.
 
 ---
 
-## 3. The Leaf Node entity
+## 2. Why the edge pulls, rather than the hub pushing
 
-Create one in the console under **Leaf Nodes → New**. A server-side hook then provisions its NATS identity automatically — no manual key handling. **Creating, editing, and deleting Leaf Nodes is an Owner/Admin action**; any role in the organization can view the list and detail pages ([Authorization §6](./authorization.md#6-leaf-nodes-and-the-edge)).
+The Control Plane is the **NATS Operator** and only ever touches the **SYSTEM account**. It deliberately has no presence inside any tenant's account data plane (see [Architecture §2](./architecture.md#key-properties-of-this-topology)), so it *cannot* push anything into an organization's buckets, and it cannot read anything out of them either.
 
-| Field | Role |
+So the site pulls, authenticated as itself. Live data — digital twin state, telemetry — replicates separately via cross-domain JetStream mirror and relay, configured by the account's own users. That split is what §5 and §6 are about.
+
+---
+
+## 3. `GET /api/me/leaf-config`
+
+Bound to the `things` collection, taking **no record id**: the target is the caller's own authenticated record, exactly like `POST /api/me/nats-creds/rotate`. It returns ten named fields:
+
+| Field | What it is |
 | :--- | :--- |
-| `code` | The site's slug. Derives the NATS username and the JetStream domain (`edge-<code>`). Immutable after creation. |
-| `domain` | Local JetStream domain, distinct from the hub's, so the site has its own KV/stream namespace. |
-| `nats_user` | The site's single NATS identity, minted by the provisioning hook. Shared by the leaf remote, `leaf-sync`, and any local rule engine. |
-| `nebula_host` | Optional link to a Nebula host, so the site can also join the overlay mesh. A Leaf Node can have both. |
-| `synced_collections` | The subset of the allowlist (§4) this site mirrors. |
-| `active` | Owner/Admin switch. Clearing it decommissions the site — see §7. |
-| `location`, `metadata` | Optional site context. |
+| `code` | The Thing's code |
+| `domain` | The leaf's JetStream domain — **the same string as `code`** |
+| `creds` | This Thing's own NATS credential |
+| `account_jwt`, `account_pub` | The organization's NATS account |
+| `operator_jwt` | The NATS Operator |
+| `sys_account_jwt`, `sys_account_pub` | The `$SYS` account (see §4) |
+| `hub_leaf_url` | Where the leaf remote dials the hub |
+| `hub_domain` | The hub's own JetStream domain |
 
-When you create a Leaf Node, the success modal shows its PocketBase credentials **once** — those are what `leaf-sync` authenticates with. If they're lost, an org Admin/Owner can **reset credentials** from the detail view (the new password is shown once); the old one stops working immediately, so update `leaf-sync.yaml` and restart the agent. The detail view mirrors the Thing layout: a **Liveness** card (status, last heartbeat, agent version, per-collection sync counts — see §4.1) and identity on the left; a **Connectivity** card (NATS username/status, role with reassignment, per-user permission overrides, `.creds` download, and Nebula hostname/IP/config) on the right; plus the synced-collection selection.
+**There is deliberately no marker, flag or capability check on it.** Everything served is either public trust material — the Operator, account and `$SYS` account JWTs, which every server in the network validates anyway — or the caller's own credential, which it must already hold in order to connect at all. A Thing that will never run a leaf node can call this route and learns nothing it could not already read. A gate would have been a permission over data that is not secret, and it would have needed a marker field to gate on.
 
----
+What is *not* served: account **seeds**, signing keys, and any `$SYS` **user** credential. The `nats_system_operator` collection stays superuser-only, and a gateway holds no read grant on `nats_users` or `nats_accounts` beyond its own linked identity. The blast radius of a leaked edge credential is those ten values plus that Thing's own access — a fixed list, not a consequence of how those collections' rules later evolve.
 
-## 4. leaf-sync: the edge agent
+### The domain is the code, computed and never stored
 
-`leaf-sync` is built from the same repository as the Control Plane but ships as its own lean binary. **The edge never runs PocketBase.** It has two commands:
+The platform derives `domain` from `code` at request time. The agent writes it into **both** `server_name` and `jetstream { domain }` in the generated config, and the console matches a leaf's reported `server_name` back to a Thing's `code` to show a site attached (§7) — so those two must not diverge, and the surest way to guarantee that is to have only one of them.
 
-```sh
-leaf-sync config       # one-shot: write nats-leaf.conf + edge.creds from PocketBase
-leaf-sync run          # daemon: mirror config collections into local KV
-leaf-sync run --nats   # ...and run the leaf node itself, in this process
-```
-
-- **`config`** authenticates to PocketBase as the Leaf Node and fetches everything needed to stand the leaf server up from a single dedicated, leaf-node-authenticated route — `GET /api/leaf/bootstrap` — which returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, and `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and hands back named values, never whole records, so the leaf-node identity needs no read grant on `nats_users` or `nats_accounts` at all (§7). It writes `nats-leaf.conf` and the creds file. No NATS connection required — run it *before* the leaf server is up.
-- **`run`** connects to the local leaf and, every `sync.interval`, performs a **full reconcile** of each allowed collection: upsert every record into KV bucket `<collection>`, then delete keys for records that no longer exist. It is **fail-soft** — on any PocketBase or NATS error it leaves local KV untouched and retries; it never wipes local state. Deletion is driven only by what PocketBase returned, never by whether a write succeeded, so a failed write can never escalate into the key being purged. A *successful but empty* fetch is guarded too: if a collection returns zero records while local KV still holds keys, the purge is skipped for that cycle, so a transient auth or scoping glitch can't wipe the mirror. The mirror is also **self-healing**: a key removed out-of-band — a purged and recreated bucket, a lost store, a manual `nats kv del` — is rewritten on the next cycle rather than staying absent. It shuts down cleanly on `SIGINT`/`SIGTERM`, so it's safe under systemd or Docker.
-
-After each cycle, `run` also writes a best-effort **liveness heartbeat** (when `nats.hub_domain` is set — see §4.1).
-
-<center>
-```mermaid
-sequenceDiagram
-    participant LS as leaf-sync (Edge)
-    participant API as PocketBase (Control)
-    participant LEAF as Local NATS Leaf
-
-    Note over LS: leaf-sync config (one-shot)
-    LS->>API: Auth as Leaf Node (email/pass)
-    API-->>LS: JWT
-    LS->>API: GET /api/leaf/bootstrap
-    API-->>LS: domain, code, creds, account JWT + pub,<br/>NATS Operator JWT, $SYS account JWT + pub
-    LS->>LS: Write nats-leaf.conf + edge.creds
-    Note over LEAF: nats-server -c nats-leaf.conf
-
-    Note over LS: leaf-sync run (daemon)
-    loop every sync.interval
-        LS->>API: List allowed collections (this org)
-        API-->>LS: Records
-        LS->>LEAF: Upsert into KV bucket <collection>
-        LS->>LEAF: Delete keys for removed records
-    end
-```
-</center>
-
-Records are keyed in KV the same way the Control Plane handles them: by `code`, then `name`, falling back to the PocketBase record id when no stable handle exists. The id always stays inside the stored JSON so relation fields resolve, and server-only noise fields (`collectionId`, `collectionName`, `expand`) are stripped from the value.
-
-### 4.1 Liveness heartbeat
-
-A provisioned Leaf Node is only useful if you can tell it's actually running. After each reconcile, `leaf-sync` writes a small **heartbeat** into the org account's **`leaf_status`** KV bucket, keyed by the site's `code`:
-
-```json
-{ "code": "warehouse-a", "version": "1.4.0", "ts": "2026-06-08T12:34:56Z",
-  "interval": "30s", "synced": { "things": 142, "locations": 12 }, "errors": [] }
-```
-
-The console reads this bucket over its existing NATS connection and renders each site's status — a dot on the **Leaf Nodes** list and a **Liveness** card on the detail view (agent version, last-beat time, per-collection record counts, and any sync errors). A site is shown **offline** once its last beat is older than three sync intervals.
-
-Two things make this a clean, NATS-only signal — no PocketBase write-back, no new server route:
-
-- **It rides the data plane.** The Leaf Node's own NATS identity writes the beat, and the UI (an account user) reads it. The Control Plane is never involved, consistent with the plane split in §2.
-- **The heartbeat targets the *hub's* JetStream domain.** `leaf-sync` is connected to the local leaf (domain `edge-<code>`), so a default KV write would stay local and invisible to the hub. It therefore writes across the leaf link to the hub domain named by `nats.hub_domain` — the same place the digital-twin buckets live. Leave `hub_domain` unset and the heartbeat is simply off.
-
-The write is **best-effort**: a heartbeat failure (e.g. a WAN outage) is logged and never disturbs the sync loop — and the *absence* of a recent beat is exactly what the console reads as "offline."
+There is no `edge-` prefix and no organization segment in it either. JetStream is already scoped to the account, so the account *is* the namespace; a prefix would be decoration that every consumer then has to strip.
 
 ---
 
-## 5. What gets synced
+## 4. Two directives that are not optional
 
-A hard allowlist, enforced both by the server's API rules and by `leaf-sync`:
+A generated `nats-leaf.conf` has to satisfy NATS operator-mode validation, and **no string assertion can check that**. Both of the following were missing for months, so the generator produced a file `nats-server` refused to load — invisible, because the only tests were substring checks over the output.
 
-```
-things   locations   thing_types   location_types   thing_type_operations
-```
+1. **Every leaf remote needs an `account` key** naming the local account.
+2. **`resolver_preload` needs the `$SYS` account JWT**, not just the organization's. The Operator JWT names a system account, and `resolver: MEMORY` has nowhere to fetch it — so without it the server dies with `error resolving system account: account missing`, *before JetStream ever starts*.
 
-This is exactly the **Thing contract graph**: `thing_type` → `thing_type_operation` (see [Thing Types](./thing-types.md)), plus the Things and Locations that instantiate it. With these mirrored locally, a site can resolve the subject any Thing at that site publishes to or listens on **entirely offline**.
+!!! note "Preloading the `$SYS` **account** JWT grants nothing"
+    It is public trust material, like the Operator JWT beside it. Connecting *as* `$SYS` requires a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects, and it is worth being precise about which one is which, because the first looks alarming and is not.
 
-A Leaf Node identity can read exactly two things: **its own `leaf_nodes` record**, and **the five allowlisted collections above, within its own organization**. Nothing else. Secret-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never exposed to a Leaf Node identity and can never be synced — the API rules contain no `leaf_nodes` branch for any of them. The bootstrap values an edge box genuinely cannot derive locally (its own creds, the account JWT and public key, the NATS Operator JWT, and the `$SYS` account JWT and public key) come from the dedicated `GET /api/leaf/bootstrap` route instead (§4, §7). The `synced_collections` field on the record selects which of the allowlist a given site actually mirrors.
-
----
-
-## 6. Offline autonomy
-
-Once `leaf-sync` has populated local KV, the rest of the layered platform runs at the edge without the hub:
-
-- A [rule engine](./automation.md) instance reads the mirrored config and live KV and keeps evaluating site-local reflexes during a WAN outage.
-- A [stream processor](./stream-processing.md) keeps producing aggregates from local subjects.
-- Devices and Agents keep publishing to the local leaf, which buffers and forwards once connectivity returns.
-
-`leaf-sync`'s full-reconcile loop is what makes this safe: when the link comes back, the next cycle converges local KV to whatever changed centrally, without ever having served stale-but-broken state in the meantime.
+The platform's generator now runs its own output through the real `nats-server` config parser in a test. Keep that shape if you touch it — substring checks cannot express "and the server accepts it".
 
 ---
 
-## 7. Security model
+## 5. Deploy flow
 
-- **One NATS identity per Leaf Node**, shared by the leaf remote, the rule engine, and `leaf-sync`. The **edge box is the trust boundary**; tenant isolation is the NATS *account* boundary, which the site cannot cross.
-- The site only ever holds **public trust material** (NATS Operator JWT, account JWT) plus its own user's creds. It **cannot mint new account users**.
-- That trust material is reachable only through `GET /api/leaf/bootstrap`, authenticated as the Leaf Node. The handler reads named fields with the server's own privileges — the NATS Operator collection stays superuser-only, account *seeds* and signing keys are never served, and the leaf-node identity holds **no read grant on `nats_users` or `nats_accounts`**. So the blast radius of a leaked edge credential is those eight values and its allowlisted config, fixed regardless of how those collections' rules later evolve. (`GET /api/leaf/operator-jwt` still exists for older agents; it is superseded by `/api/leaf/bootstrap`.)
-- Narrowing a site's blast radius is a record edit — reassign its NATS role or add per-user permission overrides from the Leaf Node's detail view. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
-- The Leaf Node's PocketBase password (its `leaf-sync` login) is resettable by an org Admin/Owner from the console — gated by the collection's `manageRule`, so it stays a scoped, audited record action rather than a superuser-only operation.
-- **Deactivating a Leaf Node takes the site off the fabric.** `active` is an Owner/Admin boolean, and clearing it does three things at once: `leaf-sync` can no longer authenticate, the session token it already holds is invalidated immediately, and the site's NATS credential is revoked — so the config pull and the leaf remote connection both stop. Reactivating issues a **new** credential; the previous `.creds` stays revoked permanently, so re-run `leaf-sync config` on the box. This is the control to reach for when a site is retired or a box is presumed lost. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+1. In the console, create the site's **Thing**, with a Thing Type that says gateway. Copy the login password from the success dialog — it is shown once.
+2. Install the [Agent](./agent.md) on the edge box and configure the platform block:
 
-!!! warning "`active` and the liveness badge answer different questions"
-    The Liveness card (§4.1) reports whether `leaf-sync` **is** currently talking to the hub. `active` governs whether it **may**. A deactivated site showing "offline" is the expected outcome, not a fault to chase — and an *active* site showing offline is the one worth investigating.
+    ```yaml
+    code: "s01"
+    platform:
+      url: "https://platform.acme.io"
+      identity: "s01@things.acme.io"
+      password_env: "AGENT_PLATFORM_PASSWORD"
+    nats:
+      urls: ["nats://127.0.0.1:4222"]
+      auth:
+        type: "platform"
+        creds_file: "/etc/agent/device.creds"
+    twin:
+      enabled: true          # optional, see §6
+    observability:
+      addr: "127.0.0.1:9100" # optional, see §7
+    ```
+
+3. `agent -leaf-config` → writes `nats-leaf.conf` (0644) and the creds (0600) beside each other.
+4. Start the leaf, either way:
+    - **Two processes (default):** `nats-server -c /etc/agent/nats-leaf.conf` under systemd or Docker. The bus then survives an agent restart, which is what you want when upgrading the agent on a live site.
+    - **One process:** set `nats.server_config` to that path and the agent hosts the server itself. `nats.urls` must name the port the config listens on; startup refuses the pair if they disagree.
+5. `agent -service install && agent -service start`.
+6. Point any site-local [rule engine](./automation.md) at the same creds file.
+
+!!! note "Bootstrapping and running cannot be one invocation"
+    `-leaf-config` is a one-shot for a structural reason, not a stylistic one. A separately supervised `nats-server` needs its config file to exist *before* it starts — which is before the agent has anything to connect to.
 
 ---
 
-## 8. Deploy flow
+## 6. Offline autonomy and the digital twin
 
-1. In the console, create a **Leaf Node**; copy the credentials from the success modal.
-2. On the edge box, install `leaf-sync` and a stock `nats-server`, and write `leaf-sync.yaml`:
+Once the leaf is up, the rest of the layered platform runs at the edge without the hub: a [rule engine](./automation.md) keeps evaluating site-local reflexes, a [stream processor](./stream-processing.md) keeps producing aggregates, and devices keep publishing to the local leaf, which buffers and forwards once connectivity returns.
 
-   ```yaml
-   pocketbase:
-     url: "https://platform.acme.io"
-     email: "warehouse-a@acme.leaf.local"   # from the success modal
-     password: "••••••••"
-   nats:
-     hub_leaf_url: "nats://nats.acme.io:7422"   # where the leaf remote dials the hub
-     local_url: "nats://127.0.0.1:4222"
-     creds_file: "edge.creds"
-     hub_domain: "hub"                           # hub's JetStream domain; enables the heartbeat (§4.1)
-   sync:
-     interval: "30s"
-   ```
+With `twin.enabled`, the agent also syncs digital-twin state. **Two buckets, one writer each:**
 
-   Any key can be overridden by an environment variable: upper-case it, replace dots with underscores, and prefix `LEAF_SYNC_` (e.g. `LEAF_SYNC_POCKETBASE_PASSWORD`).
-3. `leaf-sync config` → produces `nats-leaf.conf` + `edge.creds`.
-4. `nats-server -c nats-leaf.conf` (under systemd/Docker/your init system).
-5. `leaf-sync run` (likewise supervised).
-6. Point your local rule engine at `edge.creds` for site-local automation.
+| Bucket | Written by | Flows | Mechanism |
+| :--- | :--- | :--- | :--- |
+| `twin` | the device, at the edge | edge → hub | relay |
+| `twin_desired` | operators, at the hub | hub → edge | JetStream **mirror** |
 
-`leaf-sync` does not supervise the other processes — use whatever your platform provides.
+**One writer per bucket is the whole safety property.** A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*: two concurrent values for one key swap across the link, then swap back, each write generating the next event. Measured at roughly 170,000 writes to a single key in 300 ms before the buckets were split. Encoding the owner in the key (`thing.S01.state.temp`) buys the same safety but taxes every key in firmware, rule configs and widgets, and a mistyped segment silently never syncs.
 
-### 8.1 One process instead of two: `run --nats`
+Desired state is a **mirror** because it has exactly one origin, and the edge never writes it — so reads are served locally from last-known values, which is precisely what you want when the link is down. Reported state needs the **relay** because aggregating N sites natively would need N sources all named `KV_twin`, which the client library cannot express; the alternative is a differently-named bucket at every site, which pushes the problem into every rule that reads one.
 
-Steps 4 and 5 can collapse. `leaf-sync run --nats` starts the leaf node **inside the agent process**, from the same `nats-leaf.conf` that step 3 wrote, so an edge site is one supervised service rather than two:
+Off by default, because it moves data-plane traffic and an upgrade must not silently start doing that.
 
-```sh
-leaf-sync run --nats
+---
+
+## 7. Is the site up?
+
+Ask NATS, on the Thing's own page in the console.
+
+There is **no heartbeat and no status field** behind that badge, and there used to be both. A `leaf_status` KV bucket carried a beat per site and the console rendered it as online/offline. It was removed because a heartbeat travels over the very link whose failure it is meant to report: a missing beat cannot distinguish "edge box down" from "WAN down" from "agent crashed" — three different call-outs behind one red dot. And the Control Plane could never have read one anyway (§2).
+
+The hub, on the other hand, always knows which leaf connections it is holding. So the console asks it, over the browser's own in-account NATS connection:
+
+```
+$SYS.REQ.ACCOUNT.PING.CONNZ
 ```
 
-Off by default — the two-process topology stays the default, because it is the one that lets you upgrade the agent without interrupting the bus. Two behaviours change when the flag is on, and both are deliberate:
+Entries with `kind: "Leafnode"` are matched by `name` — the leaf's `server_name`, which is the Thing's `code` (§3).
 
-- **The NATS server starts before PocketBase is touched at all.** A site whose uplink is down must still come up with a working local bus; that autonomy is the entire point of a leaf node.
-- **A failed PocketBase login retries instead of exiting.** Without `--nats`, exiting is correct — the bus is another process and survives. With `--nats`, exiting takes the bus down with it, and a supervisor cycling the pair through a WAN outage means every device on site reconnecting and JetStream recovering its store, in a loop.
+**Each account carries its own `$SYS` subject space.** `$SYS.REQ.ACCOUNT.PING.*` is scoped to the caller's own account and answers for that organization and no other; the operator-wide `$SYS.REQ.SERVER.PING.*` endpoints, which would span every tenant, are not reachable from a tenant credential. The server enforces both halves, and the platform pins them in a test against a real hub with a real leaf attached.
 
-The cost is binary size: `nats-server` links in either way, so the stripped binary goes from roughly 17 MB to the high twenties. On an edge box that is not a consideration; it is noted so the number is not a surprise.
+!!! warning "In NATS, a publish DENY beats a publish ALLOW"
+    If that badge ever times out for one organization and not another, this is almost certainly why. A NATS Role carrying `$SYS.>` in its **publish deny** list cannot reach the account-scoped endpoints no matter what its allow list says — and the symptom is a plain request timeout, with the real reason arriving asynchronously on the connection's error handler and never on the request itself. Deny `$SYS.REQ.SERVER.>` instead.
 
-> Build a release binary with the version stamped in (it surfaces in `leaf-sync --version` and in every heartbeat):
-> ```sh
-> go build -ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
-> ```
->
-> Or download it from the [Releases page](https://github.com/stone-age-io/platform/releases) — `leaf-sync` is published for linux, darwin and windows on amd64 and arm64, already stamped.
+The badge has three states, not two, and the third one matters: without a NATS connection the console cannot answer the question at all, so it says **unknown** rather than showing every site as down.
+
+!!! note "The empty state is not painted as a fault"
+    The console cannot tell a gateway that *should* have a leaf from a temperature probe that never will — there is no marker field, by design (§1). So "no leaf node attached" is stated as a fact in neutral colour. It reads as an alarm on a gateway's page and a shrug on a probe's, and the person looking knows which they are looking at.
+
+### Per-site health, in detail
+
+The badge answers one question. For the rest — is JetStream filling the disk, how many devices are actually attached, is the uplink down — the agent serves `/ready` and `/metrics` **on the box**, behind `observability.addr`. That is where per-site health can actually be measured, and it keeps answering with the WAN down, which is exactly when you want it. See [Health & Metrics](./health-metrics.md).
+
+**An islanded site warns; it does not fail.** `hub_uplink` is a warning and still answers 200. Local NATS keeps working and devices keep running — that autonomy is the entire reason a leaf node exists, so reporting it as unready would invert the design.
+
+---
+
+## 8. Security model
+
+- **The edge box is the trust boundary.** Tenant isolation is the NATS *account* boundary, which a site cannot cross. One NATS identity per gateway, shared by the leaf remote, the rule engine, and the agent.
+- The site holds **public trust material** (Operator JWT, account JWT, `$SYS` account JWT) plus its own user's creds. It **cannot mint new account users**.
+- **Taking a site out of service is `active` on its Thing**, Owner/Admin only. Clearing it does three things at once: the agent can no longer authenticate, the session token it already holds is invalidated immediately, and the site's NATS credential is revoked — so the config pull and the leaf remote connection both stop. Reactivating issues a **new** credential; the previous `.creds` stays revoked permanently, so re-run `agent -leaf-config` on the box. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+- **Deactivate, do not delete.** Revoking a Nebula certificate requires the certificate to still be in the database so its fingerprint can be published; deleting the record leaves it trusted until it expires.
+- The Thing's PocketBase password is resettable by an org Admin/Owner from the console, gated by the collection's `manageRule` — a scoped, audited record action rather than a superuser-only operation.
+- Narrowing a site's blast radius is a record edit: reassign its NATS Role or add per-user permission overrides. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
+
+!!! warning "`active` and the connectivity badge answer different questions"
+    The badge (§7) reports whether the site **is** currently attached to the hub. `active` governs whether it **may** be. A deactivated site showing no leaf is the expected outcome, not a fault to chase — and an *active* site showing none is the one worth investigating.
 
 ---
 
 ## 9. Where to Go Next
 
 - **The leaf node transport primitive:** [Connectivity §1 — Leaf Nodes](./connectivity.md#leaf-nodes).
-- **The contract graph that gets synced:** [Thing Types](./thing-types.md).
-- **Per-Thing edge execution (a different agent):** [The Agent](./agent.md).
+- **The agent that does all of this:** [The Agent](./agent.md).
+- **The contract graph a site's devices publish against:** [Thing Types](./thing-types.md).
 - **Site-local rules during outages:** [Automation](./automation.md).
 - **What an edge identity may read, and who may manage it:** [Authorization & Roles](./authorization.md).
+- **Per-site health endpoints:** [Health & Metrics](./health-metrics.md).
 - **How the planes fit together:** [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md).

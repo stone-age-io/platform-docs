@@ -7,13 +7,15 @@
 
 > The Context and Decision below describe the design as it was argued. All six steps have since shipped; see [As implemented](#as-implemented) for what changed on contact with the code — including one ordering error in this document that would have dropped events.
 
+> **One collection named below no longer exists.** `leaf_nodes` was the precedent this ADR cites for freezing `code`, and it has since been dropped — an edge site is an ordinary Thing now (see [Leaf Nodes](../leaf-nodes.md)). The argument is unaffected: the freeze shipped on every collection listed, `things` included, and `things.code` is the precedent to point at today. The references are left as written, because an ADR records what was argued at the time.
+
 ---
 
 ## Context
 
 An object in the real world — a door, a card reader, a site — is named several times over. It has a PocketBase id in the platform. It has a different PocketBase id in the helpdesk. It has a `code` that both agree on. It has a NATS subject it publishes under, a KV key its twin lives at, and, if someone screws a label to it, a string on a sticker.
 
-Most of those already agree. `stone` resolves records by code, `leaf-sync` keys KV by the handle `candidateKey` derives, twin keys are `<kind>.<code>.<prop>`, and the helpdesk's machine intakes resolve a payload `thing_code` / `location_code` per `(customer, code)`. The ecosystem federates on `(organization, code)` and has for a while.
+Most of those already agree. `stone` resolves records by code, the edge keys KV by the handle `candidateKey` derives, twin keys are `<kind>.<code>.<prop>`, and the helpdesk's machine intakes resolve a payload `thing_code` / `location_code` per `(customer, code)`. The ecosystem federates on `(organization, code)` and has for a while.
 
 Two things spoil it.
 

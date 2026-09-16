@@ -222,19 +222,29 @@ default.
 See [Health & Metrics](./health-metrics.md) for the checks, the metric names and
 the alert expressions.
 
-### `observability` (leaf-sync only)
+### `observability` (the Agent, not this file)
 
-The edge agent's own `/ready` and `/metrics`, in `leaf-sync.yaml`. **Off by default.**
+The edge agent's own `/ready` and `/metrics`, in the **Agent's** `config.yaml` —
+not in the Control Plane's. **On by default, on loopback.**
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `addr` | string | `""` | Listen address, e.g. `"127.0.0.1:9101"`. Empty creates no listener at all. |
-| `metrics_token` | string | `""` | As `metrics.token` above. |
+| `addr` | string | `"127.0.0.1:9100"` | Listen address. Set it empty to create no listener at all; the checks still run and still log either way. |
+| `metrics_token` | string | `""` | As `metrics.token` above. Set this before moving `addr` off loopback. |
 | `interval` | string | `"15s"` | Probe interval. |
 
-This is the only place per-site health is visible: the Control Plane cannot read
-an organization's `leaf_status` heartbeats, because it holds no credential
-inside that account. See [Leaf Nodes](./leaf-nodes.md).
+Two things to know about that default. It is **not** a gateway setting — every
+Agent serves these, because the reason to answer locally is that `cmd.health`
+travels over NATS and NATS is the link that breaks. And **9100 is node_exporter's
+own default port** on Linux and FreeBSD, so on a box running both, move one of
+them. (`windows_exporter` uses 9182, so Windows is unaffected.)
+
+This is where per-site health is visible in detail, and it keeps answering with
+the WAN down — which is exactly when you want it. The Control Plane cannot
+report it: it holds the NATS operator and the `$SYS` account and has no
+credential inside any organization's account. (Whether a site's leaf node is
+*attached* is a separate, cheaper question, and the console answers that one by
+asking the hub directly.) See [Leaf Nodes](./leaf-nodes.md).
 
 ---
 

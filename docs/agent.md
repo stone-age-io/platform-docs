@@ -1,6 +1,6 @@
 # The Agent
 
-The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It acts as a resilient, outbound-only executor that connects your physical hardware to the Data Plane.
+The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It connects your physical hardware to the Data Plane, and it takes its instructions only over a connection it dialed itself — there is no inbound management API to expose, forward a port to, or firewall.
 
 The Agent is what turns a bare server or IoT gateway into a participant in the Data Plane. Once connected, it publishes telemetry that Layer 1 rules can react to, Layer 2 stream processors can aggregate, and Layer 3 tools can archive. See [Platform Layers](./platform-layers.md) for the complete picture.
 
@@ -11,12 +11,12 @@ The Agent is what turns a bare server or IoT gateway into a participant in the D
 The agent is a single Go binary with zero external dependencies (other than the optional Prometheus exporters). Its design philosophy is simple: **Stay invisible until needed.**
 
 - **Lightweight:** Consumes < 50MB of RAM and negligible CPU.
-- **Secure:** No listening ports. It initiates all connections outbound via NATS.
+- **Secure:** No inbound management API — every instruction arrives over the authenticated NATS connection the Agent dialed outbound, so no port forward is ever needed to manage a device. (It is not, however, "no listening ports": `/ready` and `/metrics` bind `127.0.0.1:9100` unless you set `observability.addr` empty, and a site gateway hosts a NATS server that local devices connect *in* to. See [§6](#6-what-listens-and-what-dials-out).)
 - **Resilient:** Automatically handles NATS reconnections and backoffs.
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
-!!! note "Not to be confused with `leaf-sync`"
-    The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
+!!! note "It absorbed `leaf-sync`"
+    There used to be a second binary — `leaf-sync` — that bootstrapped a site's NATS leaf node and mirrored an organization's configuration into local KV. It is gone. Its leaf-node duties moved into the Agent, and the config mirror was dropped rather than moved, because nothing ever read the mirrored rows. A site that runs a leaf node runs **one** binary now, not two. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Getting the binary
 
@@ -40,7 +40,9 @@ The per-platform guides in the agent repository (`docs/linux.md`, `docs/windows.
 
 The automated provisioning flow is what makes the Agent practical at MSP scale. Instead of manually copying credential files to every device, the Agent authenticates to the Control Plane **as its own Thing** and fetches its NATS credentials itself — then keeps them current for the life of the device.
 
-This is `auth.type: "stone-age"` in the Agent's config. It is deliberately named after the platform rather than after PocketBase: the Agent depends on the Stone-Age.io schema (`things` → `nats_user` → `creds_file`) and on a route the platform defines itself, not on anything generic.
+This is `auth.type: "platform"` in the Agent's config, with the platform itself configured in a **top-level `platform:` block**. It is deliberately named after the platform rather than after PocketBase: the Agent depends on the Stone-Age.io schema (`things` → `nats_user` → `creds_file`) and on routes the platform defines itself, not on anything generic.
+
+The block is top-level rather than nested under `nats.auth` because **three** subsystems read it: the NATS credential lifecycle below, the [Nebula](#4-security-isolation) config source, and the [leaf bootstrap](./leaf-nodes.md#3-get-apimeleaf-config). With it buried under one of them, the other two had to ask "is some other section's type field set to a particular string" instead of "is the block present".
 
 ### The Lifecycle of a "Thing":
 
@@ -49,9 +51,9 @@ This is `auth.type: "stone-age"` in the Agent's config. It is deliberately named
 3.  **Install:** The Agent is installed on the edge device with its `code`, the platform URL, the Thing's login email, and that password in an environment variable — never in the config file.
 4.  **Bootstrap (first start only):** The Agent authenticates as the Thing against `POST /api/collections/things/auth-with-password?expand=nats_user,location`, verifies the returned record's `code` matches its own config, and writes the `.creds` file from `expand.nats_user.creds_file` with `0600` permissions. It also stores the session token and the credential's revision.
 5.  **Operation:** The Agent connects to NATS with that `.creds` file and begins publishing.
-6.  **Upkeep (every 24h by default):** The Agent renews its platform session and adopts a credential the platform has re-minted. Once it holds a session token the Thing's password is optional and can be removed from the device — see §2.2.
+6.  **Upkeep (`platform.sync_interval`, 24h by default):** The Agent renews its platform session and adopts a credential the platform has re-minted. Once it holds a session token the Thing's password is optional and can be removed from the device — see §2.2.
 
-The Agent fetches **only** its NATS credentials. It does not fetch a NATS URL (`nats.urls` is local config), and it neither fetches nor manages Nebula — a Thing's Nebula config is downloaded from the Console and installed separately.
+The Agent does not fetch a NATS URL — `nats.urls` is local config, because what a box can reach is a property of where the box is. With `nebula.enabled` it fetches its **Nebula** config the same way, from the `nebula_host` linked to the same Thing, and re-reads it on `nebula.sync_interval`. That interval is the device's **revocation latency**, not a tuning knob: Nebula has no CRL, so a revoked certificate is only refused once each peer has re-read its own config.
 
 <center>
 ```mermaid
@@ -135,6 +137,18 @@ The Agent publishes on a schedule and answers commands on request. Everything it
 
 Every telemetry payload carries `code`, `location`, and `ts`, so a message is self-describing to any direct subscriber.
 
+Beyond the bus, the Agent has three capabilities that apply on a box which is also a **site gateway**. Each is independently switchable and none of them is a mode:
+
+| Capability | Turned on by | What it does |
+|---|---|---|
+| Leaf bootstrap | `agent -leaf-config` | Writes `nats-leaf.conf` + creds from `GET /api/me/leaf-config` |
+| Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
+| Digital twin sync | `twin.enabled` | Relays reported state up, mirrors desired state down |
+
+There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first. See [Leaf Nodes](./leaf-nodes.md).
+
+**Local health is not one of them**, though it is often listed beside them. `observability.addr` serves `/ready` and `/metrics` on **every** Agent, defaulted to `127.0.0.1:9100`, because the reason to answer locally has nothing to do with running a leaf node: `cmd.health` travels over NATS, which is the link that breaks, so the box you most want to ask is the one that has just gone quiet. Nebula is the same shape — `nebula.enabled` is a per-device capability, not a gateway one.
+
 !!! note "Heartbeats are deliberately not JetStream"
     A missed beat is the signal consumers care about, so last-write-wins is the correct semantic — a backlog of stale beats replayed after a reconnect would be actively misleading. This is why the server-side stream must bind `{prefix}.*.telemetry.>` rather than `{prefix}.>`: the heartbeat stays outside the stream by subject construction.
 
@@ -164,7 +178,7 @@ For custom logic, the Agent can execute local scripts or shell commands.
 
 ### D. Credential Upkeep
 
-- **`creds_sync` task:** Renews the platform session and adopts a re-minted credential (§2.1).
+- **Credential sync:** Renews the platform session and adopts a re-minted credential (§2.1), on `platform.sync_interval`.
 - **`cmd.rotate_creds`:** Asks the platform to re-mint this Agent's credential, writes it, replies, then reconnects — so a rotation costs no downtime and no site visit. The response reports `changed: false` if the platform handed back the credential the Agent already had. An Agent that is not platform-managed answers with an error rather than timing out.
 
 ---
@@ -175,7 +189,7 @@ Three mechanisms enforce cryptographic isolation at the edge:
 
 - **NKey Authentication:** The Agent signs every NATS connection challenge locally with the nkey seed in its `.creds` file. Be precise about where that key comes from, though: the Control Plane mints the keypair (`pb-nats` generates it and embeds the seed in `creds_file`), so the private key originates on the platform and is *delivered* to the device — it is not generated there. That is exactly why the credential lifecycle in §2 is built the way it is: HTTPS is required, the key is re-transmitted only when it has actually changed, it is written `0600` through an atomic replace, and platform response bodies are never logged.
 - **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — the `nats_roles` and `nats_users` collections are closed to every role below admin for reads as well as writes, precisely because a role's permission fields are copied verbatim into the JWT the platform signs.
-- **Nebula Encryption:** Administrative traffic between your workstation and the host (SSH, for instance) can be encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely. Note this is a property of the *host*, not of the Agent: the Agent does not manage the Nebula interface, and its own NATS traffic is outbound and TLS-protected regardless.
+- **Nebula Encryption:** Administrative traffic between your workstation and the host (SSH, for instance) can be encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely. With `nebula.enabled` the Agent runs that mesh host **in-process** and keeps its config current, which is what makes revocation, renewal and CA rotation actually reach the device. A newly applied config that cannot reach a lighthouse is restarted and then rolled back to the last one known to have worked, so a bad config cannot take a fleet off the network. The Agent's own NATS traffic is outbound and TLS-protected either way — the overlay is for everything else.
 
 ---
 
@@ -189,15 +203,17 @@ code: "chicago-warehouse-vent-01"   # identity token used in NATS subjects
 location: "chicago-warehouse"        # optional, carried in every payload
 subject_prefix: "agents"
 
+platform:                            # one home for the platform relationship
+  url: "https://platform.acme.io"
+  identity: "chicago-warehouse-vent-01@things.acme.io"
+  password_env: "AGENT_PLATFORM_PASSWORD"   # optional after first boot
+  sync_interval: "24h"               # renews the 7-day platform session
+
 nats:
   urls: ["nats://nats.acme.io:4222"]
   auth:
-    type: "stone-age"
+    type: "platform"
     creds_file: "/etc/agent/device.creds"
-    stone-age:
-      url: "https://platform.acme.io"
-      identity: "chicago-warehouse-vent-01@things.acme.io"
-      password_env: "AGENT_PLATFORM_PASSWORD"   # optional after first boot
 
 tasks:
   heartbeat:
@@ -210,9 +226,6 @@ tasks:
   inventory:
     enabled: true
     interval: "24h"
-  creds_sync:
-    enabled: true
-    interval: "24h"         # renews the 7-day platform session
 
 commands:
   scripts_directory: "/opt/stone-age/scripts"
@@ -221,6 +234,46 @@ commands:
     - "uptime"
 ```
 
+A site gateway adds `nats.server_config` and/or `twin.enabled` to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and `nebula` are not gateway keys and may be set on any device.
+
 Full per-platform installation guides, including how to set `AGENT_PLATFORM_PASSWORD` under systemd, Windows Services, and rc.d, ship in the Agent repository (`docs/credentials.md`).
+
+---
+
+## 6. What listens, and what dials out
+
+This is the table to hand whoever writes the firewall rules. It is also the
+correction to a claim that stood in these docs for a long time: the Agent used to
+have no listening sockets at all, and that stopped being true when local
+readiness and the embedded NATS server arrived.
+
+| | Direction | Port | When |
+|---|---|---|---|
+| NATS — telemetry, commands, heartbeats | **outbound** | 4222 (or your hub's) | always |
+| Platform HTTPS — credentials, Nebula config, leaf bootstrap | **outbound** | 443 | when the `platform:` block is set |
+| Nebula overlay | **outbound** UDP to a lighthouse | the lighthouse's configured port, commonly 4242 | when `nebula.enabled` |
+| `/ready` + `/metrics` | **listens** | `127.0.0.1:9100` | unless `observability.addr` is empty |
+| Embedded `nats-server` | **listens** | per its own config | only when `nats.server_config` is set |
+
+The property worth relying on is the first row's direction, not a count of open
+sockets: **nothing can instruct an Agent except over the NATS connection it
+dialed itself.** A device on a customer network needs no inbound rule and no port
+forward to be managed, which is what makes a fleet behind NAT or CGNAT tractable.
+
+An ordinary Agent binds an **ephemeral** local UDP port for the overlay — `pb-nebula` writes `listen.port: 0` for anything that is not a lighthouse or a relay, since only those two are reached at a fixed address through `static_host_map`. So there is nothing to open inbound for Nebula either.
+
+Two footnotes that matter in practice:
+
+- **Loopback is not an authorization boundary** when other users share the box.
+  `/metrics` carries no per-organization labels by design, but it does carry this
+  device's health. Set `observability.metrics_token` (accepted as Bearer or as
+  Basic with any username) before moving `addr` off loopback, or set `addr` empty
+  and let `cmd.health` over NATS be the only answer.
+- **9100 is also node_exporter's default port** on Linux and FreeBSD. If you run
+  the exporter on the same box — which [§3](#3-capabilities) offers as an
+  alternative metrics source — move one of the two, or neither will bind
+  reliably. Windows is unaffected: `windows_exporter` uses 9182.
+
+---
 
 The Stone Age Agent turns a raw server or IoT gateway into a managed entity that is secure by default and easy to operate at scale — a first-class participant in the layered platform rather than a bolted-on endpoint.

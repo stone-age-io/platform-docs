@@ -80,9 +80,10 @@ container cannot work out for itself — use the host's real name rather than
 ### Pre-compiled binary
 
 Download for your architecture from the
-[Releases page](https://github.com/stone-age-io/platform/releases). Two binaries
-are published per platform: `stone-age` (the Control Plane) and `leaf-sync` (the
-[edge agent](./leaf-nodes.md), which belongs on edge hardware rather than here).
+[Releases page](https://github.com/stone-age-io/platform/releases). One binary
+per platform: `stone-age`, the Control Plane. The
+[Agent](./agent.md) that belongs on edge hardware releases from
+[its own repository](https://github.com/stone-age-io/agent) on its own tags.
 
 ### From source
 

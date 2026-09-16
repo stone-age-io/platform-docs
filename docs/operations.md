@@ -16,7 +16,7 @@ Operational state lives in different places, with different owners and different
 | **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
 | **Live state** — Digital Twin KV, JetStream streams | NATS servers (JetStream storage) | Low to moderate. Twins repopulate from device heartbeats; stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
 | **Historical telemetry** | Your Layer 3 TSDB | Your call — it's [BYO](./observability.md). | Your TSDB's own backup tooling. |
-| **Edge config mirrors** | Leaf node local KV | None. `leaf-sync` reconverges from the Control Plane on its next cycle. | Nothing needed — see [Leaf Nodes](./leaf-nodes.md). |
+| **Edge leaf config** | `nats-leaf.conf` + creds on the edge box | None. Regenerate with `agent -leaf-config` — see [Leaf Nodes](./leaf-nodes.md). | Nothing needed. |
 
 The takeaway: **`pb_data` is the crown jewels.** It's also a single directory dominated by one SQLite database, which makes protecting it straightforward.
 
@@ -47,7 +47,7 @@ The Control Plane is a low-traffic metadata store, and its outage is far less dr
 | Already-issued NATS/Nebula credentials | ✅ Keep working — auth is verified by the cluster, not by PocketBase |
 | Console login, entity management | ❌ Paused |
 | Provisioning new Orgs / Things / credentials | ❌ Paused |
-| Agent bootstrap and `leaf-sync` config pulls | ⏸️ Paused — both retry; `leaf-sync` is fail-soft and leaves local KV untouched |
+| Agent bootstrap and credential sync | ⏸️ Paused — the Agent retries, and an already-provisioned site keeps running on the credential and leaf config it holds |
 
 Nothing in that bottom half is latency-critical. So instead of running an HA database topology to protect a metadata store, the platform's answer is **aggressive backups plus a short, rehearsed restore path** (§3–4). With scheduled native backups, S3 offsite copies, and filesystem snapshots, realistic time-to-recovery is minutes — which, for a service whose outage pauses provisioning but not production traffic, is the right trade.
 
@@ -179,7 +179,7 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
   command that fixes it. See [Health & Metrics](./health-metrics.md).
 - Console login works (Platform Operator user) and the **NATS Status: Connected** indicator is green.
 - Create a throwaway Thing in a test org — confirms the provisioning hooks and the System Account connection end-to-end.
-- `leaf-sync` heartbeats reappear on the Leaf Nodes list within a few sync intervals.
+- A gateway Thing's page shows its leaf node attached again. That reading comes from the hub over the console's own NATS connection, so it is a live fact rather than a replayed one.
 
 **Rehearse this.** A backup you've never restored is a hypothesis, not a backup. The `pb` migration flow in §5.3 doubles as a restore drill — do it on a schedule, not just before upgrades.
 
@@ -238,7 +238,7 @@ If the upgrade misbehaves, you found out on staging — against your actual sche
 The Control Plane is the only component with a database and migrations. Everything else upgrades by binary swap, in any order, because the interfaces between components are protocols, not shared code (§6):
 
 - **`rule-router`, stream processors, Telegraf** — restart with the new binary; they reconnect to NATS and resume. Stateless per message; durable state is in KV.
-- **Agents and `leaf-sync`** — swap and restart; both are designed around reconnection and fail-soft behavior.
+- **Agents** — swap and restart; designed around reconnection and fail-soft behaviour. On a site gateway, restarting the agent bounces the leaf server too **if** `nats.server_config` is set; leave it unset and a separately supervised `nats-server` keeps the bus up across the upgrade, which is usually what you want on a live site.
 - **NATS and Nebula** — stock upstream upgrade procedures; the platform places no constraints beyond theirs (see §6).
 
 ### 5.5 Moving the NATS server out of the Control Plane
@@ -292,7 +292,6 @@ Stone-Age.io is a set of independent binaries, so the compatibility question is 
 | :--- | :--- | :--- |
 | **Stone Age Console** (embedded UI) | Ships inside the `stone-age` binary | Always in lockstep with the schema by construction. No version skew is possible. |
 | **`stone` CLI** | PocketBase REST API + the platform's collections schema; NATS protocol | The REST API is stable upstream PocketBase. The collections schema is the platform's own contract — additive changes don't break the CLI; pre-1.0 breaking schema changes are flagged in release notes. |
-| **`leaf-sync`** | PocketBase REST API (its allowlisted collections) + NATS leaf protocol | Mirrors records generically; tolerant of additive schema change. Built from the platform repo, so matching its release to the Control Plane's is the safe default. |
 | **Agent** | PocketBase auth API (bootstrap only) + NATS protocol | After bootstrap it's a pure NATS client. |
 | **`rule-router`** | NATS subjects + KV only | Knows nothing about PocketBase. Versioned independently. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Fully platform-agnostic. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
@@ -301,9 +300,9 @@ Stone-Age.io is a set of independent binaries, so the compatibility question is 
 
 Practical guidance:
 
-- **Upgrade the Control Plane first** when a release touches the schema — clients (`stone`, `leaf-sync`) tolerate additive changes, and the release notes call out anything that isn't.
+- **Upgrade the Control Plane first** when a release touches the schema — clients (`stone`, the Agent) tolerate additive changes, and the release notes call out anything that isn't.
 - **Layer 1–3 components don't care about platform releases at all.** Their contract is the subject namespace, which is yours to keep stable — see [Connectivity](./connectivity.md).
-- **Pre-1.0, pin versions** across `stone-age`, `stone`, and `leaf-sync`, and move them together when the notes mention schema changes. Post-1.0, additive-only within a major version is the rule.
+- **Pre-1.0, pin versions** across `stone-age`, `stone`, and the Agent, and move them together when the notes mention schema changes. The Agent releases from its own repository on its own tags, so its version does not track the platform's. Post-1.0, additive-only within a major version is the rule.
 
 ---
 
@@ -330,7 +329,7 @@ A condensed pre-flight list for taking a deployment to production:
         ```
 
     Host certificates count only `active = true` rows, so a decommissioned device’s lapsed certificate does not page anyone. There is no per-organization label: `/metrics` is open by default, and a tenant name beside a certificate inventory is free reconnaissance. Set an alert on the CA series in particular — every host certificate chains to it.
-- [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing or Leaf Node is the control that actually cuts a device off (session killed, credential revoked), and that reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+- [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing is the control that actually cuts a device off (session killed, credential revoked), that it applies to a site gateway exactly as to any other device, and that reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
 - [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through a Platform Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
 - [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).
 - [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the only tenancy enforcement in the platform, and the suite is the only thing that checks them. If the release changed a rule, confirm it also shipped a migration (§5.1).
