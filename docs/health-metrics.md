@@ -28,7 +28,7 @@ None of that moves a liveness probe. So the checks here are deliberately about *
 
 **A check must be answerable first-hand by the process running it.**
 
-This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read the `leaf_status` heartbeats `leaf-sync` writes. The console can, because a browser connects as the logged-in user. `leaf-sync` can, because it runs inside the account.
+This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read anything a site reports about itself. The console can, because a browser connects as the logged-in user — which is also how it answers whether a site's leaf node is attached, by asking the bus over that same connection. The Agent can, because it runs inside the account.
 
 Do not "improve" a check by minting the platform a credential in a tenant's account. That turns a credential issuer into a data-plane participant in every tenant's bus, which is the one boundary the whole NATS design is built around. Per-site liveness is therefore **absent** from the Control Plane's list on purpose, and lives on the edge instead ([§5](#5-the-edge-agent)).
 
@@ -197,11 +197,11 @@ Plus `stone_age_nats_*` when — and only when — the bus runs in-process via `
 
 Three things to know before building a dashboard on these:
 
-**`stone_age_records{collection="leaf_nodes"}` counts leaf nodes CONFIGURED.** It is not availability, and an alert on it can never fire. Per-site liveness is `leaf_sync_*` on the edge box ([§5](#5-the-edge-agent)). The same caution applies to `things`.
+**`stone_age_records{collection="things"}` counts devices CONFIGURED.** It is not availability, and an alert on it can never fire. Per-site liveness is `agent_*` on the edge box ([§5](#5-the-edge-agent)); whether a site's leaf node is *attached* is answered by the console asking the hub, not by anything here ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)).
 
 **There are no per-organization labels, anywhere.** `/metrics` is open by default, and with per-org data reduced to row counts a tenant label would be a customer name attached to an inventory count. That is also why `stone_age_certificate*` reports the *soonest per kind* rather than one series per certificate: a per-host series would need an identifying label to be useful, which is a per-tenant device inventory.
 
-**A collector that fails emits nothing rather than zero.** Zero is a legitimate value here — "no leaf nodes configured" — so reporting it on failure would turn a broken query into a confident wrong answer, and an alert on `== 0` would fire for the wrong reason. The absent series plus a non-zero `stone_age_collector_errors` says what actually happened.
+**A collector that fails emits nothing rather than zero.** Zero is a legitimate value here — "no Nebula hosts configured" — so reporting it on failure would turn a broken query into a confident wrong answer, and an alert on `== 0` would fire for the wrong reason. The absent series plus a non-zero `stone_age_collector_errors` says what actually happened.
 
 ### The `route` label is a pattern, never a path
 
@@ -215,7 +215,7 @@ With `serve --nats`, the in-process bus's own counters are exported: `stone_age_
 
 With an **external** NATS server these series are absent entirely rather than reported as zero — a quiet bus and an absent one should not look alike. Scrape an external server with `prometheus-nats-exporter`, which reads its monitoring port and reports far more than this ever could.
 
-> `stone_age_nats_leafnode_connections` is a TCP session the server can see. That is not the same fact as a `leaf-sync` heartbeat, which says the edge agent is actually syncing.
+> `stone_age_nats_leafnode_connections` counts leaf sessions **across every account**, so it is a capacity number rather than a per-tenant availability signal. A tenant asks about its own sites through `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is scoped to its account — see [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up).
 
 ---
 
@@ -243,31 +243,32 @@ The check **warns and never fails**, for the same reason an islanded edge warns:
 
 ## 5. The Edge Agent
 
-`leaf-sync` serves the same two endpoints from its own registry, under the `leaf_sync` namespace. **This is the only place per-site health is actually visible** — the Control Plane cannot see it, by design ([§1](#1-why-this-exists-at-all)).
+The [Agent](./agent.md) serves the same two endpoints from its own registry, under the `agent` namespace. **This is where per-site health is actually visible in detail** — the Control Plane cannot see it, by design ([§1](#1-why-this-exists-at-all)) — and it keeps answering with the WAN down, which is exactly when you want it. `cmd.health` travels over NATS, the link that breaks; the box you most need to ask is the one that has just gone quiet.
 
 It is **off by default**. Set `observability.addr` to enable it:
 
 ```yaml
 observability:
-  addr: "127.0.0.1:9101"    # empty (the default) = no listener at all
+  addr: "127.0.0.1:9100"    # empty (the default) = no listener at all
   metrics_token: ""
   interval: 15s
 ```
 
-Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router.
+Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router. Empty `addr` serves neither, but the checks still run and still log; a bind failure is logged rather than fatal.
 
-| Check | Fails when | Notes |
+| Check | State when it trips | Notes |
 |---|---|---|
-| `nats_local` | the local leaf node is not reachable | The bus the devices on this site actually use. |
-| `sync_freshness` | the last sync cycle is too old | Warns before the first cycle completes; skipped when the leaf node has no syncable collections. |
-| `sync_errors` | never — warns only | A collection failed to mirror. |
-| `hub_uplink` | never — warns only | No outbound leaf connection to the hub. |
+| `nats_local` | **fail** | The agent is not connected to the local leaf — the bus the devices on this site actually use. |
+| `hub_uplink` | **warn** | No outbound leaf connection to the hub: this site is *islanded*. |
 
-**An islanded edge warns, it does not fail.** Local NATS still works and devices keep running against the mirrored config — that autonomy is the entire reason a leaf node exists, so returning `503` would invert the design and have an orchestrator restart a site that is working exactly as intended.
+**An islanded edge warns, it does not fail.** Local NATS still works and devices keep running — that autonomy is the entire reason a leaf node exists, so returning `503` would invert the design and have an orchestrator restart a site that is working exactly as intended.
 
-Metrics: `leaf_sync_nats_connected`, `leaf_sync_nats_connections`, `leaf_sync_hub_uplink_connected`, `leaf_sync_cycles_total`, `leaf_sync_last_cycle_duration_seconds`, `leaf_sync_last_cycle_errors`, `leaf_sync_last_cycle_timestamp_seconds`, `leaf_sync_mirrored_records`, `leaf_sync_jetstream_bytes` — plus the same `leaf_sync_ready` / `_check_state` / `_check_timestamp_seconds` / `_build_info` set.
+Metrics: `agent_edge_nats_connected`, `agent_edge_nats_connections`, `agent_edge_hub_uplink_connected`, `agent_edge_jetstream_bytes` — plus the same `agent_ready` / `_check_state` / `_check_timestamp_seconds` / `_build_info` set.
 
-Server-derived series are **omitted** when the leaf's monitoring port is down, rather than reported as zeros. See [Leaf Nodes](./leaf-nodes.md).
+The server-derived rows come from the leaf's own **loopback** monitoring port, which is how the edge reads its own server without ever holding a `$SYS` user credential. They are **omitted** when that port is unreachable rather than reported as zeros: zero would claim an islanded site with no devices, which is a far louder statement than "not scraped". The same rule governs the check registry, where `skipped` ranks *below* `ok` — a report that is entirely skipped must not read as a clean bill of health. See [Leaf Nodes](./leaf-nodes.md).
+
+!!! note "There is no longer a sync-freshness check"
+    Earlier versions of the edge agent mirrored an organization's config collections into local KV, and had `sync_freshness` and `sync_errors` checks over that loop. The mirror was removed — nothing consumed the mirrored rows — and those two checks went with it.
 
 ---
 
@@ -298,8 +299,9 @@ A starting set of alerts:
 | Prober wedged | `time() - stone_age_check_timestamp_seconds > 120` |
 | Certificate expiring | `stone_age_certificate_expiry_seconds - time() < 30 * 86400` |
 | Database growth | `predict_linear(stone_age_database_size_bytes[6h], 7 * 86400) > <your disk>` |
-| Edge gone quiet | `time() - leaf_sync_last_cycle_timestamp_seconds > 600` |
-| Site islanded | `leaf_sync_hub_uplink_connected == 0` |
+| Edge prober wedged | `time() - agent_check_timestamp_seconds > 120` |
+| Site islanded | `agent_edge_hub_uplink_connected == 0` |
+| Site bus down | `agent_edge_nats_connected == 0` |
 
 Note that a **warning** raises no alert here, and should not: `stone_age_ready` stays `1`. Warnings are for a human reading `/api/ready` after a deploy, or for a dashboard panel — not for a pager.
 

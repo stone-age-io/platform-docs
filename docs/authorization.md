@@ -45,8 +45,8 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Read Things and Locations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
 | Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | — | ✅ |
 | Delete a Thing or Location | ✅ | ✅ | — | — | — | — | ✅ |
-| Deactivate / reactivate a Thing or Leaf Node (§4.2) | ✅ | ✅ | — | — | — | — | ✅ |
-| Reset a Thing's or Leaf Node's PocketBase password | ✅ | ✅ | — | — | — | — | ✅ |
+| Deactivate / reactivate a Thing (§4.2) | ✅ | ✅ | — | — | — | — | ✅ |
+| Reset a Thing's PocketBase password | ✅ | ✅ | — | — | — | — | ✅ |
 | Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | — | ✅ |
 | Read Thing Types, Operations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
 | Manage Thing Types, Operations | ✅ | ✅ | — | — | — | — | ✅ |
@@ -60,8 +60,6 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Read own linked NATS identity | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Rotate own NATS credential (§4) | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Revoke someone else's NATS credential | ✅ | ✅ | — | — | — | — | ✅ |
-| Read the Leaf Nodes list | ✅ | ✅ | ✅³ | ✅³ | ✅³ | — | ✅ |
-| Create / edit / delete Leaf Nodes, reset their credentials | ✅ | ✅ | — | — | — | — | ✅ |
 | Manage JetStream streams and KV buckets⁴ | ✅ | ✅ | — | — | — | — | — |
 | Use dashboards | ✅ | ✅ | ✅ | ✅ | ✅⁷ | — | ✅ |
 | Invite users, manage memberships | ✅ | ✅ | — | — | — | invites only | ✅ |
@@ -72,7 +70,7 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 
 ¹ **Platform Operator.** `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
 ² The `_superusers` collection bypasses API rules entirely. See §3.
-³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations` and `leaf_nodes` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer, and it lists Leaf Nodes to owners and admins only. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across every one of those collections, with a new failure mode where a relation expansion silently returns nothing.
+³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer and shows no inventory screens at all. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across every one of those collections, with a new failure mode where a relation expansion silently returns nothing.
 ⁴ JetStream operations run over the browser's own NATS connection, so they are bounded by the caller's **NATS** permissions, not by PocketBase API rules. The console surfaces the views to owners and admins.
 ⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are Platform-Operator-only; see §3.
 ⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a Platform Operator action.
@@ -116,7 +114,7 @@ So there is exactly one exception to the owner/admin-only rule on `nats_users`: 
 POST /api/me/nats-creds/rotate
 ```
 
-Available to **every role, including `dashboard`**, for callers in the `users`, `things`, and `leaf_nodes` collections. It takes **no id parameter** — it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. It responds with the identity's id; re-read that record to pick up the new credential.
+Available to **every role, including `dashboard`**, for callers in the `users` and `things` collections. It takes **no id parameter** — it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. It responds with the identity's id; re-read that record to pick up the new credential.
 
 It exists as a route rather than a rule branch because **an API rule cannot express a single-field allowlist**. Permitting self-rotation through the update rule would mean asserting `:isset = false` on every *other* writable field — a deny-list that opens up silently the moment someone adds a field. And the field that must stay closed is consequential: `nats_users.publish_permissions` is copied **verbatim** into the JWT the platform signs, so write access to that collection is equivalent to granting NATS permissions. That is why it is owner/admin only.
 
@@ -142,7 +140,7 @@ Like the credential route it takes no record id — the account is derived from 
 
 ### 4.2 Taking a device out of service
 
-`things.active` and `leaf_nodes.active` are Owner/Admin-only booleans. Clearing one is a **decommission**, not a label change — three things happen in the same operation:
+`things.active` is an Owner/Admin-only boolean. Clearing one is a **decommission**, not a label change — three things happen in the same operation:
 
 | | What it stops |
 | :--- | :--- |
@@ -152,11 +150,11 @@ Like the credential route it takes no record id — the account is derived from 
 
 All three are needed, and the reason is worth internalizing before you rely on any similar flag:
 
-> **An `authRule` is evaluated at the authentication endpoint only** — never on a request that arrives carrying an already-issued token. Thing and Leaf Node tokens live **7 days**. So `active = false` on its own would leave a decommissioned device with a working API session for up to a week. Refreshing `tokenKey` is what closes that window, and it is why deactivation is a server-side hook rather than a rule alone.
+> **An `authRule` is evaluated at the authentication endpoint only** — never on a request that arrives carrying an already-issued token. Thing tokens live **7 days**. So `active = false` on its own would leave a decommissioned device with a working API session for up to a week. Refreshing `tokenKey` is what closes that window, and it is why deactivation is a server-side hook rather than a rule alone.
 
 And the second half: **a device's real capability is its NATS credential, not its PocketBase session.** Blocking API access without revoking the credential leaves the device publishing to the bus. Deactivation does both.
 
-**Reactivating issues a *fresh* NATS credential.** The revocation cutoff embedded in the account JWT is permanent, so the old `.creds` file stays rejected forever — the device needs the new one. For a Thing running the Agent that happens on the next sync; for a Leaf Node, re-run `leaf-sync config`.
+**Reactivating issues a *fresh* NATS credential.** The revocation cutoff embedded in the account JWT is permanent, so the old `.creds` file stays rejected forever — the device needs the new one. For a Thing running the Agent that happens on the next sync; on a site gateway, re-run `agent -leaf-config` as well, since the generated config embeds the creds file beside it.
 
 > **A flag with nothing enforcing it is worse than no flag**, because someone will trust it during an incident. `nats_users.active` is the cautionary case: `pb-nats` reads it into its model and then consults it nowhere in JWT generation — only `revoke` disconnects anyone. The console therefore no longer exposes it as an editable control; **Revoke** and **Re-enable** on the NATS user's detail view are the real operations.
 
@@ -170,24 +168,28 @@ The practical consequence for MSP deployments: **a tenant admin cannot self-serv
 
 ---
 
-## 6. Leaf Nodes and the Edge
+## 6. Gateways and the Edge
 
-A Leaf Node authenticates as a record in the `leaf_nodes` collection — "a special Thing" with one NATS identity. Its read surface is deliberately narrow.
+**A site gateway is a Thing.** There is no `leaf_nodes` collection any more and no gateway flag — a Thing's [Thing Type](./thing-types.md) already says what it is, and a second marker is a second thing to get wrong. So a gateway's read surface is exactly a Thing's read surface: its own record, the org-scoped inventory collections, and the one NATS identity linked to it. Nothing in `nats_*` or `nebula_*` beyond that.
 
-A leaf-node identity **can** read:
-
-- its own `leaf_nodes` record, and
-- the allowlisted collections it mirrors, within its own organization: `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations`.
-
-A leaf-node identity reads **nothing** in any `nats_*` or `nebula_*` collection. The four values an edge box cannot derive locally — its own creds, the org's account JWT and public key, and the NATS Operator JWT — come from a dedicated, leaf-node-authenticated route:
+The values an edge box cannot derive locally — the org's account JWT and public key, the NATS Operator JWT, and the `$SYS` account JWT and public key — come from a dedicated route:
 
 ```
-GET /api/leaf/bootstrap
+GET /api/me/leaf-config
 ```
 
-It returns eight named fields: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`. The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a leaf-node identity**, and the blast radius of a leaked edge credential is those eight values regardless of how the collection rules later evolve. The last two are there because the NATS Operator JWT names a system account and the leaf’s `resolver: MEMORY` has nowhere to fetch it: without the `$SYS` **account** JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing — connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `GET /api/leaf/operator-jwt` still exists for older agents but is superseded by `/api/leaf/bootstrap`.
+It is bound to `things` and takes **no record id**: the target is the caller's own authenticated record, exactly like `POST /api/me/nats-creds/rotate`. It returns ten named fields: `code`, `domain`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`, `hub_leaf_url`, `hub_domain`. The server reads the secret-bearing collections with its own privileges and serves named fields, never whole records — so **secret-bearing collections are never exposed to a device identity**, and the blast radius of a leaked edge credential is those ten values regardless of how the collection rules later evolve.
 
-Managing Leaf Node records — creating, editing, deleting, and resetting their credentials via the collection's `manageRule` — is an owner/admin action. The read rule admits any role in the organization, though the console lists them to owners and admins only — see footnote 3 in §2. See [Leaf Nodes](./leaf-nodes.md).
+**The route gates on nothing, and that is the interesting part.** Everything it serves is either public trust material — the Operator, account and `$SYS` account JWTs, which every server in the network validates anyway — or the caller's own credential, which it must already hold in order to connect at all. A Thing that will never run a leaf node can call it and learns nothing it could not already read. Adding a permission here would be a gate over data that is not secret, and it would have required inventing the marker field that §1 of [Leaf Nodes](./leaf-nodes.md) explains the absence of.
+
+!!! note "Why the `$SYS` **account** JWT is safe to serve"
+    The NATS Operator JWT names a system account, and the leaf's `resolver: MEMORY` has nowhere to fetch it — so without the `$SYS` account JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing. Connecting **as** `$SYS` needs a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects.
+
+Account **seeds** and signing keys are never served on this path, and `nats_system_operator` stays superuser-only.
+
+**Don't re-add a device read branch** to `nats_users` or `nats_accounts` to make some edge feature work — extend the route instead. The point of the route is that the edge's blast radius is a fixed list of named fields rather than a consequence of rules that change for unrelated reasons.
+
+Taking a site out of service is `active` on its Thing (§4.2), like any other device.
 
 ---
 

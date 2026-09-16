@@ -55,7 +55,7 @@ For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Le
 
 Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
 
-How the platform models a site and gets that locally-mirrored config to the edge — the `leaf_nodes` entity and the `leaf-sync` agent — is covered in [Leaf Nodes](./leaf-nodes.md).
+How the platform models such a site — as an ordinary **Thing**, whose Agent bootstraps and optionally hosts the leaf server — is covered in [Leaf Nodes](./leaf-nodes.md).
 
 ### Cross-Account Subject Sharing (Imports & Exports)
 

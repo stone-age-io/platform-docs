@@ -23,7 +23,7 @@ A Membership binds a PocketBase User to an Organization.
 
 - **Roles (per-organization):**
     - `Owner`: Full tenant authority. **Identical to `Admin` in every API rule** — the only differences are that an Owner cannot leave their own organization and may delete it.
-    - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, Leaf Nodes, and the identity links on a Thing.
+    - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, and the identity links on a Thing.
     - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
     - `Viewer`: Read-only staff. Browses the inventory screens and uses dashboards, and writes nothing anywhere. Adding it needed no rule change at all — a role that names itself in no write branch is denied by construction.
     - `Dashboard`: An appliance login for an unattended screen — the Visualizer and its own settings page, nothing else. It holds no write capability, which is exactly why the authorization suite uses it as the probe that proves an allowlist works.
@@ -51,7 +51,7 @@ Authorization is enforced **solely** by PocketBase API rules on each collection.
 
 ### Self-Service Credential Rotation
 
-Any authenticated identity with a linked NATS user — a `users` membership, a `things` record, or a `leaf_nodes` record — can rotate its own credential:
+Any authenticated identity with a linked NATS user — a `users` membership or a `things` record — can rotate its own credential:
 
 ```
 POST /api/me/nats-creds/rotate
@@ -154,7 +154,7 @@ Only the keys present in a desired value are compared, so extra fields a device 
 
 The same KV buckets are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the full model, and [Automation](./automation.md) for the KV-state patterns.
 
-> **Neither the console nor the platform server creates these buckets on its own.** The Control Plane holds the NATS Operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or `leaf-sync` at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
+> **Neither the console nor the platform server creates these buckets on its own.** The Control Plane holds the NATS Operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or the Agent at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
 
 ### JetStream Streams and KV Buckets
 

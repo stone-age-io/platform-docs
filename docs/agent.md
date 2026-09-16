@@ -15,8 +15,8 @@ The agent is a single Go binary with zero external dependencies (other than the 
 - **Resilient:** Automatically handles NATS reconnections and backoffs.
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
-!!! note "Not to be confused with `leaf-sync`"
-    The Agent is a **per-Thing** executor — it manages one device or server. `leaf-sync` is a **per-site** config-mirroring agent that bootstraps a NATS leaf node and syncs an org's configuration into local KV. A site often runs both. See [Leaf Nodes](./leaf-nodes.md).
+!!! note "It absorbed `leaf-sync`"
+    There used to be a second binary — `leaf-sync` — that bootstrapped a site's NATS leaf node and mirrored an organization's configuration into local KV. It is gone. Its leaf-node duties moved into the Agent, and the config mirror was dropped rather than moved, because nothing ever read the mirrored rows. A site that runs a leaf node runs **one** binary now, not two. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Getting the binary
 
@@ -40,7 +40,9 @@ The per-platform guides in the agent repository (`docs/linux.md`, `docs/windows.
 
 The automated provisioning flow is what makes the Agent practical at MSP scale. Instead of manually copying credential files to every device, the Agent authenticates to the Control Plane **as its own Thing** and fetches its NATS credentials itself — then keeps them current for the life of the device.
 
-This is `auth.type: "stone-age"` in the Agent's config. It is deliberately named after the platform rather than after PocketBase: the Agent depends on the Stone-Age.io schema (`things` → `nats_user` → `creds_file`) and on a route the platform defines itself, not on anything generic.
+This is `auth.type: "platform"` in the Agent's config, with the platform itself configured in a **top-level `platform:` block**. It is deliberately named after the platform rather than after PocketBase: the Agent depends on the Stone-Age.io schema (`things` → `nats_user` → `creds_file`) and on routes the platform defines itself, not on anything generic.
+
+The block is top-level rather than nested under `nats.auth` because **three** subsystems read it: the NATS credential lifecycle below, the [Nebula](#4-security-isolation) config source, and the [leaf bootstrap](./leaf-nodes.md#3-get-apimeleaf-config). With it buried under one of them, the other two had to ask "is some other section's type field set to a particular string" instead of "is the block present".
 
 ### The Lifecycle of a "Thing":
 
@@ -49,9 +51,9 @@ This is `auth.type: "stone-age"` in the Agent's config. It is deliberately named
 3.  **Install:** The Agent is installed on the edge device with its `code`, the platform URL, the Thing's login email, and that password in an environment variable — never in the config file.
 4.  **Bootstrap (first start only):** The Agent authenticates as the Thing against `POST /api/collections/things/auth-with-password?expand=nats_user,location`, verifies the returned record's `code` matches its own config, and writes the `.creds` file from `expand.nats_user.creds_file` with `0600` permissions. It also stores the session token and the credential's revision.
 5.  **Operation:** The Agent connects to NATS with that `.creds` file and begins publishing.
-6.  **Upkeep (every 24h by default):** The Agent renews its platform session and adopts a credential the platform has re-minted. Once it holds a session token the Thing's password is optional and can be removed from the device — see §2.2.
+6.  **Upkeep (`platform.sync_interval`, 24h by default):** The Agent renews its platform session and adopts a credential the platform has re-minted. Once it holds a session token the Thing's password is optional and can be removed from the device — see §2.2.
 
-The Agent fetches **only** its NATS credentials. It does not fetch a NATS URL (`nats.urls` is local config), and it neither fetches nor manages Nebula — a Thing's Nebula config is downloaded from the Console and installed separately.
+The Agent does not fetch a NATS URL — `nats.urls` is local config, because what a box can reach is a property of where the box is. With `nebula.enabled` it fetches its **Nebula** config the same way, from the `nebula_host` linked to the same Thing, and re-reads it on `nebula.sync_interval`. That interval is the device's **revocation latency**, not a tuning knob: Nebula has no CRL, so a revoked certificate is only refused once each peer has re-read its own config.
 
 <center>
 ```mermaid
@@ -135,6 +137,17 @@ The Agent publishes on a schedule and answers commands on request. Everything it
 
 Every telemetry payload carries `code`, `location`, and `ts`, so a message is self-describing to any direct subscriber.
 
+Beyond the bus, the Agent has four capabilities that only apply on a box which is also a **site gateway**. Each is independently switchable and none of them is a mode:
+
+| Capability | Turned on by | What it does |
+|---|---|---|
+| Leaf bootstrap | `agent -leaf-config` | Writes `nats-leaf.conf` + creds from `GET /api/me/leaf-config` |
+| Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
+| Digital twin sync | `twin.enabled` | Relays reported state up, mirrors desired state down |
+| Local health | `observability.addr` | Serves `/ready` and `/metrics` on the box |
+
+There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first. See [Leaf Nodes](./leaf-nodes.md).
+
 !!! note "Heartbeats are deliberately not JetStream"
     A missed beat is the signal consumers care about, so last-write-wins is the correct semantic — a backlog of stale beats replayed after a reconnect would be actively misleading. This is why the server-side stream must bind `{prefix}.*.telemetry.>` rather than `{prefix}.>`: the heartbeat stays outside the stream by subject construction.
 
@@ -164,7 +177,7 @@ For custom logic, the Agent can execute local scripts or shell commands.
 
 ### D. Credential Upkeep
 
-- **`creds_sync` task:** Renews the platform session and adopts a re-minted credential (§2.1).
+- **Credential sync:** Renews the platform session and adopts a re-minted credential (§2.1), on `platform.sync_interval`.
 - **`cmd.rotate_creds`:** Asks the platform to re-mint this Agent's credential, writes it, replies, then reconnects — so a rotation costs no downtime and no site visit. The response reports `changed: false` if the platform handed back the credential the Agent already had. An Agent that is not platform-managed answers with an error rather than timing out.
 
 ---
@@ -175,7 +188,7 @@ Three mechanisms enforce cryptographic isolation at the edge:
 
 - **NKey Authentication:** The Agent signs every NATS connection challenge locally with the nkey seed in its `.creds` file. Be precise about where that key comes from, though: the Control Plane mints the keypair (`pb-nats` generates it and embeds the seed in `creds_file`), so the private key originates on the platform and is *delivered* to the device — it is not generated there. That is exactly why the credential lifecycle in §2 is built the way it is: HTTPS is required, the key is re-transmitted only when it has actually changed, it is written `0600` through an atomic replace, and platform response bodies are never logged.
 - **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — the `nats_roles` and `nats_users` collections are closed to every role below admin for reads as well as writes, precisely because a role's permission fields are copied verbatim into the JWT the platform signs.
-- **Nebula Encryption:** Administrative traffic between your workstation and the host (SSH, for instance) can be encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely. Note this is a property of the *host*, not of the Agent: the Agent does not manage the Nebula interface, and its own NATS traffic is outbound and TLS-protected regardless.
+- **Nebula Encryption:** Administrative traffic between your workstation and the host (SSH, for instance) can be encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely. With `nebula.enabled` the Agent runs that mesh host **in-process** and keeps its config current, which is what makes revocation, renewal and CA rotation actually reach the device. A newly applied config that cannot reach a lighthouse is restarted and then rolled back to the last one known to have worked, so a bad config cannot take a fleet off the network. The Agent's own NATS traffic is outbound and TLS-protected either way — the overlay is for everything else.
 
 ---
 
@@ -189,15 +202,17 @@ code: "chicago-warehouse-vent-01"   # identity token used in NATS subjects
 location: "chicago-warehouse"        # optional, carried in every payload
 subject_prefix: "agents"
 
+platform:                            # one home for the platform relationship
+  url: "https://platform.acme.io"
+  identity: "chicago-warehouse-vent-01@things.acme.io"
+  password_env: "AGENT_PLATFORM_PASSWORD"   # optional after first boot
+  sync_interval: "24h"               # renews the 7-day platform session
+
 nats:
   urls: ["nats://nats.acme.io:4222"]
   auth:
-    type: "stone-age"
+    type: "platform"
     creds_file: "/etc/agent/device.creds"
-    stone-age:
-      url: "https://platform.acme.io"
-      identity: "chicago-warehouse-vent-01@things.acme.io"
-      password_env: "AGENT_PLATFORM_PASSWORD"   # optional after first boot
 
 tasks:
   heartbeat:
@@ -210,9 +225,6 @@ tasks:
   inventory:
     enabled: true
     interval: "24h"
-  creds_sync:
-    enabled: true
-    interval: "24h"         # renews the 7-day platform session
 
 commands:
   scripts_directory: "/opt/stone-age/scripts"
@@ -220,6 +232,8 @@ commands:
     - "df -h"
     - "uptime"
 ```
+
+A site gateway adds `nats.server_config`, `twin.enabled` and/or `observability.addr` to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
 
 Full per-platform installation guides, including how to set `AGENT_PLATFORM_PASSWORD` under systemd, Windows Services, and rc.d, ship in the Agent repository (`docs/credentials.md`).
 
