@@ -27,16 +27,36 @@ When this page says "the platform provides X," it means the system as a whole. W
 
 ---
 
-## The Problem: Brittle & Complex Infrastructure
+## The Problem: Tenancy Has to Hold in Four Places at Once
 
-Current IoT and edge computing solutions typically fall into two categories:
+Building a private, multi-tenant IoT platform means assembling roughly the same four things every time: a message broker, an overlay network, an identity and inventory store, and somewhere to put the logic. Each is mature and none of them is the hard part.
 
-1. **The Cloud Trap:** Heavy vendor lock-in with proprietary APIs, unpredictable egress costs, and the requirement that data must leave your premises to be useful.
-2. **The Microservices Swamp:** Fragile stacks consisting of a dozen different open-source tools (VPNs, MQTT brokers, databases, auth services) that are difficult to secure, maintain, and multi-tenant.
+The hard part is that **"customer A cannot see customer B" has to be true in all four simultaneously**, and each one models tenancy differently — or not at all. A broker has its own notion of a tenant, the VPN has another, the database has a `WHERE` clause, and the rule engine usually has nothing. The isolation you sell is only as strong as the weakest of the four, and nothing in the stack tells you when they have drifted apart. That drift is silent by construction: every component is behaving exactly as configured.
 
-## The Solution: The Modern Radio Network Analogy
+The usual escape is to buy a platform that owns all four — which works, and costs you egress fees, proprietary APIs, and the premise that your data has to leave the building to be useful.
 
-Think of the Stone-Age.io Platform like a **modern digital radio network**.
+!!! note "What this platform does *not* claim"
+    Not that there are fewer moving parts. Run every layer and you have a Control Plane, a broker, an overlay network, an Agent at each site, a rule engine, a stream processor, a metrics agent and a time-series database — eight component types, which is not obviously better than the stack you would have assembled yourself.
+
+    The claim is about **where the tenancy boundary lives**, and about being able to stop early and leave late. If you want the process count itself to go down, see §1 below — it has been going down.
+
+## What the Platform Commits To
+
+Four commitments, each of which is checkable rather than atmospheric.
+
+**1. One tenancy boundary, provisioned once.** Creating an Organization mints an isolated **NATS Account** and a private **Nebula CA** in the same operation. Isolation is then cryptographic and enforced by the infrastructure: a NATS account is a closed subject namespace, so a tenant cannot reach across it whatever its permissions say, and a Nebula host cannot present a certificate another organization's CA will trust. There is no application-layer filter to forget — the boundary is not a query predicate, so it cannot drift from one.
+
+**2. Depth is opt-in, and every depth is a real place to stop.** There are [four depths](./index.md#start-where-you-need-to), and most deployments sit at 2 or 3 indefinitely. The eight components above describe depth 4; the stream processor, the metrics agent and the TSDB are things you add when you have a question that needs them, not prerequisites for a working system.
+
+    Be precise about what the early depths buy, though. Depth 1 is about what you **model**, not about running less: a depth-1 deployment still includes a NATS server, it simply has nothing on it yet. What you get is a working system before you have modeled a single subject, and the guarantee that none of it is rewritten when you do — each layer consumes the same subjects the previous one was already publishing.
+
+**3. Nothing here is forked.** NATS and Nebula are the upstream projects, running as upstream builds. The platform provisions them and is otherwise an ordinary client of both — a site's leaf node is a stock `nats-server` reading a generated config. Your data is in SQLite, your messages are on NATS, your history is in a TSDB you chose. The exit path is that you keep all three and stop running the Control Plane.
+
+**4. No orchestrator, and no service mesh.** Components find each other over NATS subjects. There is no control loop to operate, no sidecar, and nothing that needs Kubernetes to reach a working state.
+
+## A Mental Model: The Modern Radio Network
+
+The architecture is easier to hold onto with an analogy. Think of the platform as a **modern digital radio network**.
 
 In the past, a System Integrator would build out physical radio towers (infrastructure) and provide radios (things) to their customers. Each customer could have their own private channel (multi-tenancy) but share the same reliable backbone.
 
@@ -45,7 +65,7 @@ The Stone-Age.io Platform applies this concept to the modern edge:
 - **The Towers:** NATS and Nebula provide the resilient airwaves and secure tunnels.
 - **The Channels:** NATS Accounts and Subjects provide isolated logic for different tenants.
 - **The Radios:** Devices and Applications that can speak NATS, MQTT, or even just plain HTTP.
-- **The Dispatcher:** The Stone Age Console (powered by PocketBase) orchestrates the entire system from a single pane of glass.
+- **The Dispatcher:** The Control Plane issues the credentials and holds the inventory, and the Stone Age Console is the single pane of glass onto it. Note the limit of the analogy: a dispatcher talks on the air, and this one does not — the Control Plane provisions the fabric and then stays off it (see the Data Plane row above).
 - **The Control Room:** The rule engine provides live reflexes — routing traffic, triggering alerts, managing state, handling webhooks, firing scheduled tasks.
 - **The Production Studio:** Stream processors (eKuiper, Benthos) take raw broadcasts and produce polished analytical content.
 - **The Archive:** Your chosen time-series database keeps the historical record for analysis and reporting.
@@ -101,11 +121,13 @@ See [Platform Layers](./platform-layers.md) for the architectural picture of how
 
 Stone-Age.io is not one monolithic executable — it's a small set of independent components, each delivered as a single binary with zero external runtime dependencies.
 
-- **The Control Plane** (PocketBase + embedded UI + provisioning hooks) is one binary.
+- **The Control Plane** (PocketBase + embedded UI + provisioning hooks) is one binary. `serve --nats` starts a NATS server inside it, so the shortest working deployment is *one* process, not two ([ADR 0001](./decisions/0001-embedded-nats-server.md)).
 - **The rule engine** (`rule-router`) is another.
-- **The Agent** is another.
-- **NATS** and **Nebula** are their own upstream binaries.
+- **The Agent** is another — and with `nebula.enabled` it runs the site's Nebula host **in-process**, so an edge box runs one binary rather than a stack of them.
+- **NATS** and **Nebula** are their own upstream binaries when you want them to be. Neither is forked or wrapped: run them standalone and the platform is a well-behaved client of both.
 - **Stream processors** (eKuiper, Benthos, custom) and **Layer 3 components** (Telegraf, TSDB) are additional single-binary components you add only when you need them.
+
+The direction of travel is worth stating, because it runs against the usual grain: the platform has been *removing* processes rather than adding them. NATS moved inside the Control Plane, Nebula moved inside the Agent, and a second edge binary (`leaf-sync`) was deleted outright rather than maintained.
 
 Each component communicates with the others through NATS subjects. There's no service mesh to configure, no Docker Compose hell, no Kubernetes cluster to run just to get started. Deploy each binary where it belongs — the Control Plane centrally, the Agent at the edge, the rule engine wherever makes operational sense — and let NATS handle the wiring.
 
@@ -125,6 +147,14 @@ The platform is explicitly structured as a Control Plane and a four-layer Data P
 
 The Stone-Age.io Platform is built on top of standard, industry-proven protocols. Your data lives in a local SQLite database, your messages travel over NATS, and your long-term metrics are handled by whatever time-series database you choose (e.g., VictoriaMetrics, InfluxDB, Postgres). You own the stack from top to bottom.
 
-### 6. Designed to Be Understood
+### 6. Designed to Be Legible
 
-Complexity is the enemy of reliability. The platform is built so that a single engineer can hold the moving parts in their head: clear Go code, reactive Vue components, and straightforward YAML rules. Where we'd have to choose between a clever abstraction and a readable one, we pick readable.
+Not "simple enough to hold in your head." It isn't — a system that spans a broker, an overlay network, a certificate authority and a multi-tenant API has real depth, and claiming otherwise would be the kind of comfortable statement this platform is supposed to correct rather than repeat.
+
+What it aims at instead is **legibility: the system tells you why it is the way it is.**
+
+- Architectural decisions are written down as [ADRs](./decisions/0001-embedded-nats-server.md), including the options that were rejected and what building it turned up that the design did not anticipate.
+- Non-obvious constraints live next to the code that depends on them, not in tribal memory — why a NATS publish DENY must not be "tightened", why a rotation is three steps, why a certificate field cannot be validated client-side.
+- Where we'd have to choose between a clever abstraction and a readable one, we pick readable.
+
+**And when a claim turns out to be false, it is corrected in place rather than quietly deleted.** A console feature once shipped on the strength of a field that did not exist; the commit that removed it says so, and says why the wrong belief is worth keeping on the record. That is the property being claimed here — not that mistakes do not happen, but that the system's own history will tell you about them.
