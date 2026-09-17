@@ -28,7 +28,7 @@ None of that moves a liveness probe. So the checks here are deliberately about *
 
 **A check must be answerable first-hand by the process running it.**
 
-This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read anything a site reports about itself. The console can, because a browser connects as the logged-in user — which is also how it answers whether a site's leaf node is attached, by asking the bus over that same connection. The Agent can, because it runs inside the account.
+This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read anything a site reports about itself. The console can, because a browser connects as the logged-in user — which is also how an operator finds out whether a site's leaf node is attached, by asking the bus over that same connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)). The Agent can, because it runs inside the account.
 
 Do not "improve" a check by minting the platform a credential in a tenant's account. That turns a credential issuer into a data-plane participant in every tenant's bus, which is the one boundary the whole NATS design is built around. Per-site liveness is therefore **absent** from the Control Plane's list on purpose, and lives on the edge instead ([§5](#5-the-edge-agent)).
 

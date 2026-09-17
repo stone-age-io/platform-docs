@@ -73,7 +73,7 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 ³ **Reads are org-scoped, not role-scoped, and that is deliberate.** The read rules on `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations` are all `organization = current_organization` with no role branch, so *every* role in an organization — `dashboard` included — can `curl` the whole inventory. What differs between roles is writes, plus which screens the console navigates to: it confines `dashboard` to the Visualizer and shows no inventory screens at all. **That is navigation, not a boundary** — do not read a hidden screen as a denied read. Making one of these an actual boundary means a role branch in `schema.json`, across every one of those collections, with a new failure mode where a relation expansion silently returns nothing.
 ⁴ JetStream operations run over the browser's own NATS connection, so they are bounded by the caller's **NATS** permissions, not by PocketBase API rules. The console surfaces the views to owners and admins.
 ⁵ `organizations.deleteRule` keys on the `organizations.owner` **field** — the user recorded as the org's owner, normally the same person who holds the `owner` membership — rather than on the membership role itself. Creating and *editing* the record are Platform-Operator-only; see §3.
-⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. `nebula_ca` has no rotation trigger at all, so rolling a CA is a Platform Operator action.
+⁶ Through `POST /api/org/nats-account/keys`, not by editing the record — `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. Rolling a Nebula CA is likewise a route rather than a record edit, but an **owner/admin** one: `POST /api/org/nebula-ca/rotate` (§4.3).
 ⁷ Dashboards are the only screen `dashboard` reaches. That is the role's entire purpose: a login for an unattended display.
 
 **The lower roles get an empty list, not a filtered one.** For `nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, and `nebula_hosts`, the `listRule` itself requires owner or admin. A member, viewer or dashboard holder querying those collections receives zero records — with the single, deliberate exception in §4.
@@ -136,7 +136,7 @@ POST /api/org/nats-account/keys      { "action": "rotate" | "add_signing" | "rem
 
 Like the credential route it takes no record id — the account is derived from the caller's active organization, so it cannot be aimed at another tenant — and each action writes exactly one field. Reach for `add_signing` for routine rotation; `rotate` is for suspected key compromise.
 
-`nebula_ca.updateRule` is Platform-Operator-only for the same reason and has no tenant route, because the collection has no rotation trigger. Rolling a CA is a Platform Operator action.
+`nebula_ca.updateRule` is Platform-Operator-only for the same reason — the record holds the trust anchor for the organization's whole overlay. Rolling one is a route, and an **owner/admin** one: see §4.3.
 
 ### 4.2 Taking a device out of service
 
@@ -158,6 +158,27 @@ And the second half: **a device's real capability is its NATS credential, not it
 
 > **A flag with nothing enforcing it is worse than no flag**, because someone will trust it during an incident. `nats_users.active` is the cautionary case: `pb-nats` reads it into its model and then consults it nowhere in JWT generation — only `revoke` disconnects anyone. The console therefore no longer exposes it as an editable control; **Revoke** and **Re-enable** on the NATS user's detail view are the real operations.
 
+### 4.3 Rolling a Nebula CA
+
+```
+POST /api/org/nebula-ca/rotate       { "step": "prepare" | "commit" | "finish" }
+```
+
+**Owner/Admin of the CA's own organization**, and the console presents it as a three-step panel on the Nebula CA detail view. Like the routes above it takes no record id — the CA is resolved from the caller's active organization, so it cannot be aimed at another tenant — and the route allowlists the three verbs while `pb-nebula` validates the *transition*.
+
+**The tenant owns this lever deliberately.** The dangerous part of rotating a CA is not the cryptography, it is the **wait** in the middle, and the wait belongs to whoever operates the devices. A Platform Operator cannot judge when a fleet has caught up.
+
+| Step | What it does | Reversible |
+| :--- | :--- | :--- |
+| `prepare` | Publishes the new CA as *trusted* without moving issuance. | Yes — fully. |
+| `commit` | Swaps issuance to the new CA and re-signs every active host. | The outgoing CA is still trusted. |
+| `finish` | Drops the outgoing CA. **Refused** while any active host still holds a certificate signed by it. | No. |
+
+**Three steps and not one, because Nebula verification is mutual and config distribution is pull-based.** A single write carrying both the new trust bundle and the new certificate splits the mesh for as long as propagation takes: a host that has fetched presents a new-CA certificate to one that has not, and the handshake fails in *both* directions. `prepare` exists to make the trust half land first, everywhere, before any issuance moves.
+
+!!! note "Why a route and not an owner branch on the update rule"
+    A rule branch permitting rotation would have to deny-list every other field on `nebula_ca` — and would silently re-open each one added afterwards. That is the same deny-list shape this repo has been bitten by twice, here on the record holding the trust anchor for a tenant's entire mesh. See §7.
+
 ---
 
 ## 5. The Audit Log Is Platform-Operator-Only
@@ -170,7 +191,7 @@ The practical consequence for MSP deployments: **a tenant admin cannot self-serv
 
 ## 6. Gateways and the Edge
 
-**A site gateway is a Thing.** There is no `leaf_nodes` collection any more and no gateway flag — a Thing's [Thing Type](./thing-types.md) already says what it is, and a second marker is a second thing to get wrong. So a gateway's read surface is exactly a Thing's read surface: its own record, the org-scoped inventory collections, and the one NATS identity linked to it. Nothing in `nats_*` or `nebula_*` beyond that.
+**A site gateway is a Thing.** There is no `leaf_nodes` collection any more and no gateway flag anywhere — not on `things` and not on [`thing_types`](./thing-types.md) either. Nothing branches on one, so a marker would only be a field to get wrong (see [Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)). So a gateway's read surface is exactly a Thing's read surface: its own record, the org-scoped inventory collections, and the one NATS identity linked to it. Nothing in `nats_*` or `nebula_*` beyond that.
 
 The values an edge box cannot derive locally — the org's account JWT and public key, the NATS Operator JWT, and the `$SYS` account JWT and public key — come from a dedicated route:
 

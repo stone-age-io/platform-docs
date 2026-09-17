@@ -110,7 +110,7 @@ Imports/exports are the right tool when you want **cryptographically separated t
 
 Nebula is an overlay networking tool. It lets your devices talk to each other as if they were on the same local network, even when they sit on different continents behind restrictive firewalls. Again, this is just a brief overview. Refer to the official Nebula documentation for a more in-depth understanding.
 
-> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so every role below admin gets an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a Platform Operator, and there is no tenant-triggered CA rotation — rolling a CA is a Platform Operator action. See [Authorization](./authorization.md).
+> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so every role below admin gets an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a Platform Operator. Rolling the CA is not a record edit at all: it is a three-step route, `POST /api/org/nebula-ca/rotate`, and an **Owner/Admin** one — the wait in the middle of a rotation belongs to whoever operates the devices. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
 ### Mesh VPN Fundamentals
 
@@ -123,11 +123,51 @@ Because edge devices are often behind NAT (Network Address Translation), they do
 -  **The Lighthouse:** A server with a static IP that acts as a directory. 
 - **Discovery:** When *Host A* wants to talk to *Host B*, it asks the Lighthouse for the current real-world IP of *Host B*. The two hosts then "punch a hole" through their respective firewalls to talk directly.
 
+Mark one with `is_lighthouse` on its Nebula Host record, and give it a **`public_host_port`** (`1.2.3.4:4242`) — the publicly reachable address peers read from their own static host map.
+
 ### Relays
 
-In some extreme environments (like strictly monitored corporate networks), hole-punching might fail.
+In some extreme environments (like strictly monitored corporate networks), hole-punching fails.
 
-- **The Relay:** If a direct connection can't be made, Nebula will automatically route traffic through a Relay. This ensures that connectivity is maintained even in the most difficult network conditions.
+- **The Relay:** when a direct connection can't be established, Nebula forwards that traffic through a host marked `is_relay`. Connectivity survives network conditions that defeat hole-punching.
+
+A relay is **designated, not discovered** — nothing happens until some host in the network carries `is_relay`. Two properties are worth knowing:
+
+- **A relay needs a `public_host_port` too.** Without one the host listens on an ephemeral port while every peer has already been handed its overlay IP as a usable path — so the path is advertised and then does not work. The console requires the field as soon as you tick either box, for this reason.
+- **Relaying is config-only.** A relay's certificate is no different from any other host's, so turning it on and off is a config change that needs no re-issue. Contrast `unsafe_networks` below, which is the opposite case.
+
+**Lighthouse and relay are independent**, and a host can be both — the host list badges them separately because they answer different questions: a lighthouse tells peers *where* someone is, a relay carries the packets when they still can't get there.
+
+### Reaching subnets that are not on the mesh
+
+A Nebula host can act as a **gateway** into the ordinary network behind it — a site's camera VLAN, a building's BMS segment — so mesh members reach those addresses without running Nebula on every device there.
+
+This takes two fields, and the thing to internalise is that **they live on different hosts and neither one implies the other:**
+
+| Field | Set it on | What it means |
+| :--- | :--- | :--- |
+| `unsafe_networks` | the **gateway** — the host with a foot in both networks | "I will route to these subnets." One CIDR per line. |
+| `unsafe_routes` | **every host that wants to reach them** | `{ route, via }` pairs, where `via` is the gateway's *overlay* IP. |
+
+Configure only the first and the gateway is willing to route while nobody sends it anything. Configure only the second and peers aim traffic at a gateway that refuses it. No peer derives another host's routes, and nothing warns you about the half you skipped.
+
+!!! warning "`unsafe_networks` is signed into the certificate — editing it is inert until the host picks up a new one"
+    Nebula authorizes routing on the **certificate**, not on config. A gateway whose certificate omits a prefix silently refuses to route it and **drops the packet before any firewall rule runs** — so the rule you are staring at is not the one failing, and no amount of correcting it helps.
+
+    Saving `unsafe_networks` therefore re-issues the gateway's certificate, and the change does nothing until that host has fetched it. `is_relay` is the opposite case: config-only, effective on the next config pull. `unsafe_routes`, on the consumer side, is also plain config.
+
+### Per-host tuning
+
+Three optional overrides. All are config-only, and all inherit a default when left empty:
+
+- **`preferred_ranges`** — **underlay** prefixes this host should favour when a peer advertises several addresses, typically the LAN it sits on, so two machines in one rack talk over private addresses instead of routing out and back. Entries must be in canonical masked form (`172.16.0.0/24`, not `172.16.0.5/24`).
+- **`mtu`** — defaults to 1300. Lower it on a path that fragments.
+- **`tun_device`** — the interface name; defaults to `nebula1`.
+
+!!! note "`preferred_ranges` is the one place IPv6 is accepted"
+    The platform is IPv4-only, but that is a constraint on the *overlay*. These are underlay prefixes, and Nebula ranks an IPv6 preferred range at the very top of its address priority list — refusing them would rule out the case the feature is best at.
+
+    It is also validated on write rather than trusted, because Nebula's own failure mode here is silent: it logs a warning, skips the malformed entry, and forms the tunnel anyway over the public path. The only symptom of a typo is traffic quietly taking the slow route, so rejecting it at the point of entry is the only place it is visible.
 
 ### Host-Based Firewalls
 
@@ -136,6 +176,11 @@ Nebula security is **Identity-Based**, not IP-based.
 - Firewall rules are defined in YAML and enforced by the Nebula binary on each host.
 - You can define **Groups** (e.g., `sensors`, `gateways`, `admins`). 
 -  **Example Rule:** "Allow the `admins` group to SSH into the `gateways` group, but deny `sensors` from talking to anything except the `gateways`."
+
+!!! note "Group membership is on the certificate, so changing it costs a re-issue"
+    Exactly four host fields are signed into the certificate — **`hostname`, `overlay_ip`, `groups` and `unsafe_networks`** — and a change to any of them is inert until the host holds a new one. Moving a host between firewall groups is therefore the same class of edit as changing its routing, not a config tweak: peers keep applying the old group's rules until the new certificate is in place. Everything else about a host, firewall *rules* included, renders into `config_yaml` and takes effect on the next pull.
+
+    You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that takes effect immediately.
 
 ---
 
@@ -157,6 +202,7 @@ Combining the cryptographic identity of NATS with the tunnelling of Nebula means
 - **Layer 2 (stream processing):** [Stream Processing](./stream-processing.md).
 - **Layer 3 (long-term storage):** [Observability](./observability.md).
 - **Who may author roles, hosts, and account wiring:** [Authorization & Roles](./authorization.md).
+- **Rotating the CA, and auditing host certificates whose mask no longer matches their network:** [Stone CLI — Nebula operations](./stone-cli.md#nebula-operations-that-are-not-record-writes).
 - **The edge integration story:** [The Agent](./agent.md).
 - **Modeling & syncing a site:** [Leaf Nodes](./leaf-nodes.md).
 - **The layer model in full:** [Platform Layers](./platform-layers.md).

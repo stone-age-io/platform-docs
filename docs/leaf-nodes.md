@@ -2,13 +2,13 @@
 
 A site that runs its own local NATS server keeps working when the WAN does not. The transport underneath is a stock NATS leaf node ([Connectivity §1](./connectivity.md#leaf-nodes)) — it dials the hub outbound and gives the site local autonomy during an outage.
 
-**The platform models that site as a Thing.** Not a special record type, not a separate collection: a Thing whose [Thing Type](./thing-types.md) says it is a gateway, and whose [Agent](./agent.md) happens to have its leaf-node capabilities turned on. One inventory, one identity model, one set of API rules.
+**The platform models that site as a Thing.** Not a special record type, not a separate collection: an ordinary Thing whose [Agent](./agent.md) happens to have its leaf-node capabilities turned on. One inventory, one identity model, one set of API rules.
 
 > ## "Leaf node" means two related things — keep them straight
 >    | Term | What it is |
 >    | :--- | :--- |
 >    | **NATS leaf node** | The stock `nats-server` running at the site in leaf mode, dialing the hub outbound. A Layer 0 transport primitive — see [Connectivity](./connectivity.md#leaf-nodes). |
->    | **A gateway** | The *platform's* model of such a site: an ordinary **Thing**, with a Thing Type that says gateway, one NATS identity, and optionally a Nebula host. This page is about how one gets configured and how you tell whether it is up. |
+>    | **A gateway** | The *platform's* model of such a site: an ordinary **Thing**, with one NATS identity and optionally a Nebula host. Nothing in the schema marks it as a gateway — see §1. This page is about how one gets configured and how you tell whether it is up. |
 >    | **The [Agent](./agent.md)** | The binary on the box. It manages the device *and*, when configured to, bootstraps and hosts the leaf node. One agent, not two. |
 
 ---
@@ -19,9 +19,11 @@ This is the design decision the rest of the page follows from, so it is worth st
 
 A `leaf_nodes` collection used to exist — "a special Thing" with its own `domain` column, its own sync allowlist, and its own screens. It was removed, for three separate reasons that happened to arrive together:
 
-- **`thing_types` already says what a device is.** A second marker is a second thing to get wrong, and two markers that disagree have no correct interpretation.
+- **A marker no code consulted is a marker that drifts.** Nothing in the platform branched on it: the config route serves any authenticated Thing (§3), and the agent stands up a leaf because *its own* config says to, not because a record said so.
 - **The `domain` column was a second copy of the code.** It could drift from the code it was derived from, and when it did, the symptom was a site that silently stopped appearing rather than an error.
 - **Nothing consumed the mirrored config.** The old agent copied an organization's `things`, `locations` and type collections into the edge's local KV so devices could read them offline — but no rule, no firmware and no tool ever read those rows. It was the reason an edge identity needed read grants spread across the inventory, and it bought nothing.
+
+**Nor does a Thing Type say "gateway".** This is worth stating separately, because the opposite was written down here and a console feature was built on the strength of it (§7). A `thing_types` record carries `name`, `description`, `code`, `subject_prefix`, `operations` and `metadata_schema` — and no gateway flag. An organization naming one of its types "Gateway" is a convention *it* chose; the platform cannot read that name and conclude anything. So there is no field to gate on, no field to filter a list by, and no field that tells a screen which Things ought to have a leaf node attached.
 
 What is left is one route. Everything an agent needs to stand up a leaf server comes from `GET /api/me/leaf-config`, and **that route gates on nothing** — see §3.
 
@@ -78,7 +80,7 @@ The platform's generator now runs its own output through the real `nats-server` 
 
 ## 5. Deploy flow
 
-1. In the console, create the site's **Thing**, with a Thing Type that says gateway. Copy the login password from the success dialog — it is shown once.
+1. In the console, create the site's **Thing** — any Thing Type your organization uses for sites; nothing on the platform needs to know it is a gateway (§1). Copy the login password from the success dialog — it is shown once.
 2. Install the [Agent](./agent.md) on the edge box and configure the platform block:
 
     ```yaml
@@ -131,31 +133,34 @@ Off by default, because it moves data-plane traffic and an upgrade must not sile
 
 ## 7. Is the site up?
 
-Ask NATS, on the Thing's own page in the console.
+Ask NATS. There is no field to read and no screen that answers it for you — you build the question as a [dashboard widget](./dashboards.md).
 
-There is **no heartbeat and no status field** behind that badge, and there used to be both. A `leaf_status` KV bucket carried a beat per site and the console rendered it as online/offline. It was removed because a heartbeat travels over the very link whose failure it is meant to report: a missing beat cannot distinguish "edge box down" from "WAN down" from "agent crashed" — three different call-outs behind one red dot. And the Control Plane could never have read one anyway (§2).
+There is **no heartbeat and no status field**, and there used to be both. A `leaf_status` KV bucket carried a beat per site and the console rendered it as online/offline. It was removed because a heartbeat travels over the very link whose failure it is meant to report: a missing beat cannot distinguish "edge box down" from "WAN down" from "agent crashed" — three different call-outs behind one red dot. And the Control Plane could never have read one anyway (§2).
 
-The hub, on the other hand, always knows which leaf connections it is holding. So the console asks it, over the browser's own in-account NATS connection:
+The hub, on the other hand, always knows which leaf connections it is holding. So ask it, over the browser's own in-account NATS connection. A **Button** or **Publisher** widget doing request/reply against
 
 ```
 $SYS.REQ.ACCOUNT.PING.CONNZ
 ```
 
-Entries with `kind: "Leafnode"` are matched by `name` — the leaf's `server_name`, which is the Thing's `code` (§3).
+with `{}` as the payload returns the account's current connection list. Entries with `kind: "Leafnode"` are matched by `name` — the leaf's `server_name`, which is the Thing's `code` (§3) — so a site is identifiable, not merely countable.
 
 **Each account carries its own `$SYS` subject space.** `$SYS.REQ.ACCOUNT.PING.*` is scoped to the caller's own account and answers for that organization and no other; the operator-wide `$SYS.REQ.SERVER.PING.*` endpoints, which would span every tenant, are not reachable from a tenant credential. The server enforces both halves, and the platform pins them in a test against a real hub with a real leaf attached.
 
-!!! warning "In NATS, a publish DENY beats a publish ALLOW"
-    If that badge ever times out for one organization and not another, this is almost certainly why. A NATS Role carrying `$SYS.>` in its **publish deny** list cannot reach the account-scoped endpoints no matter what its allow list says — and the symptom is a plain request timeout, with the real reason arriving asynchronously on the connection's error handler and never on the request itself. Deny `$SYS.REQ.SERVER.>` instead.
+!!! warning "Do not put `$SYS` in a publish deny list"
+    The widget needs `$SYS.REQ.ACCOUNT.PING.>` in its NATS Role's **publish allow** list; the shipped `console-readonly` role carries it. Do not add a deny beside it. In NATS a publish DENY beats a publish ALLOW, so a role carrying `$SYS.>` in its deny list cannot reach the account-scoped endpoints no matter what its allow list says — and if the request ever times out for one organization and not another, this is almost certainly why. The symptom is a bare timeout, because the real reason arrives asynchronously on the connection's error handler and never on the request itself.
 
-The badge has three states, not two, and the third one matters: without a NATS connection the console cannot answer the question at all, so it says **unknown** rather than showing every site as down.
+    **Narrowing the deny to `$SYS.REQ.SERVER.>` is not a fix either**, only a quieter one. It looks like it restricts the operator-wide endpoints, but those are served *inside the `$SYS` account*, and an account is a closed subject namespace — a tenant credential publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder with or without a deny. The account boundary already enforces it, so the platform ships no `$SYS` deny at all, and pins both halves against a real server.
 
-!!! note "The empty state is not painted as a fault"
-    The console cannot tell a gateway that *should* have a leaf from a temperature probe that never will — there is no marker field, by design (§1). So "no leaf node attached" is stated as a fact in neutral colour. It reads as an alarm on a gateway's page and a shrug on a probe's, and the person looking knows which they are looking at.
+### Why this is a recipe and not a screen
+
+A connectivity badge on every Thing's detail view was built, and then removed. It failed on §1: nothing marks which Things are gateways, so it could not be gated. It rendered on every device, which meant it had to state "no leaf node attached" in neutral colour about a temperature probe that would never have one — and to do that it polled the whole account's connection list every 15 seconds, for every viewer, whether or not anyone was asking.
+
+A widget asks once, when someone wants to know. It also generalises for free: the same widget aimed at `SUBSZ` or `JSZ` answers a different question without waiting on a platform release.
 
 ### Per-site health, in detail
 
-The badge answers one question. For the rest — is JetStream filling the disk, how many devices are actually attached, is the uplink down — the agent serves `/ready` and `/metrics` **on the box**, behind `observability.addr`. That is where per-site health can actually be measured, and it keeps answering with the WAN down, which is exactly when you want it. See [Health & Metrics](./health-metrics.md).
+CONNZ answers one question — is this site's leaf attached to the hub. For the rest — is JetStream filling the disk, how many devices are actually attached, is the uplink down — the agent serves `/ready` and `/metrics` **on the box**, behind `observability.addr`. That is where per-site health can actually be measured, and it keeps answering with the WAN down, which is exactly when you want it. See [Health & Metrics](./health-metrics.md).
 
 **An islanded site warns; it does not fail.** `hub_uplink` is a warning and still answers 200. Local NATS keeps working and devices keep running — that autonomy is the entire reason a leaf node exists, so reporting it as unready would invert the design.
 
@@ -170,8 +175,8 @@ The badge answers one question. For the rest — is JetStream filling the disk, 
 - The Thing's PocketBase password is resettable by an org Admin/Owner from the console, gated by the collection's `manageRule` — a scoped, audited record action rather than a superuser-only operation.
 - Narrowing a site's blast radius is a record edit: reassign its NATS Role or add per-user permission overrides. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 
-!!! warning "`active` and the connectivity badge answer different questions"
-    The badge (§7) reports whether the site **is** currently attached to the hub. `active` governs whether it **may** be. A deactivated site showing no leaf is the expected outcome, not a fault to chase — and an *active* site showing none is the one worth investigating.
+!!! warning "`active` and an attached leaf answer different questions"
+    A CONNZ reply (§7) reports whether the site **is** currently attached to the hub. `active` governs whether it **may** be. A deactivated site missing from that list is the expected outcome, not a fault to chase — and an *active* site missing from it is the one worth investigating.
 
 ---
 

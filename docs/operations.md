@@ -329,6 +329,8 @@ A condensed pre-flight list for taking a deployment to production:
         ```
 
     Host certificates count only `active = true` rows, so a decommissioned device’s lapsed certificate does not page anyone. There is no per-organization label: `/metrics` is open by default, and a tenant name beside a certificate inventory is free reconnaissance. Set an alert on the CA series in particular — every host certificate chains to it.
+
+    **Give the CA a wider horizon than a host: 90 days, not 30.** A host certificate is reissued in a moment; a CA can only be *rotated*, which is a staged procedure with a wait in the middle of it, and 30 days is less than that procedure comfortably needs. The console warns on a CA at 90 days and on a host at 30 for this reason — match your alert to the same split rather than running both off the 30-day expression above.
 - [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing is the control that actually cuts a device off (session killed, credential revoked), that it applies to a site gateway exactly as to any other device, and that reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
 - [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through a Platform Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
 - [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).

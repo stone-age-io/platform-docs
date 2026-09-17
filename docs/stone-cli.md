@@ -151,11 +151,10 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `nats-export` | yes | `name` | full | owner/admin — including reads |
 | `nebula-network` | yes | `name` | full | owner/admin — including reads |
 | `nebula-host` | yes | `hostname` | full | owner/admin — including reads |
-| `leaf-node` | yes | `code` | full | read: any · write: owner/admin |
 | `nats-account` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: Platform Operator** · signing keys: owner/admin via route |
-| `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: Platform Operator** · no rotation trigger exists |
+| `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **record writes: Platform Operator** · rotation: owner/admin via `stone nebula ca-rotate` |
 
-"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a **Platform Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)); `nebula_ca` has no rotation trigger, so rolling a CA is a Platform Operator action.
+"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a **Platform Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)), and rolls the Nebula CA with `stone nebula ca-rotate` (below) rather than by editing the record.
 
 In the **Role required** column, *any* means any role in the current organization including `dashboard`, the least privileged one, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
 
@@ -193,7 +192,7 @@ stone nebula-host edit edge-west                             # opens $EDITOR as 
 
 ### Auth-collection ergonomics
 
-`thing`, `nats-user`, `nebula-host`, and `leaf-node` are PocketBase **auth collections**. The CLI smooths over PB's two requirements so you don't have to: when a non-empty `password` is present it mirrors `passwordConfirm` and sets `emailVisibility` for you (on typed CRUD, `apply`, and `edit` alike).
+`thing`, `nats-user`, and `nebula-host` are PocketBase **auth collections**. The CLI smooths over PB's two requirements so you don't have to: when a non-empty `password` is present it mirrors `passwordConfirm` and sets `emailVisibility` for you (on typed CRUD, `apply`, and `edit` alike).
 
 For headless provisioning, skip `--password` and let the CLI mint one:
 
@@ -206,7 +205,7 @@ stone thing create --email reader-01@things.example.com --code reader-01 \
 
 ### Decommissioning from the CLI
 
-`thing` and `leaf-node` carry an `active` flag, so a device can be taken out of service from a script:
+`thing` carries an `active` flag, so a device — including a site gateway, which is an ordinary Thing — can be taken out of service from a script:
 
 ```sh
 stone thing update reader-01 --active=false        # decommission
@@ -219,6 +218,26 @@ stone thing update reader-01 --active=true         # return to service
     This matters most in `apply`. `pull` writes every non-server field, so `active` lands in the workspace YAML — and a file carrying `active: false` decommissions real hardware on the next `apply`.
 
 Note the `=` in `--active=false`. Boolean flags set *true* when passed bare, so the space-separated form is a different command — `--active false` leaves `false` as a second positional argument and fails with `accepts 1 arg(s), received 2`. It errors rather than doing the wrong thing, but the `=` is required.
+
+### Nebula operations that are not record writes
+
+Two Nebula operations are not expressible as a record edit, so they live under `stone nebula` rather than on the `nebula-ca` / `nebula-host` entities:
+
+```sh
+stone nebula ca-rotate prepare      # mint the incoming CA, publish it as additional trust
+stone nebula ca-rotate commit       # switch issuance to it, re-sign every active host
+stone nebula ca-rotate finish       # drop the outgoing CA
+stone nebula cert-audit             # hosts whose certificate no longer matches their network
+```
+
+**`ca-rotate` is three steps, and the wait between them is the point.** Nebula verification is mutual — each peer checks the other against its *own* local CA pool, with no chain and no fallback — and hosts pull their config whenever they like. So a single write carrying both the new trust bundle and the new certificate splits the mesh: a host that has fetched presents a new-CA certificate to one that has not, and the handshake fails in **both** directions until propagation finishes. `prepare` moves no issuance and is fully reversible; wait there until every host has fetched. `commit` is idempotent — re-running it re-signs only the hosts still on the outgoing CA, which is how you recover from a partial sweep. `finish` is refused while any active host still holds a certificate signed by the outgoing CA, and the error names the host.
+
+Owner/Admin of the active organization, and it takes no id — the CA is derived from your active org, so it cannot be aimed at another tenant. A CA cannot be renewed, only rotated, so start months before expiry rather than weeks; `stone nebula-ca ls` shows the date. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
+
+**`cert-audit` is a route because answering it means parsing a certificate.** It compares the network each host certificate carries against the network the host actually belongs to — no client can do that, so the platform answers and hands back the verdict. It exists because `pb-nebula` signed host certificates at `/32` until v0.3.0, and Nebula puts a certificate's prefix straight onto the tun device as a link route: a `/32` gives a host a route covering only itself, so the certificate verifies, the config renders, the host starts, the handshake completes, and no packet ever crosses the mesh. Nothing errors anywhere.
+
+!!! warning "Affected hosts are not re-signed automatically, and that is deliberate"
+    Re-signing moves a certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes — so an automatic sweep would rewrite every peer config in the mesh on the strength of a dependency bump. The audit names the hosts; re-issue them individually. Inactive hosts are excluded because they are revoked, and re-signing one would publish a new fingerprint while the old certificate stayed valid.
 
 ---
 
