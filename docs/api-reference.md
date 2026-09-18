@@ -17,16 +17,16 @@ PocketBase API rule could not express what it needed to.
 
 | Route | Method | Who may call it | Does |
 | :--- | :--- | :--- | :--- |
-| [`/api/client-config`](#getapiclient-config) | `GET` | any `users` session | Deployment facts the SPA cannot be compiled with |
-| [`/api/me/leaf-config`](#getapimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to stand up a NATS leaf server |
-| [`/api/me/nats-creds/rotate`](#postapimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
-| [`/api/org/invites/accept`](#postapiorginvitesaccept) | `POST` | any authenticated caller | Redeem an invitation token |
-| [`/api/org/things`](#postapiorgthings) | `POST` | `member`+ for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
-| [`/api/org/nats-account/keys`](#postapiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
-| [`/api/org/nebula-ca/rotate`](#postapiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA, in three steps |
-| [`/api/org/nebula/cert-audit`](#getapiorgnebulacert-audit) | `GET` | `owner` / `admin` | Hosts whose certificate no longer matches their network |
-| [`/api/ready`](#getapiready) | `GET` | unauthenticated | Readiness probe, `200` or `503` |
-| [`/metrics`](#getmetrics) | `GET` | unauthenticated by default | Prometheus exposition |
+| [`/api/client-config`](#get-apiclient-config) | `GET` | any `users` session | Deployment facts the SPA cannot be compiled with |
+| [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to stand up a NATS leaf server |
+| [`/api/me/nats-creds/rotate`](#post-apimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
+| [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any authenticated caller | Redeem an invitation token |
+| [`/api/org/things`](#post-apiorgthings) | `POST` | `member`+ for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
+| [`/api/org/nats-account/keys`](#post-apiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
+| [`/api/org/nebula-ca/rotate`](#post-apiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA, in three steps |
+| [`/api/org/nebula/cert-audit`](#get-apiorgnebulacert-audit) | `GET` | `owner` / `admin` | Hosts whose certificate no longer matches their network |
+| [`/api/ready`](#get-apiready) | `GET` | unauthenticated | Readiness probe, `200` or `503` |
+| [`/metrics`](#get-metrics) | `GET` | unauthenticated by default | Prometheus exposition |
 
 Roles are per-organization memberships and resolve against the caller's **active**
 organization (`users.current_organization`). See

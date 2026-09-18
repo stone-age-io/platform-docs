@@ -1,8 +1,19 @@
 # Overview
 
-Stone-Age.io is one HTTP API for the things and places you manage, which also mints the credentials those things use to reach each other. Around that API sits a small set of independent components — each a single binary, composable over a shared NATS substrate, with no service mesh and no orchestrator required.
+Every site you manage, on one screen — and the equipment on those sites keeps
+whatever it already is. Door controllers, cameras, kiosks, sensors and machines
+reach the same bus whether they speak NATS, MQTT or HTTP, so a customer's
+installed base is the thing you start from rather than the thing you replace.
 
-You can use it as a plain multi-tenant inventory and stop there, or grow it into a complete private IoT and Event-Driven Architecture. See [Start Where You Need To](./index.md#start-where-you-need-to) for the four depths and where each one ends.
+Mechanically, that is one HTTP API for the things and places you manage, which
+also mints the credentials those things use to reach each other. Around it sits a
+small set of independent components — each a single binary, composable over a
+shared NATS substrate, with no service mesh and no orchestrator required.
+
+You can use it as a plain multi-tenant inventory and stop there, or grow it into
+a complete private IoT and Event-Driven Architecture. See
+[Start Where You Need To](./index.md#start-where-you-need-to) for the four depths
+and where each one ends.
 
 ---
 

@@ -1,14 +1,68 @@
-# Welcome to the Stone-Age.io Docs
+# Stone-Age.io Docs
 
-Stone-Age.io is one HTTP API for the things and places you manage — and the same API issues the credentials that let them talk to each other.
+**Every site you manage, on one screen.**
 
-At its simplest it is a multi-tenant inventory: Things, Locations, and the types that classify them, over a plain REST API with a console on top. It grows into a control plane from there, because in this platform the act of creating an inventory record is also the act that mints that record's identity on the messaging fabric and the encrypted mesh.
+One console and one automation layer across the equipment your sites already
+run: door controllers, cameras, kiosks, sensors, machines, and anything else
+that speaks HTTP, MQTT or NATS. Nothing gets ripped out to make room for it.
 
-The platform brings three projects together under a single management surface:
+Underneath that is a control plane for connected operations — one place to
+register equipment and the people who use it, one real-time bus to carry what it
+reports, and one encrypted network to reach it. The pieces each do one job, so
+you adopt what you need today and grow into the rest without rewrites.
 
-- **Management — PocketBase:** A self-contained backend that handles identity, inventory, and the embedded UI.
-- **Messaging — NATS.io:** A high-performance, multi-tenant fabric for telemetry, commands, and live state.
-- **Connectivity — Nebula:** A peer-to-peer mesh VPN that delivers encrypted tunnels all the way to the edge.
+---
+
+## Where do you fit?
+
+| | Start here |
+| :--- | :--- |
+| **Just show me what it does** | [Getting Started](./getting-started.md) — one container, then `demo-seed` for three tenants, a map, floor plans, signed identities and edge sites to click through |
+| **I run an integration business** | [Authorization & Roles](./authorization.md) for the tenancy model your customers become, then [Stone CLI](./stone-cli.md) for configuring fifty sites without configuring them fifty times |
+| **I run IT or operations for a facility** | [Connectivity](./connectivity.md) for how equipment reaches the bus, then [Observability](./observability.md) for getting the events into the stack you already run |
+| **I am evaluating the engineering** | [Architecture](./architecture.md), then [API Reference](./api-reference.md) and the two [ADRs](./decisions/0001-embedded-nats-server.md) |
+
+---
+
+## What it is made of
+
+Three well-known open-source projects, each doing the job it is good at, plus
+our own components alongside them. Nothing here is a proprietary protocol you
+would have to reverse engineer later, and nothing is a fork you would be stuck
+maintaining.
+
+| Part | Job |
+| :--- | :--- |
+| **PocketBase** | **Management** — identity, inventory, organizations and locations, an embedded SQLite database, a REST API and an admin UI, in one binary. Creating a Thing here mints the credentials it fetches on first boot. |
+| **NATS.io** | **Messaging** — pub/sub with native MQTT, JetStream for persistence and replay, key-value buckets holding the live device state the browser subscribes to, and leaf nodes that keep a site running through an internet outage. |
+| **Nebula** | **Connectivity** — a peer-to-peer mesh with NAT traversal, identity-based firewall rules and outbound-only connections, so no port opens on an edge network and nothing depends on a customer VPN. |
+| **Stone-Age.io** | **Ours** — the console you run the fleet from, [`rule-router`](./automation.md) for declarative YAML automation across NATS, HTTP and cron, and a lightweight [agent](./agent.md) that reports and controls a single device. |
+
+Everything else plugs into the same bus. [Telegraf](./observability.md) ships
+JetStream data to whichever time-series database you prefer; [eKuiper or
+Benthos](./stream-processing.md) handle windowed aggregations and anomaly
+detection and publish results back for the rules to act on. Stone-Age.io stays
+small because the heavy jobs stay with the tools built for them.
+
+### What it already speaks
+
+| Protocol | How |
+| :--- | :--- |
+| **NATS** | Native |
+| **MQTT** | Native, via JetStream |
+| **HTTP** | Webhooks in and API calls out, through the [rule engine's gateway](./automation.md) |
+| **WebSocket** | The browser's own connection to the bus |
+
+### Every piece is one file
+
+Start with the Control Plane binary: run `./stone-age serve` and open your
+browser. The database, REST API and console are already inside it. Add NATS,
+Nebula, `rule-router` and the agent alongside it as you need them — bare metal,
+containers or VMs, on FreeBSD, Linux or Windows.
+
+Self-hosted and hosted accounts run **the same binaries**, so starting on your
+own hardware and moving later is not a rebuild. These docs describe the software
+either way; anything specific to a hosted account is called out where it applies.
 
 > **A note on names.** "The platform," "the Control Plane," "the console," and "`stone`" mean four different things in these docs and are not interchangeable. Neither are the two Operators: the **NATS Operator** is a signing key, the **Platform Operator** is a person. If a diagram stops making sense, check [What We Call Things](./overview.md#what-we-call-things).
 
@@ -16,7 +70,12 @@ The platform brings three projects together under a single management surface:
 
 ## Start Where You Need To
 
-You do not have to adopt the whole platform to get value from it. There are four depths, and **each one is a legitimate place to stop.** Most deployments sit at depth 2 or 3 indefinitely.
+[Where do you fit?](#where-do-you-fit) answers *which page you need*. This is the
+other question people arrive with: **how much of it do you have to run?**
+
+Not all of it, and stopping early is not a degraded mode. There are four depths,
+and **each one is a legitimate place to stop.** Most deployments sit at depth 2
+or 3 indefinitely.
 
 ### 1. An inventory
 
@@ -56,9 +115,8 @@ The rule engine, the Agent, stream processors, Telegraf and your time-series dat
 
 ## Key Features
 
-- **Single-binary components:** The Control Plane, rule engine, Agent, NATS, and Nebula each ship as a self-contained executable with no runtime dependencies. They wire themselves together over NATS, so the same architecture works on bare metal, a single VM, containers, or a Kubernetes cluster — whichever fits your operations.
-- **Infrastructure-as-Tenant:** Creating an Organization — a Platform Operator action — provisions an isolated NATS Account and a private Nebula CA. Tenant boundaries are enforced cryptographically at the messaging and network layers — not by application-level filters.
 - **Inventory-as-Identity:** The same record is the asset and the credential. A Thing is a first-class auth record that can hold a NATS user and a Nebula host, so "the camera in the lobby" is one row that is simultaneously an inventory entry, a login, a messaging identity, and a mesh node. There is no separate device registry to keep in sync. See [Architecture §3.1](./architecture.md#31-inventory-as-identity).
+- **Infrastructure-as-Tenant:** The same principle one level up. Creating an Organization — a Platform Operator action — provisions an isolated NATS Account and a private Nebula CA, so the management record and the infrastructure it implies are created and destroyed as a unit. Tenant boundaries are enforced cryptographically at the messaging and network layers, not by application-level filters.
 - **A contract layer, not just a schema store:** Thing Types declare *where* a kind of participant speaks (a subject prefix), their operations declare *what verbs* it has (`publish` / `subscribe` / `request` / `reply`, each with a subject suffix), Subject grammar is described as data, so a consumer can resolve from the records alone which subjects a device uses. Payload shape is deliberately NOT described: a `message_schemas` collection existed and was dropped, because nothing validated against it. See [Thing Types](./thing-types.md).
 - **Role-scoped access, enforced in one place:** Five per-organization roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) plus a Platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
 - **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database.
@@ -90,9 +148,11 @@ Start with [Platform Layers](./platform-layers.md) if you want the runtime frami
 
 ---
 
-## Documentation Journey
+## Every Page
 
-These pages, in order, walk through the platform from concept to deployment:
+The [table at the top](#where-do-you-fit) is the short way in. This is everything,
+roughly concept to deployment — the order is a reasonable read-through rather
+than a prerequisite chain, and any page is a fine place to enter:
 
 1.  **[Overview](./overview.md)** — Understand the vision and the problems we solve.
 2.  **[Platform Layers](./platform-layers.md)** — The conceptual model: how the platform is structured as composable tiers.
