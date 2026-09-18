@@ -141,7 +141,6 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `location-type` | yes | `code` | full | read: any · write: owner/admin |
 | `thing-type` | yes | `code` | full | read: any · write: owner/admin |
 | `thing-type-operation` | yes | `name` | full | read: any · write: owner/admin |
-| `message-schema` | yes | `name` | full | read: any · write: owner/admin |
 | `organization` | no | `name` | full | read: any member, or Platform Operator · create/update: **Platform Operator only** · delete: Platform Operator or the org's `owner` |
 | `membership` | no | — (id only) | full | read: your own, or owner/admin of the org · write: owner/admin |
 | `invite` | yes | `email` | full | owner/admin (Platform Operator may create) |
@@ -167,7 +166,9 @@ The full matrix, and the reasoning behind each restriction, is on [Authorization
 ```sh
 stone location create --name "HQ" --code hq
 stone thing-type create --name "Temp Sensor" --code temp-sensor \
-    --subject-prefix "telemetry.sensors" --capabilities publish
+    --subject-prefix "sensor.{location}.{thing}"
+stone thing-type-operation create --name heartbeat --capability publish \
+    --subject-suffix heartbeat
 stone thing get warehouse-hvac --fields code,name,location   # read back by natural key
 stone thing ls --fields code,name                            # requested fields become the columns
 stone nebula-host edit edge-west                             # opens $EDITOR as YAML, PATCHes on save
@@ -183,7 +184,7 @@ stone nebula-host edit edge-west                             # opens $EDITOR as 
 | :--- | :--- | :--- |
 | string / int / bool | `--name foo` · `--validity-years 5` · `--active true` | |
 | select | `--capability publish` | validated against a whitelist |
-| multiselect | `--capabilities publish,subscribe` | comma-separated |
+| multiselect | comma-separated, validated against a whitelist | supported, but no entity currently declares one |
 | relation (id) | `--type abc123def456ghi` | **15-char id only** — natural keys resolve on positional args, never on relation flags |
 | relation list | `--operations id1,id2` | comma-separated or repeated flag |
 | JSON | `--metadata '{"k":"v"}'` · `--metadata @file.json` · `--metadata -` | inline, file, or stdin |
@@ -252,7 +253,7 @@ stone pull --set-workspace .      # writes <collection>/<key>.yaml, one file per
 stone apply                       # reconciles the workspace back to the server
 ```
 
-- **`pull`** writes one YAML file per record into `<workspace>/<collection>/`, named by the record's natural key (message-schemas use `namespace__name__version`; fallback `name`, then id). Org-scoped collections are filtered to the current Organization. Server-managed fields (`collectionId`, `collectionName`, `created`, `updated`, `expand`) are stripped on read.
+- **`pull`** writes one YAML file per record into `<workspace>/<collection>/`, named by the record's natural key (fallback `name`, then id, with a suffix on collision). Org-scoped collections are filtered to the current Organization. Server-managed fields (`collectionId`, `collectionName`, `created`, `updated`, `expand`) are stripped on read.
 - **`apply`** walks the workspace (or just the paths you pass), groups records into batches of up to 50, and POSTs them through PocketBase's transactional `/api/batch` endpoint. Records with an `id` are PATCHed; records without are POSTed and the server-assigned id is written **back into the file**.
 
 Three properties make this safe to live with:
@@ -429,7 +430,8 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 - **Start a server for `stone` to talk to:** [Getting Started](./getting-started.md).
 - **The entities the CLI manages, and the console that mirrors it:** [Platform Entities & UI](./platform-ui-entities.md).
 - **Which of those entities your role can actually touch:** [Authorization & Roles](./authorization.md).
-- **The contract graph behind Thing Types and message schemas:** [Thing Types](./thing-types.md).
+- **The HTTP routes behind the commands that are not record writes:** [API Reference](./api-reference.md).
+- **The contract graph behind Thing Types and their operations:** [Thing Types](./thing-types.md).
 - **How per-membership NATS creds fit the account model:** [Connectivity](./connectivity.md).
 - **GitOps at the edge — the same declarative spirit, applied to a site:** [Leaf Nodes](./leaf-nodes.md).
 - **Config keys and `STONE_AGE_*` environment variables for the server:** [Configuration Reference](./configuration.md).

@@ -137,7 +137,7 @@ The Dashboard is a flexible grid system where you can build custom views:
 - **Widgets:** Add Gauges, Charts, Switches, and Maps.
 - **NATS-Native:** Most widgets subscribe directly to NATS subjects. Data never touches the database; it flows from the device to NATS to your browser.
 - **Variables:** Define dashboard variables (e.g., `{{building_id}}`) to create a single dashboard that can be "switched" to show data for different sites/things/etc.
-- **Thing Type-aware binding:** The Publisher widget can bind to a `Thing + Operation` pair. When bound, the subject auto-resolves from the Thing's context against the Thing Type's templates, and payload input renders as a schema-driven form when the operation has a linked message schema. See [Thing Types](./thing-types.md) for the contract model that powers this.
+- **Thing Type-aware binding:** The Publisher widget can bind to a `Thing + Operation` pair. When bound, the subject auto-resolves from the Thing's context against the Thing Type's templates and renders read-only. The payload stays free text — the `message_schemas` collection that once drove a typed form was dropped, because nothing validated against it. See [Thing Types](./thing-types.md) for the contract model that powers this.
 
 ### The Digital Twin
 

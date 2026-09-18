@@ -101,16 +101,17 @@ These pages, in order, walk through the platform from concept to deployment:
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
 6.  **[Dashboards & Widgets](./dashboards.md)** — The Visualizer: sixteen widget types, the three data-source kinds, and dashboard variables.
 7.  **[Authorization & Roles](./authorization.md)** — Who can do what: the five roles, the capability matrix, and the credential model.
-8.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
-9.  **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
-10. **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
-11. **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
-12. **[Leaf Nodes](./leaf-nodes.md)** — Run a site's own NATS server: how a gateway Thing bootstraps its leaf config, and how you tell whether it is attached.
-13. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
-14. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
-15. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
-16. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
-17. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
+8.  **[API Reference](./api-reference.md)** — The ten endpoints the platform adds on top of PocketBase REST, and why each one is a route rather than an API rule.
+9.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
+10. **[Thing Types](./thing-types.md)** — The contract layer: how participants on the fabric declare what they publish, subscribe to, request, and reply to.
+11. **[Connectivity](./connectivity.md)** — Dive deep into NATS and Nebula configurations (Layer 0).
+12. **[The Edge (Agent)](./agent.md)** — Provision and manage lightweight executors on remote hosts.
+13. **[Leaf Nodes](./leaf-nodes.md)** — Run a site's own NATS server: how a gateway Thing bootstraps its leaf config, and how you tell whether it is attached.
+14. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
+15. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
+16. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
+17. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+18. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
 
 ---
 

@@ -229,6 +229,7 @@ Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's `me
 ## 8. Where to Go Next
 
 - **The entities these rules protect:** [Platform Entities & UI](./platform-ui-entities.md).
+- **Every route named on this page, in one table:** [API Reference](./api-reference.md).
 - **The same rules from the terminal:** [Stone CLI](./stone-cli.md).
 - **The edge identity model in context:** [Leaf Nodes](./leaf-nodes.md).
 - **NATS roles and permission fields:** [Connectivity](./connectivity.md).

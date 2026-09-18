@@ -9,6 +9,7 @@ nav:
     - Platform Entities and UI: platform-ui-entities.md
     - Dashboards & Widgets: dashboards.md
     - Authorization & Roles: authorization.md
+    - API Reference: api-reference.md
     - Stone CLI: stone-cli.md
     - Thing Types: thing-types.md
     - Connectivity: connectivity.md

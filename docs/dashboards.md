@@ -71,7 +71,7 @@ Sixteen of them. The grid is 12 columns wide, and each type has a sensible defau
 | **Button** | Publishes a fixed payload to a subject. Can do a request/reply with a timeout instead of a plain publish. |
 | **Switch** | A toggle, backed either by a KV key or by publish-and-watch-a-subject. Optionally asks for confirmation first. |
 | **Slider** | A range control, publishing on change. |
-| **Publisher** | An ad-hoc message composer with history. If the target is a Thing with a [Thing Type](./thing-types.md), it binds to a `Thing + Operation` pair: the subject resolves from the Thing's context and the payload becomes a schema-driven form. |
+| **Publisher** | An ad-hoc message composer with history. If the target is a Thing with a [Thing Type](./thing-types.md), it binds to a `Thing + Operation` pair: the subject resolves from the Thing's context and renders read-only. The payload stays free text. |
 | **Scanner** | Scans a QR code with the device camera and looks up or publishes against the result. The [labels the platform prints](./platform-ui-entities.md#codes-and-qr-labels) carry a bare Location or Thing code, which is what the `{value}` placeholder in a KV key template or PocketBase filter expects — so `code = "{value}"` resolves a printed label with no extra configuration. The decoded string is never treated as a destination. |
 
 ### Context

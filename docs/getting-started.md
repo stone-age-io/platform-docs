@@ -296,7 +296,7 @@ You can use the `nats` CLI tool or add another widget and use the built-in **Pub
 nats pub test.hello '{"msg": "Hello Stone Age", "val": 42}'
 ```
 
-Once you've defined Thing Types and their operations, the Publisher widget can also bind to a `Thing + Operation` pair — the subject resolves automatically from the Thing's context and the payload form is driven by the operation's message schema. See [Thing Types](./thing-types.md).
+Once you've defined Thing Types and their operations, the Publisher widget can also bind to a `Thing + Operation` pair — the subject resolves automatically from the Thing's context, and the payload stays free text. See [Thing Types](./thing-types.md).
 
 ### Step C: The Result
 You should see the message appear instantly in the live stream. 

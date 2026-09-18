@@ -187,5 +187,6 @@ CONNZ answers one question — is this site's leaf attached to the hub. For the 
 - **The contract graph a site's devices publish against:** [Thing Types](./thing-types.md).
 - **Site-local rules during outages:** [Automation](./automation.md).
 - **What an edge identity may read, and who may manage it:** [Authorization & Roles](./authorization.md).
+- **`leaf-config` beside every other platform route:** [API Reference](./api-reference.md).
 - **Per-site health endpoints:** [Health & Metrics](./health-metrics.md).
 - **How the planes fit together:** [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md).
