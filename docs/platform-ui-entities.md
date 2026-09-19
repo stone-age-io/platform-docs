@@ -70,7 +70,7 @@ Locations define the physical or logical hierarchy of your environment. They ans
 ### Concepts
 
 - **Hierarchy:** Locations support parent/child relationships (e.g., `Global > North America > Chicago > Warehouse A > Row 4`).
-- **Location Code:** A unique, URL-friendly identifier (e.g., `CHI-W-A`), unique within the Organization. It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it.
+- **Location Code:** A unique identifier (e.g., `CHI-W-A`), unique within the Organization and matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — no dots, no NATS wildcards, no spaces ([why](./thing-types.md#what-a-code-may-contain)). It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it.
 - **Metadata:** A flexible JSON field for storing site-specific data like time zones, contact info, or local gateway IPs.
 
 ### Mapping & Visualization
@@ -91,7 +91,7 @@ A **Thing** is any entity that produces or consumes data — or just an asset yo
 ### Concepts
 
 - **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration. An Owner or Admin can reset that password from the detail view if it is lost — it is shown once, and the old one stops working immediately.
-- **Thing Code:** Similar to the Location code, this is used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`), and it is likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons.
+- **Thing Code:** Similar to the Location code, same character rules, and used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`), and it is likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons.
 - **Metadata:** Used to store device-specific state that doesn't change often, such as hardware revision, install date, or calibration offsets.
 - **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, and its NATS credential is revoked. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 

@@ -37,7 +37,7 @@ Key fields:
 
 | Field | Purpose |
 |---|---|
-| `code` | URL-safe identifier, e.g. `ip_camera`. Used in subject templates and as a stable reference. |
+| `code` | Identifier, e.g. `ip_camera`. Used in subject templates and as a stable reference. Must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — see [What a code may contain](#what-a-code-may-contain). |
 | `name`, `description` | Human-readable labels. |
 | `subject_prefix` | Template string like `camera.{location}.{thing}`. Stored literally. Empty values default to `{thing_type_code}.{location}.{thing}` when consumers resolve. |
 | `operations` | Multi-relation to `thing_type_operations` — the verbs this Thing Type declares. |
@@ -84,9 +84,30 @@ When a Thing Type's `subject_prefix` is empty, consumers use `{thing_type_code}.
 
 Family-first is the recommendation for new subject designs regardless of whether you use the default. Putting the fixed dimension (family) at position 0 makes stream subject filters concrete instead of wildcarded — you never have to write `*.sensor.>` to capture "all sensors", and streams stop overlapping accidentally. The location and thing are still directly addressable via `{location}` and `{thing}` in per-family subscriptions like `sensor.warehouse-a.*.motion`.
 
+### What a code may contain
+
+`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — letters, digits, `-` and `_`, starting with a letter or digit, 63 characters maximum. Enforced on `things.code`, `locations.code`, `thing_types.code` and `location_types.code`.
+
+Mixed case is deliberate. These codes are the string stencilled on the hardware — `DOOR-1`, `KC-DC1` and `GW-KC-01` are what a tech reads out loud — so folding them to lowercase would make the label and the record disagree. An Organization code is the exception: it is slugified from a name and never typed by an installer, so it stays lowercase-only.
+
+Each excluded character is excluded for a concrete reason:
+
+- **`.`** would split one subject token into two. The subject a publisher computes and the subject a subscriber's filter expects stop being the same string, and nothing errors — messages simply stop arriving.
+- **`*` and `>`** are the NATS wildcards. A code containing one widens any permission pattern built from it, from a single identity to every identity of that kind. This is the security-relevant case, because NATS permissions are copied verbatim into a signed JWT.
+- **A space** breaks the JetStream domain that an edge site's code becomes.
+- **63 characters** is the RFC 1123 label limit, the tightest of the places a code lands.
+
+A code that predates the validator keeps working and stays readable. It simply cannot be saved again until someone corrects it — nothing rewrites codes in bulk, because a code is printed on a label and baked into a signed subject.
+
+### Two constraints worth knowing before you design a prefix
+
+**Put `{location}` in a prefix only for things that do not move.** The subject is computed from the Thing's *current* location, so relocating a trailer, a spare camera or a loaner tablet changes every subject it publishes under. Its history stays filed under the old site, a subscriber filtering on the new one misses it, and a time-series database gains a tag whose value churns. For mobile assets, set an explicit `subject_prefix` with no `{location}` — `trailer.{thing}` — and carry the location as message metadata or a twin key, where it can be corrected after the fact instead of rewriting history.
+
+**You cannot wildcard part of a code.** A NATS `*` matches exactly one *whole* token, so folding the site into the code (`WHA-CAM-042`) does not buy you `camera.WHA-*.>` — that is a literal string, not a pattern. Subscribing per site requires the site to be its own token, which is the tradeoff the paragraph above describes. There is no negation either: no subject pattern can express "every camera except this one."
+
 ### The platform resolver
 
-The platform ships a reference TypeScript resolver at `ui/src/utils/subjectResolver.ts`. It's used by UI widgets (the Publisher widget in particular) to resolve templates against concrete Thing contexts. Consumers are not required to use it — the platform stores templates as data, and any client can resolve them however it wants. It exists so the UI doesn't have to reinvent the substitution logic.
+The platform ships the resolver at `ui/src/utils/subjectResolver.ts` — the only implementation there is, despite a header comment that long claimed it mirrored a Go package nobody ever wrote. It's used by UI widgets (the Publisher widget in particular) to resolve templates against concrete Thing contexts. Consumers are not required to use it — the platform stores templates as data, and any client can resolve them however it wants. It exists so the UI doesn't have to reinvent the substitution logic.
 
 ### Resolution example
 
