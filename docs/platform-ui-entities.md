@@ -77,8 +77,14 @@ Locations define the physical or logical hierarchy of your environment. They ans
 
 The UI provides two distinct ways to see your locations:
 
-1.  **Geospatial Map:** A global view using **Leaflet** to plot locations based on Latitude and Longitude.
+1.  **Geospatial Map:** A global view using **Leaflet**, plotting locations by Latitude and Longitude.
 2.  **Floor Plans:** An image-overlay system. You can upload a JPG/PNG of a floor plan and "drag and drop" **Things** onto the map to represent their physical position in a room.
+
+**The map draws one pin per *site*, not one per location.** A location gets a pin only when nothing above it in the hierarchy has coordinates; everything below folds into that pin and is reached through its drawer. Without this, a campus, its buildings, their floors and their rooms all carry coordinates within a few metres of each other and every address becomes a pile — and "Room 302" is not a fact at map scale anyway. Interior geography is what the floor plan is for.
+
+It promotes the outermost *mapped* ancestor rather than the root, because whether a tenant puts coordinates on the campus or only on the buildings is a modelling choice the platform does not control. Unmapped intermediate ancestors are walked through, so a room under an unmapped floor still folds onto its building. Pins that remain stacked by pure geography — two adjacent sites — are then **clustered**, which is the other half of the same problem and is not solved by folding.
+
+Searching flattens the map back out, matching the list view beside it: one search box on one screen should not produce two disagreeing counts.
 
 ---
 
@@ -176,6 +182,24 @@ Any Location or Thing with a **Code** gets a **Label** button on its detail view
 - **The Organization name is deliberately not printed.** A tenant name beside a device naming convention is free reconnaissance for anyone walking past. The provider's brand *is* printed — whoever finds broken equipment needs to know who services it.
 
 Because codes are unique only within an Organization, a scanner resolves a code **globally and then disambiguates** rather than assuming a tenant: `DOOR-1` is exactly the code every organization independently invents, so a match list with a picker is honest where a silent guess would be somebody else's door. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
+
+### The Activity Feed
+
+`/activity` answers "who on my team changed this device, and when" — **readable by every role in the organization**, `dashboard` included. Each entry names the actor, the action, the record and the time. It stores no record *values*: this is not the audit log, which stays Platform-Operator-only and carries full before/after snapshots. [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) has the boundary between the two, and why the feed covers the five org-scoped inventory collections and not memberships, invites or the `nats_*` records.
+
+Two things to know when reading it:
+
+- **The record label in a row is a snapshot, not a live join.** A Thing renamed since the change shows the name it had at the time. The detail dialog on a row says so explicitly, because a reader who assumes otherwise reads an accurate feed as a stale one.
+- **"This record's history" is the loop it exists for.** The row dialog filters the whole feed to one `resource_id`, which is a different question from searching the label — a search would also catch every other record that happens to share that name. Thing and Location detail views, and the three type forms, carry matching **Created / Last updated** stamps so a record and the feed can be read side by side.
+
+### Photos and File Fields
+
+Things and Locations each carry one **photo** — the install context that otherwise lives in one technician's head, captured while somebody is standing in front of the device. It appears beside the fields on the detail view and opens full size.
+
+A Thing's photo is **edit-only**: creation goes through `POST /api/org/things`, a JSON provisioning route that cannot carry a multipart body, and it stays a separate request from the rest of a Thing edit for a reason internal to that route's rules. Create the Thing, then add the photo.
+
+!!! warning "Every file field is now protected — an unauthenticated URL will not work"
+    `photo`, a Location's `floorplan`, an Organization's `logo` and a user's `avatar` are all **protected** file fields. An unprotected PocketBase file URL is served to *anyone* with no auth and no expiry — the only obstacle is the random suffix on the stored filename, which makes the URL a non-revocable bearer credential that leaks through `Referer` headers, screenshots, proxy logs and support tickets for the life of the record. Protected, each request resolves a short-lived file token to an auth record and runs the collection's view rule. **The auth token is not a file token**; a URL built with one silently "worked" only while the field was unprotected. Anything you have integrated against a bare file URL needs to request a file token instead.
 
 ### CRUD & Management
 

@@ -176,7 +176,7 @@ Controls the `pb-audit` library: audit logging of create, update, delete, and au
 | `retention.max_records` | int | `0` | Max records to keep. `0` disables count-based pruning. |
 | `retention.interval` | string | `"0 2 * * *"` | Cron expression for the retention sweep job. |
 
-> **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is gated on the same flag to match. A tenant admin cannot self-serve an audit export. The request has to go through a Platform Operator. See [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only).
+> **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is gated on the same flag to match. A tenant admin cannot self-serve an audit export. The request has to go through a Platform Operator. What a tenant *can* read for itself is the `activity` feed — actor, action, record, timestamp, and no values — which is a separate collection with its own rules and no retention setting here. See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed).
 
 ### `branding`
 
@@ -185,6 +185,8 @@ Controls the `pb-audit` library: audit logging of create, update, delete, and au
 | `dir` | string | `""` | A host directory whose `branding.json`, `logo.svg` and `theme.css` override the embedded defaults, served at `/branding/*`. Empty disables the overlay. |
 
 The point of the overlay is that re-skinning the console needs no frontend rebuild — the console is embedded in the binary, so a compiled-in brand would mean one build per provider. Missing files fall back individually. A starting template ships in `branding.example/` in the repository.
+
+**This brand is the operator's, and an Organization's own logo does not replace it.** The sidebar mark and the login screen resolve to `branding` and nothing else — it is the one fixed landmark, and the brand row is also the link to `/`, so letting a tenant logo win there made it change on every organization switch, directly above the switcher that had just done it, captioned with the operator's `appName`. A tenant's logo appears in the **org switcher** instead, where switching it is the control. The one deliberate exception is the [QR label](./platform-ui-entities.md#codes-and-qr-labels), which prints the operator's brand on purpose — whoever finds broken equipment in a public hallway needs to know who services it.
 
 ### `readiness`
 

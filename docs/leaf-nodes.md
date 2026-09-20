@@ -94,8 +94,8 @@ The platform's generator now runs its own output through the real `nats-server` 
       auth:
         type: "platform"
         creds_file: "/etc/agent/device.creds"
-    twin:
-      enabled: true          # optional, see §6
+    sync:
+      twin: true             # optional, see §6
     observability:
       addr: "127.0.0.1:9100" # optional, see §7
     ```
@@ -112,22 +112,52 @@ The platform's generator now runs its own output through the real `nats-server` 
 
 ---
 
-## 6. Offline autonomy and the digital twin
+## 6. Offline autonomy and KV bucket sync
 
 Once the leaf is up, the rest of the layered platform runs at the edge without the hub: a [rule engine](./automation.md) keeps evaluating site-local reflexes, a [stream processor](./stream-processing.md) keeps producing aggregates, and devices keep publishing to the local leaf, which buffers and forwards once connectivity returns.
 
-With `twin.enabled`, the agent also syncs digital-twin state. **Two buckets, one writer each:**
+The `sync:` block keeps **KV buckets** in step across the link, so the site keeps deciding locally through a WAN outage. Two directions, two mechanisms, a list each:
+
+```yaml
+sync:
+  twin: true                 # preset: twin_desired down, twin up
+  mirrors:                   # hub → edge, maintained by the server
+    - bucket: recipes
+      keys: "line-a.>"
+  relays:                    # edge → hub, pumped by the agent
+    - bucket: events
+      keys: "site.S01.>"
+```
+
+`sync.twin: true` is the preset for the digital twin, and it expands to exactly the two buckets this section has always described:
 
 | Bucket | Written by | Flows | Mechanism |
 | :--- | :--- | :--- | :--- |
 | `twin` | the device, at the edge | edge → hub | relay |
 | `twin_desired` | operators, at the hub | hub → edge | JetStream **mirror** |
 
+Everything below holds for the twin, and now also for any bucket a site declares.
+
 **One writer per bucket is the whole safety property.** A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*: two concurrent values for one key swap across the link, then swap back, each write generating the next event. Measured at roughly 170,000 writes to a single key in 300 ms before the buckets were split. Encoding the owner in the key (`thing.S01.state.temp`) buys the same safety but taxes every key in firmware, rule configs and widgets, and a mistyped segment silently never syncs.
+
+That used to be *structural* — two buckets, opposite directions, nothing else expressible. With a list it is one typo away, so the agent **refuses to start** when a bucket appears in both directions, and names it.
 
 Desired state is a **mirror** because it has exactly one origin, and the edge never writes it — so reads are served locally from last-known values, which is precisely what you want when the link is down. Reported state needs the **relay** because aggregating N sites natively would need N sources all named `KV_twin`, which the client library cannot express; the alternative is a differently-named bucket at every site, which pushes the problem into every rule that reads one.
 
 Off by default, because it moves data-plane traffic and an upgrade must not silently start doing that.
+
+### 6.1 Three things to know before you declare a bucket
+
+- **`keys:` is a KV key pattern in both directions** — `line-a.>`, never `$KV.recipes.line-a.>`. The agent builds the `$KV.<bucket>.` prefix itself for a mirror's subject filter, so a `$KV.` you write is rejected rather than silently doubled.
+
+- **A mirror's filter cannot be narrowed later.** `nats-server` rejects any change to a mirror block on an existing stream, so changing `keys:` on a mirror means deleting and recreating that bucket *at every site*. Scope it before you roll it out; the agent reports a mismatch rather than pretending it can repair one.
+
+- **Only the two preset buckets get created at the hub.** The agent creates the local side of any declared bucket and the hub side of none but `twin` and `twin_desired`. A typo that makes a stray local bucket is one site's problem; one that makes a stray hub bucket is everyone's, with whatever retention that site guessed. For any other bucket the hub side must already exist — and the Control Plane cannot make it either, holding the operator and no credential inside an organization's account ([Health & Metrics §1](./health-metrics.md#1-why-this-exists-at-all)). Something holding a *user* credential has to: the console, or `stone kv bucket create`.
+
+A declared bucket whose hub side is missing is reported, not created: `agent_edge_sync_up{bucket,direction}` goes to `0` and the agent's `sync` readiness check warns. It **warns** rather than fails, because an islanded edge with a backlog is the design working — `agent_edge_relay_pending{bucket}` is the depth to watch.
+
+!!! note "`hub_domain` is cached, so moving it is not a change the console can push"
+    Edge sync needs the hub's JetStream domain, and the agent caches it in its platform session file rather than re-reading it. A deployment that moves its hub's JetStream domain does not reach running agents until each one re-runs `agent -leaf-config` — which is defensible, since such a move invalidates every generated `nats-leaf.conf` anyway, but it is not a console action.
 
 ---
 

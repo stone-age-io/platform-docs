@@ -204,6 +204,12 @@ not move you out of the one you are working in.
     route `/accept-invite`, which posts here, not at the API directly. Anything
     driving invitations outside the console needs updating.
 
+From the CLI this is `stone invite accept <token>`, where the token is the
+`?token=` value from the invitation link and **not** the invite record's id.
+Redeeming sets `current_organization` only when it was blank, so follow it with
+`stone org switch` — which is also what writes the nats-cli context the new
+membership has no creds for yet.
+
 ### `POST /api/org/things`
 
 Create a Thing and, optionally, mint its NATS identity and Nebula host in **one
@@ -371,7 +377,7 @@ one some deployment will disable and then be unable to explain.
 {
   "ready": true,
   "state": "warn",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "uptime": "4h12m",
   "took": "3ms",
   "checked": "2026-09-18T09:14:02Z",

@@ -65,7 +65,8 @@ The authoritative summary. "—" means the API rules reject the operation, not t
 | Invite users, manage memberships | ✅ | ✅ | — | — | — | invites only | ✅ |
 | Create / edit an Organization record | — | — | — | — | — | ✅ | ✅ |
 | Delete an Organization | ✅⁵ | — | — | — | — | ✅ | ✅ |
-| Read the audit log | — | — | — | — | — | ✅ | ✅ |
+| Read the org's activity feed (§5.2) | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| Read the audit log (§5.1) | — | — | — | — | — | ✅ | ✅ |
 | Schema imports, NATS Operator key custody | — | — | — | — | — | — | ✅ |
 
 ¹ **Platform Operator.** `users.is_operator = true` — a flag on the user account, independent of any Membership. See §3.
@@ -181,11 +182,35 @@ POST /api/org/nebula-ca/rotate       { "step": "prepare" | "commit" | "finish" }
 
 ---
 
-## 5. The Audit Log Is Platform-Operator-Only
+## 5. Two Histories: The Audit Log and the Activity Feed
 
-`audit_logs` list and view are `@request.auth.is_operator = true`. **No tenant role — including `owner` — can read the audit log**, and the console's `/audit` route is gated on the same flag to match. Creates, updates, and deletes are closed to everyone; the log is written by the platform.
+There are **two** records of who changed what, and they are not variants of each other. They differ in who may read them and in what they contain.
 
-The practical consequence for MSP deployments: **a tenant admin cannot self-serve an audit export.** Requests for "who changed this record" go through a Platform Operator. Retention is configured in `audit.retention` — see [Configuration §2](./configuration.md#2-section-reference).
+| | `audit_logs` | `activity` |
+| :--- | :--- | :--- |
+| Who can read it | Platform Operator / SuperUser only | **every role** in the organization |
+| Scope | the whole deployment, no `organization` column | one organization |
+| What it records | full before/after record snapshots | actor, action, record, timestamp, and a label snapshot — **no values at all** |
+| Console route | `/audit` | `/activity` |
+| Purpose | the forensic trail | "who on my team changed this device, and when" |
+
+### 5.1 `audit_logs` is Platform-Operator-only
+
+`audit_logs` list and view are `@request.auth.is_operator = true`. **No tenant role — including `owner` — can read the audit log**, and the console's `/audit` route is gated on the same flag to match. Creates, updates, and deletes are closed to everyone; the log is written by the platform. Retention is configured in `audit.retention` — see [Configuration §2](./configuration.md#2-section-reference).
+
+The flat-collection problem is the reason it cannot simply be opened up. A read on `audit_logs` inherits the exposure of **every** collection it snapshots at once — and `nats_roles` values are publish/subscribe permission sets. Org-scoping the collection would not fix that; the snapshots would still be there.
+
+### 5.2 `activity` is tenant-facing, and carries no values
+
+`activity` answers the question tenants actually ask, without any of that exposure: it names the actor, the action and the record, and stores **no record values**. Every role in the organization can read it, `dashboard` included.
+
+**The invariant to preserve: an entry is visible to exactly those who could read the record it describes.** A flat collection mirroring other collections inherits none of their scoping. So the feed covers only the five tenant collections whose own reads are org-scoped with no role branch — `things`, `locations`, `thing_types`, `location_types`, `thing_type_operations` — and deliberately **not** memberships, invites, `nats_roles` or `nebula_networks`, whose reads stop at owner/admin. Adding a collection to the feed is therefore an authorization change, not a configuration one, and the platform has a test that says so.
+
+It is **append-only by construction**: all three write rules are nil, so no one — tenant or operator — can forge or rewrite an entry through the API. `actor` is plain text rather than a relation, so deleting a user does not quietly strip attribution from every line that mentions them; the flip side is that the stored label is a **snapshot**, not a live join, and a record renamed since will show its old name.
+
+From the CLI this is `stone activity ls` (see [stone CLI](./stone-cli.md)); `--filter 'resource_id="<id>"'` is the one to know, because it answers "who touched this device".
+
+**The MSP consequence, restated:** a tenant admin still cannot self-serve an *audit* export, and a request for full before/after values goes through a Platform Operator. But "who changed this record, and when" no longer does.
 
 ---
 

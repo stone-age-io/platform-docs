@@ -46,7 +46,7 @@ $ curl -s http://localhost:8090/api/ready | jq
 {
   "ready": false,
   "state": "fail",
-  "version": "v0.4.0",
+  "version": "v0.8.0",
   "uptime": "3m12s",
   "took": "14ms",
   "checked": "2026-09-07T05:37:18Z",
@@ -170,7 +170,7 @@ stone_age_check_state{name="database",state="fail"} 0
 stone_age_check_state{name="database",state="warn"} 0
 stone_age_check_state{name="database",state="skipped"} 0
 stone_age_check_timestamp_seconds 1.7573e+09
-stone_age_build_info{version="v0.4.0"} 1
+stone_age_build_info{version="v0.8.0"} 1
 ```
 
 A state set rather than a number, because a numeric encoding of "ok/warn/fail/skipped" makes every query a decoder ring, and adding a state later would silently change the meaning of stored data.
@@ -207,7 +207,7 @@ Three things to know before building a dashboard on these:
 
 Request paths carry record ids (`/api/collections/things/records/abc123def456789`). Labelling by path would mint a new time series per record touched — and on a platform whose job is holding per-device rows, that is one series per device per method. The label is the *matched route pattern*, falling back to `other`.
 
-`status` is a class (`2xx`/`4xx`/`5xx`), not an exact code. PocketBase answers `404` when an update rule rejects and `400` on a denied create, so "how many 404s" would be a question about authorization, traffic and genuinely missing records all at once. The class is what an alert wants; the [audit log](./authorization.md#5-the-audit-log-is-platform-operator-only) has the specifics.
+`status` is a class (`2xx`/`4xx`/`5xx`), not an exact code. PocketBase answers `404` when an update rule rejects and `400` on a denied create, so "how many 404s" would be a question about authorization, traffic and genuinely missing records all at once. The class is what an alert wants; the [audit log](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) has the specifics.
 
 ### Embedded NATS series
 
@@ -263,10 +263,13 @@ Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the Po
 |---|---|---|
 | `nats_local` | **fail** | The agent is not connected to the local leaf — the bus the devices on this site actually use. |
 | `hub_uplink` | **warn** | No outbound leaf connection to the hub: this site is *islanded*. |
+| `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
 
-**An islanded edge warns, it does not fail.** Local NATS still works and devices keep running — that autonomy is the entire reason a leaf node exists, so returning `503` would invert the design and have an orchestrator restart a site that is working exactly as intended.
+**An islanded edge warns, it does not fail.** Local NATS still works and devices keep running — that autonomy is the entire reason a leaf node exists, so returning `503` would invert the design and have an orchestrator restart a site that is working exactly as intended. `sync` warns for the same reason: a relay backlog on an islanded site is the design working.
 
 Metrics: `agent_edge_nats_connected`, `agent_edge_nats_connections`, `agent_edge_hub_uplink_connected`, `agent_edge_jetstream_bytes` — plus the same `agent_ready` / `_check_state` / `_check_timestamp_seconds` / `_build_info` set.
+
+**Watch `agent_edge_sync_up{bucket,direction}` once you declare buckets by hand.** It grows one series per declared bucket per direction, and it exists because a silently skipped entry looks exactly like a healthy agent — most often a mirror whose hub-side bucket was never created. `agent_edge_relay_pending{bucket}` is the matching backlog depth: rising while `hub_uplink` warns is an outage draining normally; rising while the uplink is fine is not.
 
 The server-derived rows come from the leaf's own **loopback** monitoring port, which is how the edge reads its own server without ever holding a `$SYS` user credential. They are **omitted** when that port is unreachable rather than reported as zeros: zero would claim an islanded site with no devices, which is a far louder statement than "not scraped". The same rule governs the check registry, where `skipped` ranks *below* `ok` — a report that is entirely skipped must not read as a clean bill of health. See [Leaf Nodes](./leaf-nodes.md).
 

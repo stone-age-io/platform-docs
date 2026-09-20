@@ -23,7 +23,7 @@ The agent is a single Go binary with zero external dependencies (other than the 
 Prebuilt archives are attached to every [release](https://github.com/stone-age-io/agent/releases) — Linux amd64/arm64, Windows amd64, FreeBSD amd64. Each one carries the binary, the per-OS example configs under `configs/`, and the install guides under `docs/`:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.1
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
@@ -143,9 +143,12 @@ Beyond the bus, the Agent has three capabilities that apply on a box which is al
 |---|---|---|
 | Leaf bootstrap | `agent -leaf-config` | Writes `nats-leaf.conf` + creds from `GET /api/me/leaf-config` |
 | Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
-| Digital twin sync | `twin.enabled` | Relays reported state up, mirrors desired state down |
+| KV bucket sync | `sync.twin`, `sync.mirrors`, `sync.relays` | Keeps declared KV buckets in step with the hub — mirrors down, relays up |
 
-There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first. See [Leaf Nodes](./leaf-nodes.md).
+There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first — `edge.enabled: false` beside `sync.twin: true` has no correct behaviour. See [Leaf Nodes](./leaf-nodes.md).
+
+!!! warning "`twin.enabled` was replaced by `sync:` in Agent v0.2.0"
+    The digital twin used to be two hardcoded buckets behind one boolean. It is now a preset over a general mechanism — see [Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync). The old key is **rejected by name at config load**, rather than ignored: viper drops unknown keys silently, and a file still carrying `twin.enabled` would sync nothing and say nothing about it.
 
 **Local health is not one of them**, though it is often listed beside them. `observability.addr` serves `/ready` and `/metrics` on **every** Agent, defaulted to `127.0.0.1:9100`, because the reason to answer locally has nothing to do with running a leaf node: `cmd.health` travels over NATS, which is the link that breaks, so the box you most want to ask is the one that has just gone quiet. Nebula is the same shape — `nebula.enabled` is a per-device capability, not a gateway one.
 
@@ -234,7 +237,7 @@ commands:
     - "uptime"
 ```
 
-A site gateway adds `nats.server_config` and/or `twin.enabled` to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and `nebula` are not gateway keys and may be set on any device.
+A site gateway adds `nats.server_config` and/or a `sync:` block to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and `nebula` are not gateway keys and may be set on any device.
 
 Full per-platform installation guides, including how to set `AGENT_PLATFORM_PASSWORD` under systemd, Windows Services, and rc.d, ship in the Agent repository (`docs/credentials.md`).
 

@@ -27,7 +27,7 @@ Because all layers communicate through NATS subjects, Layer 3 is a **pure consum
 > Prometheus-compatible stack described below. See
 > [Health & Metrics](./health-metrics.md).
 
-> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane's `audit_logs` collection, and reading it is restricted to **Platform Operators**: no tenant role, not even `owner`, can query it. Retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)), and the boundary is described in [Authorization §5](./authorization.md#5-the-audit-log-is-platform-operator-only). Don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
+> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane, in **two** collections: `audit_logs`, the forensic trail with full before/after snapshots, restricted to **Platform Operators** — no tenant role, not even `owner`, can query it — and `activity`, an org-scoped feed of actor, action and record that every role can read and that carries no values at all. Audit retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)); the boundary between the two is described in [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed). Either way, don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
 
 ---
 

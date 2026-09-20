@@ -52,7 +52,7 @@ The division of labor in practice:
 Prebuilt binaries are attached to every release — linux, darwin and windows, amd64 and arm64 each:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.4.0
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -99,11 +99,16 @@ The first context you create becomes active automatically; pass `--use` on `crea
 
 ```sh
 stone auth login        # prompts for email + password (password never echoes)
-stone auth whoami       # who am I, on which context, in which org
+stone auth whoami       # who am I, on which context, in which org — and is my session still live
 stone auth logout       # clears the token from the context
 ```
 
 `login` authenticates against the `users` collection by default (override with `--collection`); the token, email, and user id are written into the context. The login can't be fully automated — it prompts for credentials — so in pipelines you log in once on the runner, or supply `--email`/`--password` flags from a secret store.
+
+!!! warning "An expired session used to look exactly like an empty organization"
+    PocketBase does not refuse a token it will not accept — it serves the request **as a guest**. Every list rule then filters the result to nothing, and the answer is `200` with an empty array. So a context whose token had aged out printed a table header and no rows, `stone org ls` said *"no organizations visible to this user"*, `stone pull` reported `pulled 0 records` and **exited zero**, and nothing anywhere said the word "login".
+
+    Since 0.4.0 the CLI refuses an expired token before sending it, naming the expiry and the command that fixes it, and reads the token's own `exp` claim rather than a stored timestamp — so contexts written before the change are covered too. A token whose expiry cannot be *parsed* is still sent: "unknown" is not "expired", and refusing one would turn a claim rename into an outage. `auth whoami` grew a `session:` line for the same reason — "am I still logged in" is the question it is asked, and it used to answer from local state that could not tell.
 
 ### Organizations
 
@@ -150,16 +155,21 @@ The CLI exposes typed CRUD over the same Control Plane collections the console m
 | `nats-export` | yes | `name` | full | owner/admin — including reads |
 | `nebula-network` | yes | `name` | full | owner/admin — including reads |
 | `nebula-host` | yes | `hostname` | full | owner/admin — including reads |
+| `activity` | yes | — (id only) | `ls / get` | read: any · **no writes at all** (see below) |
 | `nats-account` | yes | `name` | `ls / get / update / edit` | read: any · **all writes: Platform Operator** · signing keys: owner/admin via route |
 | `nebula-ca` | yes | `name` | `ls / get / update / edit` | read: any · **record writes: Platform Operator** · rotation: owner/admin via `stone nebula ca-rotate` |
 
-"Full" verbs are `ls / get / create / update / delete / edit`. The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a **Platform Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)), and rolls the Nebula CA with `stone nebula ca-rotate` (below) rather than by editing the record.
+"Full" verbs are `ls / get / create / update / delete / edit`. `activity` is the tenant feed of who changed what, and it is read-only **everywhere**, not just here: all three write rules on the collection are nil, so no one — tenant or operator — can forge or rewrite an entry through the API. It lists newest-first without being asked, and `--filter 'resource_id="<id>"'` is the one to know, because it answers "who touched this device". It is excluded from `pull`/`apply`. See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) for how it differs from the operator-only audit log.
+
+The two limited entities (`nats-account`, `nebula-ca`) are provisioned automatically by the platform when you create an Organization, so neither can be created or deleted by hand. The CLI does expose `update` and `edit` on both — they exist for a **Platform Operator**, not as a tenant path — but both are **read-only to every tenant role**, so an owner or admin calling them gets a 404 from the update rule rather than a change. An owner or admin manages the account's signing keys through `POST /api/org/nats-account/keys` instead (see [Authorization §4.1](./authorization.md#41-account-signing-keys)), and rolls the Nebula CA with `stone nebula ca-rotate` (below) rather than by editing the record.
 
 In the **Role required** column, *any* means any role in the current organization including `dashboard`, the least privileged one, and *member+* means `member`, `admin`, or `owner`. Three consequences worth internalizing before you script against the CLI:
 
 - On the `nats-*` and `nebula-*` entities, any role below admin gets an **empty `ls`, not a filtered one** — the read rules themselves require owner or admin. The one exception is the single `nats-user` row linked to your own membership.
 - On `thing`, the `nats_user` and `nebula_host` relations are owner/admin only. A member can create and edit a Thing but any `--nats-user` / `--nebula-host` flag will be rejected.
 - On your **own** `membership` record the writable surface is the NATS identity link only. `--role`, `--user`, and `--invited-by` are rejected outright — self-promotion is not a supported path. Changing someone's role requires owner or admin.
+
+Both ends of the invitation flow are here. `stone invite create --email …` issues one; `stone invite accept <token>` redeems it, taking the `?token=` value from the invitation link rather than the invite record's id. Redeeming sets `current_organization` only when it was blank, so follow it with `stone org switch` — which is also what writes the nats-cli context the new membership has no creds for yet.
 
 The full matrix, and the reasoning behind each restriction, is on [Authorization & Roles](./authorization.md).
 
@@ -253,7 +263,7 @@ stone pull --set-workspace .      # writes <collection>/<key>.yaml, one file per
 stone apply                       # reconciles the workspace back to the server
 ```
 
-- **`pull`** writes one YAML file per record into `<workspace>/<collection>/`, named by the record's natural key (fallback `name`, then id, with a suffix on collision). Org-scoped collections are filtered to the current Organization. Server-managed fields (`collectionId`, `collectionName`, `created`, `updated`, `expand`) are stripped on read.
+- **`pull`** writes one YAML file per record into `<workspace>/<collection>/`, named by the record's natural key (fallback `name`, then id, with a suffix on collision). Org-scoped collections are filtered to the current Organization. Server-managed fields (`collectionId`, `collectionName`, `created`, `updated`, `expand`) are stripped on read, as are the credential and server-generated fields below. `pull` prints what it left out, per collection. The `activity` feed is excluded entirely — a declarative workspace has nothing to say about a log of what already happened.
 - **`apply`** walks the workspace (or just the paths you pass), groups records into batches of up to 50, and POSTs them through PocketBase's transactional `/api/batch` endpoint. Records with an `id` are PATCHed; records without are POSTed and the server-assigned id is written **back into the file**.
 
 Three properties make this safe to live with:
@@ -261,6 +271,23 @@ Three properties make this safe to live with:
 - **Idempotent.** Re-running `apply` is a no-op when nothing changed. Filenames are cosmetic — `apply` keys solely on the `id` field inside each file.
 - **No deletes.** Records on the server but absent locally are left alone. To delete, use `stone <type> delete <id|key>` or the console.
 - **Reviewable.** Put the workspace under `git` and you get diff, history, blame, and PR review on your infrastructure for free.
+
+### Credentials are not pulled, and that is recent
+
+Putting the workspace in `git` is the documented workflow, so what `pull` writes into it matters. The fields PocketBase marks hidden — every `private_key` and `seed` — were never the exposure. The exposure was material the API legitimately returns to an owner or admin:
+
+| Field | Why it is a credential |
+| :--- | :--- |
+| `nats_users.creds_file` | **Is** the credential — a user JWT and an nkey seed, the same bytes `stone nats sync-context` deliberately writes under `0600`. One per NATS identity in the organization. |
+| `nebula_hosts.config_yaml` | Carries the host's Nebula private key inline. The standalone `private_key` column is hidden and encryptable at rest; the rendered config holding the same key was neither. |
+| `invites.token` | A bearer credential that redeems into a membership. |
+
+`pull` now omits these, along with the server-generated certificates, JWTs and action triggers beside them. That half was a **correctness** bug as much as a disclosure one: `apply` sends back every key in a file, so a pulled certificate is a stale value racing whatever the server has rotated to since.
+
+The filter is **pull-side only** — a hand-written `revoke: true` still applies, and nothing here removes a capability you can express.
+
+!!! danger "If you pulled with `stone` before 0.4.0, treat those values as disclosed"
+    They are in the workspace and in its git history. Upgrading stops new ones being written; it cannot unwrite the old. Re-mint with `stone nats-user update <username> --regenerate` and `stone nebula-host update <hostname> --renew` — which mints a fresh keypair, not just a certificate — and delete any invitation whose token was written out.
 
 ### What this is, and what it isn't
 
@@ -378,9 +405,18 @@ Every command takes persistent flags:
 
 - **`--output` / `-o`** — `table` (human, not stable across versions), `json`, or `yaml`. Use `-o json` whenever a script consumes the output.
 - **`--context <name>`** — override the active context for a single invocation (handy in CI that touches multiple environments).
+- **`--limit <n>`** — on every `ls`: fetch a single page rather than paging through the whole match. It reaches the query, so it is the right way to ask a server holding 40,000 Things for the newest ten.
 - **`--debug`** — log HTTP requests/responses to stderr (bodies capped at 4 KB).
 
 Two conventions keep `stone` pipeline-friendly: structured output goes to **stdout**, while human messages and generated passwords go to **stderr** — so `stone thing create … --random-password -o json | jq .id` does the right thing.
+
+### Relations print as codes for a human and ids for a script
+
+`stone thing ls` used to render TYPE and LOCATION as 15-char PocketBase ids — a column of noise nobody recognises. **`table` output and `get`'s key/value output now print the target's natural key instead**, the same key `get` / `update` / `delete` already accept positionally. PocketBase returns the related record inline on the same query, so this costs no extra round trip.
+
+**`json` and `yaml` are unchanged, and that is the contract rather than a concession.** They are the scripting surface: a pipeline parsing `type` still gets a relation id, and `--fields id -o json` is still how you discover one. `edit` and `pull` also fetch raw — what `edit` opens in `$EDITOR` is PATCHed straight back, and the workspace keys on ids, which is the invariant `apply` is built on.
+
+Two behaviours worth knowing: an **unset** relation is simply an empty cell, and so is one you may not read — expansion never breaks a command that would otherwise work. And PocketBase masks another user's email, so on `membership ls` an owner sees a colleague's *name* in the USER column rather than their address.
 
 ---
 
@@ -415,12 +451,12 @@ The upshot: pointing Claude Code at this platform doesn't mean trusting it to re
 
 ## 10. Limitations
 
-- Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags.
+- Relation flags (`--type`, `--location`, …) accept 15-char PocketBase ids only — natural-key lookup applies to positional args, not flags. Note this is the *input* side: table and `get` output print relations as codes (§8).
 - `apply` never deletes server records that are missing locally. Delete explicitly.
 - No JetStream **consumer** management — use the `nats` CLI.
 - `nats-account` and `nebula-ca` are read-only for every tenant role — all updates require Platform Operator credentials server-side. Signing-key operations go through `stone nats account-keys` (owner/admin), not `stone nats-account update`.
 - `auth login` is interactive by design — credentials can't be discovered by the CLI.
-- File fields have no CLI upload path: a Location's `floorplan` and an Organization's `logo` must be set from the console.
+- File fields have no CLI upload path: a Thing's and a Location's `photo`, a Location's `floorplan`, an Organization's `logo` and a user's `avatar` must be set from the console. All of them are **protected** fields — reading one back needs a file token, not the auth token ([Platform Entities](./platform-ui-entities.md#photos-and-file-fields)).
 - **The CLI's field list is hand-maintained, not derived from the platform's `schema.json`.** It can drift behind a platform release. If a field exists in the console but has no flag, that is the reason — check `cmd/entity.go` in the `stone-cli` repo.
 
 ---

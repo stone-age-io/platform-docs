@@ -263,7 +263,9 @@ There are **two** KV buckets per organization, split by who owns the data:
 
 Keys are `<kind>.<code>.<prop>` — `thing.S01.temp`, `location.CHI-W-A.occupancy` — and the two buckets pair on the *same* key. Direction lives in the bucket, so keys carry no sync bookkeeping. Note that these are **organization-level buckets keyed by code**, not one bucket per Location or Thing.
 
-**One writer per bucket is the entire safety property**, and it is structural rather than a convention anyone has to remember. A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*, with the two values swapping back and forth across the leaf link indefinitely.
+**One writer per bucket is the entire safety property.** A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*, with the two values swapping back and forth across the leaf link indefinitely.
+
+At the edge, the twin is now a **preset over a general mechanism** rather than the mechanism itself: an agent takes lists of buckets to mirror down and relay up, and `sync.twin: true` expands to exactly these two ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). Everything this section says about the twin holds for any bucket a site declares — including one-writer-per-bucket, which stopped being structural when the lists arrived and is now a config check that refuses to start.
 
 Because reported state is written by the edge, **it is read-only in the console.** An edit button on a reported key would be a lie: the value comes back on the next sync. `twin_desired` is the writable half, and it is where a console user's actual control lives.
 
