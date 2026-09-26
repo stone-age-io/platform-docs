@@ -1,6 +1,6 @@
 # ADR 0004: Long-Term Data Carries Codes; Location Comes From Inventory
 
-**Status:** Proposed
+**Status:** Accepted — implemented, except the live TSDB check in step 5. See [As implemented](#as-implemented).
 **Date:** 2026-09-25
 
 > This ADR follows from [ADR 0003](./0003-human-friendly-codes-and-default-subject.md), which takes location out of the default subject. It decides where long-term trending gets a Thing's location from once the subject no longer carries it. The platform's dashboard widgets are for short-term views and interaction and aren't affected. This is about the Time-Series Database behind [Layer 3](../observability.md).
@@ -32,7 +32,7 @@ Six rules.
 
 Telegraf tags each reading with **`kind`** (subject token 0) and **`thing`** (token 1). Both are frozen after ADR 0003. The tag is `kind`, not `thing_type`, because under ADR 0003 rule 6 an application's token 0 is an app identifier. Devices and applications now share one subject shape, so the demo's two-block Telegraf config (which exists only because the location slot made the shapes differ) collapses to one parser.
 
-No location is added at ingestion. A device that knows its own location reports it in its payload, as ordinary data.
+No location is added at ingestion. A device that knows its own location reports it in its payload, as ordinary data. *(Amended: the demo tags `thing` only. Its prefixes keep `{location}` per ADR 0003, so token 0 is a family like `telemetry`, not a type, and `thing_type` comes from the join. See [As implemented](#as-implemented).)*
 
 ### 2. Locations store a path
 
@@ -45,10 +45,10 @@ No location is added at ingestion. A device that knows its own location reports 
 ```
 
 - **`/` delimits, and appears at both ends.** Codes can't contain `/`, so a segment is never ambiguous. The leading and trailing slashes make `/BD-3/` match only that code, never `BD-30`.
-- **Only the server writes it.** A create/update hook sets `path` to the parent's path plus the location's own code. The update rule refuses `@request.body.path:changed` from clients.
+- **Only the server writes it.** A create/update hook sets `path` to the parent's path plus the location's own code. The update rule refuses `@request.body.path:changed` from clients. *(Amended: no rule term. The hook overwrites whatever a client sends, which says the same thing without turning a stale echo into a 404. See [As implemented](#as-implemented).)*
 - **Only moving a location under a different parent changes a path.** Codes are frozen (ADR 0002) and never blank (ADR 0003 rule 2), so the hook only has real work to do when `parent` changes. It then rewrites the path of every location underneath in the same transaction, by replacing the old prefix. Compare the prefix with `substr(path, 1, length(:old)) = :old`, **not** `LIKE`: codes may contain `_`, which is a `LIKE` wildcard.
 - **The hook refuses cycles.** A new parent whose path starts with the location's own path would make the location its own ancestor.
-- **Deleting a parent must recompute its children.** Whatever PocketBase does to the children's `parent` relation when their parent is deleted, their paths must follow. How that interacts with record hooks needs checking during implementation.
+- **Deleting a parent must recompute its children.** Whatever PocketBase does to the children's `parent` relation when their parent is deleted, their paths must follow. How that interacts with record hooks needs checking during implementation. *(Checked: PocketBase saves each child with the relation unset, which fires the update hook, so no delete hook is needed.)*
 
 A path also helps outside the TSDB. "Everything under BD-3" becomes one PocketBase filter, `location.path ~ '/BD-3/'`. (The same `_` caveat applies: `~` is `LIKE`, so an `_` in a code matches any character. It rarely matters, because both slashes still have to match.)
 
@@ -81,12 +81,12 @@ Telegraf nats_consumer on inventory.thing.> ──► VictoriaMetrics  (stone_th
 
 The same pair of rules on the `locations` collection produces `stone_location_info`.
 
-- **A dedicated service user with the `viewer` membership**, one per organization, with its `current_organization` set to that organization. Every list rule scopes reads by it. Its password lives only in nats-auth-manager's environment. The token it stores is readable by anyone who can read the `tokens` bucket, so restrict `$KV.tokens.>` in NATS permissions.
+- **A dedicated service user with the `viewer` membership**, one per organization, with its `current_organization` set to that organization. Every list rule scopes reads by it. Its password lives only in nats-auth-manager's environment. The token it stores is readable by anyone who can read the `tokens` bucket, so restrict `$KV.tokens.>` in NATS permissions. *(Amended: a subject deny can't fully do this; see [As implemented](#as-implemented).)*
 - **A standard API call with one level of `expand`.** Because each location stores its own path, one level is enough. No custom route.
 - **The whole inventory is resent every minute.** Nothing is stateful. If Telegraf misses a poll, the next one covers it, and a moved Thing's new location appears within a minute.
 - **`forEach` with `merge`, not a templated payload.** Each record is republished as it came, with `info: 1` added. No string templating means a name containing quotes can't break the JSON. The `info` field gives Telegraf a field to write, and VictoriaMetrics names the series `{measurement}_{field}`, which is `stone_thing_info`.
 
-Sketches. These are not tested; the demo is where they get checked.
+Sketches. These are not tested; the demo is where they get checked. *(Checked: the working versions are `demo/inventory/northwind/inventory.yaml` and `demo/telegraf/northwind.conf`. They differ in `perPage=1000`, a six-field cron, `mode: core` on the triggers, and `optional` on the tags that can be missing.)*
 
 ```yaml
 # rule-router: poll, then fan out
@@ -144,12 +144,12 @@ Sketches. These are not tested; the demo is where they get checked.
 ```
 avg by (location) (
   thing_temperature
-    * on(thing) group_left(name, location, location_path)
+    * on(org, thing) group_left(name, location, location_path)
       (stone_thing_info @ end())
 )
 ```
 
-`@ end()` reads the inventory once, at the end of the time range, and applies it to every reading in the range.
+`@ end()` reads the inventory once, at the end of the time range, and applies it to every reading in the range. *(Amended: the join is `on(org, thing)`, as above. A code is unique only inside its organization, and every series carries `org`.)*
 
 - **No reading is lost when a Thing moves.** Only the location it is *attributed* to follows the Thing to where it is now.
 - **Corrections apply backwards.** Fix a wrong location and every past reading picks up the right one.
@@ -190,6 +190,8 @@ Working around that takes a trick that picks the newest info series for each `th
 
 - **One poll returns a limited number of records.** PocketBase caps `perPage`, and `publishResponse` caps a response at 1 MB, which is a few thousand records. A larger organization needs paging. Until then, a guard rule on `inventory.things` should publish a warning when `totalItems` exceeds `perPage`, so a truncated inventory is visible and not silent.
 - **A move takes up to a minute to show.** That's the poll interval.
+- **rule-router's `forEach` stops at 100 items by default, silently.** *(Added: found during implementation.)* The demo raises `forEach.maxIterations` to 1000, PocketBase's `perPage` ceiling. The guard above cannot catch this one, because the poll itself was complete.
+- **For a few minutes after a move, a panel whose range ends now can fail.** *(Added.)* The `@ end()` join still sees two info series for the moved Thing until the old one goes stale, and `group_left` refuses duplicates. It clears on its own. The history-as-it-happened section describes the same effect across a whole range; at `@ end()` it lasts only minutes.
 - **If the platform is down, the join has gaps.** Readings keep arriving, because Telegraf reads them from NATS. Only the inventory stops updating, and the join resumes on the next successful poll.
 
 ---
@@ -198,9 +200,9 @@ Working around that takes a trick that picks the newest info series for each `th
 
 1. **`locations.path`:** field, update-rule freeze against client writes, a create/update hook with subtree rewrite and cycle refusal, and handling for a deleted parent.
 2. **Demo seed:** a `viewer` service user per demo organization.
-3. **Demo rules:** poll and fan-out rules for `things` and `locations`, plus the truncation guard, in `demo/rules/northwind`. Add nats-auth-manager config beside them.
+3. **Demo rules:** poll and fan-out rules for `things` and `locations`, plus the truncation guard, in `demo/rules/northwind`. Add nats-auth-manager config beside them. *(Amended: in `demo/inventory`, run as a separate rule-router.)*
 4. **Demo Telegraf:** collapse to one reading parser (`kind`, `thing`), and add the two inventory inputs.
-5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-label_replace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces.
+5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-label_replace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces. *(Open: the queries are written, in `demo/telegraf/README.md`, and not yet run.)*
 6. **Docs:** [Observability](../observability.md) gains the inventory pipeline and the join. [Platform Entities & UI](../platform-ui-entities.md) documents `path`.
 
 ---
@@ -222,7 +224,7 @@ Working around that takes a trick that picks the newest info series for each `th
 
 ### The sharp edge
 
-**The `tokens` bucket holds a live PocketBase token.** It is a viewer's token, so it can read the organization's inventory but not change it. Anyone with read access to `$KV.tokens.>` has that read access too. Scope it in NATS permissions the same way you would scope the credential itself.
+**The `tokens` bucket holds a live PocketBase token.** It is a viewer's token, so it can read the organization's inventory but not change it. Anyone with read access to `$KV.tokens.>` has that read access too. Scope it in NATS permissions the same way you would scope the credential itself. *(Amended: see [As implemented](#as-implemented) for why the demo relies on the token being a viewer's instead.)*
 
 ---
 
@@ -231,6 +233,34 @@ Working around that takes a trick that picks the newest info series for each `th
 - **History as it happened becomes a requirement** for Things that can't report their own location. Then the newest-series filter, or a scrape-based info endpoint with real staleness markers, is worth its cost.
 - **Inventory outgrows a single poll.** Then the fan-out needs paging.
 - **Single-query comparison of ancestor levels is needed often.** Then add type-named ancestor labels.
+
+---
+
+## As implemented
+
+Shipped in the platform as `hooks/location_path.go`, `migrations/schema_update_location_path.go`, the Location page, three seeded viewer logins, and `demo/inventory` plus `demo/telegraf`. `scripts/test-authz.sh` section 25 covers the path against a live server.
+
+**What was run, and what was not.** The platform half was run: the Go tests, including `TestLocationPath`, and the authz script. The bus half was run against `serve --nats` with a fresh `demo-seed`: nats-auth-manager kept a viewer token in `tokens`, and rule-router published 72 messages a minute (two poll responses, 59 Things, 11 Locations). `rule-cli` confirmed that the guard fires only on a truncated poll, and that a name containing quotes survives the merge as valid JSON. **Telegraf and VictoriaMetrics were not run.** Step 5 is still open: `@ end()` in MetricsQL, the series names, the three patterns, and the duplicate-series window after a move are all written from the documentation, not observed.
+
+**No rule term freezes `path`.** Rule 2 said the update rule would refuse client writes. Instead the hook recomputes the path on every save and overwrites whatever arrived. A `:changed = false` term would have turned an innocent save into a 404: a form loaded before an ancestor moved echoes the old path. The UI never sends it anyway.
+
+**The old path is read from the table.** `e.Record.Original()` is blank for a record built with `core.NewRecord` and then saved again, which is how the seed and the tests work. Trusting it skipped the subtree rewrite without an error; the first test run caught it.
+
+**Refusals beyond cycles.** The hook also refuses a parent in another organization, which `RegisterRelationTenancy` already stops, because a path spliced from another tenant's tree would carry that tenant's codes. It refuses a parent with no path yet, too.
+
+**Locations with no code.** Codes are never blank after ADR 0003, but older records can be. A code-less Location uses its record id as its segment, so two code-less siblings can't share a path and be rewritten together. The migration fills every path. A parent chain that loops, which the UI never offered but nothing below it prevented, is left without a path and named in the log. Nothing is guessed. The fix is to make one member a root and save the rest top-down.
+
+**The demo tags `thing` only, from the third token.** ADR 0003 kept `{location}` in the demo's fixed-equipment prefixes (`telemetry.{location}.{thing}`), and the demo's apps keep `app.{kind}.{thing}`. In every demo shape the Thing's code is the third token, so one parser reads it. That replaces the two blocks, and `location` and `app_kind` go with them. Token 0 there is a family (`telemetry`, `asset`), not a type, so there is no `kind` tag: `thing_type` comes from the join. On the platform default, `{thing_type_code}.{thing}`, the code is the second token. [Observability](../observability.md#4-example-telegraf-configuration) shows that pattern.
+
+**The feed is its own rule-router, in `demo/inventory`.** It needs KV and a PocketBase URL, and the telemetry rules need neither. With one process, anyone running only the telemetry demo would have had to set up nats-auth-manager first. The demo's rule-router config is where two defaults needed changing: `features.router: true`, because the fan-out and the guards are core-NATS triggers, and `forEach.maxIterations: 1000` (see [Limits](#limits-to-know)).
+
+**Telegraf runs three inputs.** The demo config's rule of one input per account exists to save connections. A parser is per input, and the readings parser needs a `ts` that inventory records don't carry, so readings share one input and each inventory kind gets its own. Tags that can be missing (a Thing with no location or type) are `optional` in json_v2, which otherwise rejects the whole message.
+
+**No subject deny on the token bucket.** The sharp edge below said to scope `$KV.tokens.>` in NATS permissions. In the demo, the `gateway`, `application` and `console-readonly` roles can all read it, and `gateway` can write it. A deny list doesn't close this for a role holding `$JS.API.>`, which can create a stream of its own that sources `KV_tokens`, and sourcing ignores subject permissions. A deny that only looks closed is worse than none. What bounds the exposure is that the token is a viewer's. `console-readonly` backs viewer and dashboard sessions, which already read the inventory. A gateway or application credential gains read access to the inventory and nothing else. If that ever matters, the fix is not granting `$JS.API.>` to roles that don't need it, not a deny list.
+
+**Service logins in all three demo organizations**, `inventory-feed@<org>.example`, though only Northwind has feed rules. Adding a rules directory is all the other two need.
+
+**The dashboard examples are queries, not dashboard JSON.** They're in `demo/telegraf/README.md`, "Where things are", beside the readings they join. The demo's location types are `warehouse`, `office`, `zone` and `trailer`, so the side-by-side example uses `warehouse`.
 
 ---
 

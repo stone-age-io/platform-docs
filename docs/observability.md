@@ -138,9 +138,9 @@ To begin ingesting data from the Data Plane, configure Telegraf with a NATS inpu
   credentials = "/etc/telegraf/acme-telegraf.creds"
 
   ## Subjects to consume. One input is one NATS connection, and connections
-  ## count against the organization's account limit, so list every subject
-  ## here rather than adding a second input.
-  subjects = ["telemetry.>"]
+  ## count against the organization's account limit, so list every reading
+  ## subject here rather than adding a second input.
+  subjects = ["temp-probe.*.temperature", "temp-probe.*.battery"]
 
   ## Only matters if you run more than one Telegraf against this account:
   ## instances sharing a queue group split the load instead of duplicating it.
@@ -150,21 +150,88 @@ To begin ingesting data from the Data Plane, configure Telegraf with a NATS inpu
   ## Data format to expect from your Things/Agents
   data_format = "json"
 
-  ## Map JSON fields to Telegraf tags/fields
-  tag_keys = ["device_id", "location"]
+## The Thing's code, out of the subject. On the default layout,
+## {thing_type_code}.{thing}.{operation}, it is the second token.
+[[processors.regex]]
+  [[processors.regex.tags]]
+    key = "subject"
+    pattern = '^[^.]+\.(?P<thing>[^.]+)\.'
 
 [[outputs.http]]
   ## VictoriaMetrics accepts InfluxDB line protocol and turns
   ## `measurement,tags field=value` into `measurement_field{tags}`.
   url = "http://victoria-metrics:8428/influx/write"
   data_format = "influx"
+  tagexclude = ["subject"]
 ```
 
 `outputs.http` rather than `outputs.influxdb` is deliberate: the InfluxDB output appends a `db=` parameter to every write, and VictoriaMetrics turns it into a constant `db` label on every series. The platform repository carries a fuller, working example in `demo/telegraf/`.
 
+**Readings carry `thing` and nothing about where it is.** A code never changes, and a location does. A `location` tag written at ingestion is fixed forever, so a moved Thing's history stays where it was, and correcting a wrong location never reaches the readings already stored. Location comes from the inventory instead, joined at query time. See the next section.
+
 ---
 
-## 5. Closing the Loop — Alerts From Historical Analysis
+## 5. Where Things Are: Joining Against the Inventory
+
+Long-term charts want a legend that says "Dock 3 camera", not `CA-9KD-4PX`, and they want to group by site. Both live in the platform, not in the reading. [ADR 0004](decisions/0004-long-term-data-and-location-path.md) gets them into the TSDB as two **info series**, one series per record, value `1`, with the record's details as labels:
+
+| Series | Labels |
+|---|---|
+| `stone_thing_info` | `thing`, `name`, `thing_type`, `location`, `location_path` |
+| `stone_location_info` | `location`, `name`, `location_type`, `location_path` |
+
+`location_path` is the Location's [path](platform-ui-entities.md#2-locations): its code and every ancestor's, from the root down, like `/KC/BD-3/RM-204/`.
+
+### The pipeline
+
+It runs inside the tenant's own account, with tools the tenant already runs. There is no platform route and no new kind of credential:
+
+```
+nats-auth-manager ──► KV tokens.pocketbase           signs in as a viewer, keeps the token fresh
+rule-router, every minute:
+    GET the standard list API ──► inventory.things, inventory.locations
+rule-router, on each: forEach item, merge {"info": 1}
+    ──► inventory.thing.<code>, inventory.location.<code>
+Telegraf ──► VictoriaMetrics                           stone_thing_info, stone_location_info
+```
+
+- **A viewer service login, one per organization.** Every list rule scopes by its current organization, so the poll needs no filter, and the token it holds can read the inventory and change nothing.
+- **The whole inventory goes out every minute.** Nothing is stateful. A missed poll is covered by the next, and a moved Thing shows its new location within a minute.
+- **The platform repository has a working copy** in `demo/inventory/`, with its own README.
+
+### The join
+
+```
+avg by (location) (
+  thing_celsius
+    * on(org, thing) group_left(name, location, location_path)
+      (stone_thing_info @ end())
+)
+```
+
+Join on `(org, thing)`, because a code is unique only inside its organization. `@ end()` reads the inventory once, at the end of the range, and applies it to every reading in the range:
+
+- **No reading is lost when a Thing moves.** Only the place it is attributed to follows the Thing to where it is now.
+- **Corrections apply backwards.** Fix a wrong location and every past reading picks up the right one.
+
+"Where was it on Tuesday" is deliberately not the default. A Thing whose past location matters, like a trailer, should report its location in its own payload, where it is the reading's data and not a join.
+
+| Want | How |
+|---|---|
+| Everything under one place | `stone_thing_info{location_path=~".*/KC/.*"}` in the join. PromQL regexes match the whole value, hence `.*` at each end. |
+| One line per location inside it | The same, inside `avg by (location)`. |
+| Buildings side by side | A variable from `label_values(stone_location_info{location_type="building"}, location)` and a repeated panel, each filtering by path. |
+
+### Limits to know
+
+- **A move takes up to a minute to show.** That's the poll interval.
+- **For a few minutes after a move, a panel whose range ends now can fail** with a duplicate-series error: until the old info series goes stale, two of them match the Thing. It clears without anyone doing anything.
+- **One poll returns at most 1000 records** (PocketBase's page ceiling). The demo's guard rule publishes on `inventory.truncated` when an organization has more; past that, the feed needs paging.
+- **The token bucket holds a live PocketBase token.** Anything in the account that can read KV can use it, which is why the login must be a viewer. A subject deny does not fully close this for a role holding `$JS.API.>`, which can source the bucket into a stream of its own.
+
+---
+
+## 6. Closing the Loop — Alerts From Historical Analysis
 
 Layer 3 isn't just a read-only archive. Historical alerts (via vmalert or Grafana alerting) can publish *back* into NATS — typically by POSTing to the rule engine's Gateway feature — where Layer 1 rules pick them up and route them like any other event.
 
@@ -180,7 +247,7 @@ Your alerting pipeline — short-term and long-term — converges on the same su
 
 ---
 
-## 6. Summary
+## 7. Summary
 
 By decoupling observability from the core platform, Stone-Age.io stays:
 
