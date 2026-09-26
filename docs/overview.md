@@ -61,7 +61,7 @@ Four commitments, each of which is checkable rather than atmospheric.
 
     Be precise about what the early depths buy, though. Depth 1 is about what you **model**, not about running less: a depth-1 deployment still includes a NATS server, it simply has nothing on it yet. What you get is a working system before you have modeled a single subject, and the guarantee that none of it is rewritten when you do — each layer consumes the same subjects the previous one was already publishing.
 
-**3. Nothing here is forked.** NATS and Nebula are the upstream projects, running as upstream builds. The platform provisions them and is otherwise an ordinary client of both — a site's leaf node is a stock `nats-server` reading a generated config. Your data is in SQLite, your messages are on NATS, your history is in a TSDB you chose. The exit path is that you keep all three and stop running the Control Plane.
+**3. Nothing here is forked.** NATS and Nebula are the upstream projects, running as upstream builds. The platform provisions them and is otherwise an ordinary client of both — a site's leaf node is upstream `nats-server` reading a generated config, whether it runs as its own process or embedded in the Agent (the same upstream server, linked as a library). Your data is in SQLite, your messages are on NATS, your history is in a TSDB you chose. The exit path is that you keep all three and stop running the Control Plane.
 
 **4. No orchestrator, and no service mesh.** Components find each other over NATS subjects. There is no control loop to operate, no sidecar, and nothing that needs Kubernetes to reach a working state.
 
@@ -134,11 +134,11 @@ Stone-Age.io is not one monolithic executable — it's a small set of independen
 
 - **The Control Plane** (PocketBase + embedded UI + provisioning hooks) is one binary. `serve --nats` starts a NATS server inside it, so the shortest working deployment is *one* process, not two ([ADR 0001](./decisions/0001-embedded-nats-server.md)).
 - **The rule engine** (`rule-router`) is another.
-- **The Agent** is another — and with `nebula.enabled` it runs the site's Nebula host **in-process**, so an edge box runs one binary rather than a stack of them.
+- **The Agent** is another — and with `nebula.enabled` it runs the site's Nebula host **in-process**, and with `nats.server_config` set it hosts the site's leaf `nats-server` in-process too, so an edge box can run one binary rather than a stack of them.
 - **NATS** and **Nebula** are their own upstream binaries when you want them to be. Neither is forked or wrapped: run them standalone and the platform is a well-behaved client of both.
 - **Stream processors** (eKuiper, Benthos, custom) and **Layer 3 components** (Telegraf, TSDB) are additional single-binary components you add only when you need them.
 
-The direction of travel is worth stating, because it runs against the usual grain: the platform has been *removing* processes rather than adding them. NATS moved inside the Control Plane, Nebula moved inside the Agent, and a second edge binary (`leaf-sync`) was deleted outright rather than maintained.
+The direction of travel is worth stating, because it runs against the usual grain: the platform has been *removing* processes rather than adding them. NATS moved inside the Control Plane, Nebula and (optionally) the leaf NATS server moved inside the Agent, and a second edge binary (`leaf-sync`) was deleted outright rather than maintained.
 
 Each component communicates with the others through NATS subjects. There's no service mesh to configure, no Docker Compose hell, no Kubernetes cluster to run just to get started. Deploy each binary where it belongs — the Control Plane centrally, the Agent at the edge, the rule engine wherever makes operational sense — and let NATS handle the wiring.
 

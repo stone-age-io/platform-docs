@@ -16,9 +16,9 @@ Before introducing the layers, a quick clarification — the docs use two archit
 - **The Data Plane** (NATS, JetStream, KV, Nebula) is the runtime: every byte of telemetry, every command, every live state update flows through it.
 - **The Data Plane is composed of four layers** (0–3). Layer 0 is the always-on substrate; Layers 1–3 are tiers you add as needed.
 - **The Control Plane sits alongside the Data Plane**, not inside any layer. It provisions the identities and credentials that the Data Plane uses at runtime. PocketBase is itself a narrow NATS client on the System Account — it publishes credential updates on admin subjects like `$SYS.REQ.CLAIMS.UPDATE` so cluster state stays in sync with the Control Plane in real-time — but it does not participate in tenant-level event flow (telemetry, rule traffic, device commands).
-- **The Control Plane's own access control is role-scoped and rule-based.** Who may read or change a record is decided entirely by the PocketBase API rules on each collection, evaluated against five per-organization roles plus a Platform Operator flag. That is the Control Plane's boundary; the Data Plane's is cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
+- **The Control Plane's own access control is role-scoped and rule-based.** Who may read or change a record is decided entirely by the PocketBase API rules on each collection, evaluated against five per-organization roles plus a Platform Operator flag. (One hook sits beside the rules, enforcing an invariant rather than a permission: no relation may point into another Organization's records.) That is the Control Plane's boundary; the Data Plane's is cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
 
-This distinction matters. When something goes wrong with a PocketBase upgrade, the Data Plane keeps running and your devices keep talking. When a Layer 3 TSDB goes offline, the Control Plane and the rest of the Data Plane are unaffected. The planes separate management concerns from runtime concerns; the layers separate runtime concerns into composable tiers.
+This distinction matters. When something goes wrong with a PocketBase upgrade, the Data Plane keeps running and your devices keep talking — provided NATS runs as its own process. In the one-process deployment (`serve --nats`, [ADR 0001](./decisions/0001-embedded-nats-server.md)) the bus lives inside the Control Plane binary, so restarting it is a brief total bus outage; moving NATS out is how you buy this separation back. When a Layer 3 TSDB goes offline, the Control Plane and the rest of the Data Plane are unaffected. The planes separate management concerns from runtime concerns; the layers separate runtime concerns into composable tiers.
 
 For the Control Plane ↔ Data Plane split in detail, see [Architecture](./architecture.md). The rest of this doc focuses on the four Data Plane layers.
 
@@ -110,7 +110,8 @@ Layer 1 is where you express *rules* — declarative, stateless-per-message even
 - **Multiple trigger types.** NATS subjects (router feature), HTTP requests (gateway feature), and cron schedules (scheduler feature) all use the same YAML rule syntax.
 - **Stateless routing and filtering.** Route a subset of events to a specialized subject; reject malformed messages; add metadata.
 - **Enrichment via KV lookups.** Hydrate a sparse event with context from a KV bucket. Sub-microsecond cached lookups mean you can chain several without noticing.
-- **Stateful patterns using KV as state.** Alarm deduplication, presence tracking via TTL, debounce windows, rate limiting. The *rule* is stateless; the *state* lives in KV. See [Automation](./automation.md) for the canonical patterns.
+- **Stateful patterns using KV as state.** Alarm deduplication and presence tracking via TTL: the *rule* is stateless; the *state* lives in KV. See [Automation](./automation.md) for the canonical patterns.
+- **Rate limiting and debounce, built in.** A per-rule `throttle` block (leading-edge by default, `mode: trailing` for a true debounce, grouped by a templated `key`). Its windows live in the engine's memory, not in KV — rule templates have no arithmetic, so a KV counter is not something a rule can maintain — which means each instance keeps its own windows and a restart forgets them.
 - **HTTP ingress and egress.** The gateway feature translates webhooks into NATS messages (inbound) and calls external APIs in response to NATS events (outbound, with retry).
 - **Cron-based publishing.** The scheduler feature fires on a cron expression and publishes to NATS or HTTP.
 
@@ -217,7 +218,7 @@ When you have a problem in hand, use this decision tree:
 
 1. **Is it about moving bytes from A to B, or managing identity/inventory?** → Layer 0 (Data Plane) or Control Plane.
 2. **Can I describe the logic as "when X, check Y, do Z"?** → Layer 1.
-3. **Does the logic need state that persists only briefly, and can I express it with KV?** → Still Layer 1. The stateful alarm pattern, presence tracking with TTL, debounce, and rate limiting all fit here.
+3. **Does the logic need state that persists only briefly, and can I express it with KV?** → Still Layer 1. The stateful alarm pattern and presence tracking with TTL fit here, and debounce and rate limiting are the rule engine's built-in `throttle`.
 4. **Does the logic need windowing, stream joins, or aggregation over time?** → Layer 2.
 5. **Is the question about the past, not the present?** → Layer 3.
 

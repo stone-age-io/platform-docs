@@ -18,7 +18,8 @@ In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by N
 {thing_type_code}.{location}.{thing}.{operation_suffix}
 ```
 
-- **Examples:** `temp_sensor.warehouse-a.sensor-01.reading`, `camera.warehouse-a.cam-042.motion`, `gateway.chicago.gw-99.heartbeat`.
+- **Examples:** `temp_sensor.warehouse-a.sensor-01.reading`, `camera.warehouse-a.cam-042.motion`, `door.chicago.dock-3.opened`.
+- **The Agent is the exception, and deliberately.** It is a management daemon rather than a device publishing against a Thing Type contract, and its subjects are `{subject_prefix}.{code}.…` with no location segment — a gateway's heartbeat is `agents.gw-99.heartbeat`. See [The Agent §3](./agent.md#3-capabilities).
 - **Where the segments come from:** `{location}` and `{thing}` are the codes on the Location and Thing records; `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
 - **Wildcards:** Wildcards match subject tokens. Subscribe to `camera.>` to see every camera event across every site, or `camera.warehouse-a.*.motion` to see every camera's motion events at one site. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
 
@@ -35,14 +36,14 @@ Core NATS is "fire and forget." To handle historical data or "at-least-once" del
 - **Streams:** Capture and store messages published to specific subjects.
 - **Consumers:** Allow the platform (or your apps) to read back history. This is how the UI populates charts with historical data when you first open a dashboard.
 
-JetStream is also what makes the platform resilient to Layer 3 outages — telemetry retained in a JetStream stream catches up to the TSDB when Telegraf reconnects, with no data loss.
+JetStream is also what makes the platform resilient to Layer 3 outages — telemetry retained in a JetStream stream catches up to the TSDB when Telegraf reconnects, with no data loss, **provided Telegraf reads it through a JetStream consumer that remembers its position**. A plain subject subscription, queue group or not, is core NATS: whatever was published while Telegraf was down is simply gone for it.
 
 ### Key-Value Buckets (Live State)
 
 JetStream offers specialized streams called Key-Value (KV) buckets that are optimized for high-frequency updates. They're the substrate primitive behind two distinct platform concerns:
 
 - **The Digital Twin** — per-entity live state (current temperature, online status, set points) that the UI reads/writes over WebSocket. The static side of the same entity (name, serial, location) lives in PocketBase. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the canonical model.
-- **Layer 1 rule state** — alarm status, presence keys, debounce windows, rate-limit counters. Rules stay stateless per message; KV holds the durable state. See [Automation §5](./automation.md#5-stateful-patterns-via-kv).
+- **Layer 1 rule state** — alarm status, presence keys, last-known values. Rules stay stateless per message; KV holds the durable state. See [Automation §5](./automation.md#5-stateful-patterns-via-kv). Debounce and rate limiting are *not* KV patterns: the rule engine has a per-rule `throttle` for them (leading-edge by default, `mode: trailing` for a true debounce), and its windows live in each instance's memory — per instance, and lost on a restart. See [Automation — Throttle and debounce are built in](./automation.md#throttle-and-debounce-are-built-in).
 
 Both concerns share the same buckets, the same access patterns, and the same isolation boundary (the org's NATS Account).
 
@@ -50,10 +51,10 @@ Both concerns share the same buckets, the same access patterns, and the same iso
 
 For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Leaf Node is a fully functional NATS server or cluster running locally at a customer site that connects back to a central cluster using one-way, outbound communication. They can be deployed on small devices like cellular routers/gateways from Cradlepoint or Peplink for small installations, or can be an entirely separate cluster deployed at the edge for low latency and redundancy.
 
-- **Local Autonomy:** If the internet goes down, the local devices can still talk to each other and store data.
-- **Transparent Bridging:** When the connection is restored, the Leaf Node automatically syncs data back to your central Stone-Age.io cluster.
+- **Local Autonomy:** If the internet goes down, the local devices can still talk to each other, and anything with a local JetStream stream or KV bucket keeps storing data.
+- **Transparent Bridging:** When the connection is restored, subject interest re-propagates and traffic flows to and from the central cluster again. What was published *during* the outage crosses only if something stored it — a stream at the leaf that the hub sources from, or a KV bucket kept in sync across the link. Plain core NATS messages from the outage are not replayed.
 
-Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, with changes replicating bidirectionally when connectivity returns.
+Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, and the KV buckets a site declares for sync catch up in their own direction — hub → edge by mirror, edge → hub by relay — when connectivity returns.
 
 How the platform models such a site — as an ordinary **Thing**, whose Agent bootstraps and optionally hosts the leaf server — is covered in [Leaf Nodes](./leaf-nodes.md).
 
@@ -80,7 +81,7 @@ Both views — **including their lists** — are Owner/Admin only. A member, vie
 
 **Platform-managed records are read-only.** Flagging an Organization `managed`
 provisions a pair of these records automatically — a `helpdesk-events` export on
-the tenant's Account, and a matching import on the operator hub Account. Both
+the tenant's Account, and a matching import on the provider's hub Account. Both
 show a **Managed** badge and offer **View** instead of Edit or Delete.
 
 That is not a permission — an Owner has write access to the collection — it is
@@ -93,8 +94,8 @@ retire it either: the next save recreates it. **To remove the pair, clear
 
 The two records land on different screens: the export lives on the tenant's own
 Account, so a managed tenant's Owner sees it under their Exports; the import
-lives on the operator hub Account, so only someone in the operator Organization
-sees it under Imports.
+lives on the provider's hub Account, so only someone in the provider's own
+Organization (the one created by `--operator-org`) sees it under Imports.
 
 **When to reach for it:**
 
@@ -180,7 +181,7 @@ Nebula security is **Identity-Based**, not IP-based.
 !!! note "Group membership is on the certificate, so changing it costs a re-issue"
     Exactly four host fields are signed into the certificate — **`hostname`, `overlay_ip`, `groups` and `unsafe_networks`** — and a change to any of them is inert until the host holds a new one. Moving a host between firewall groups is therefore the same class of edit as changing its routing, not a config tweak: peers keep applying the old group's rules until the new certificate is in place. Everything else about a host, firewall *rules* included, renders into `config_yaml` and takes effect on the next pull.
 
-    You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that takes effect immediately.
+    You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that signs the new certificate at once. Like any certificate change, it takes effect when that host fetches its new config — so renew, then redeploy that host.
 
 ---
 

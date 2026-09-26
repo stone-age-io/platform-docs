@@ -1,6 +1,6 @@
 # ADR 0001: Embed the NATS Server in the Control Plane Binary
 
-**Status:** Accepted — implemented
+**Status:** Accepted — implemented, except step 3 (config reload), which was not built
 **Date:** 2026-08-14 (implemented 2026-08-15)
 
 > The Context below describes the state of things when the decision was made. Two of the problems it names have since been fixed; see [As implemented](#as-implemented) at the end for what shipped and what building it turned up.
@@ -192,6 +192,8 @@ Building it turned up two bugs in the documented path that had nothing to do wit
 Both were pre-existing. Neither was visible until something actually consumed the exported config on the documented path — which is the strongest argument in this ADR for rule 2, keeping `nats export` load-bearing rather than letting it rot.
 
 The `4422` / `4222` port disagreement named in the Context is fixed; `--nats` additionally refuses to start when `nats.server_url` and the config's listen port differ.
+
+**Step 3, config reload, was not built.** There is no `s.Reload()` call, no `SIGHUP` handler and no `stone-age nats reload` command. Editing `nats.conf` under an embedded server therefore still means restarting the Control Plane, which at rung 1 is a brief total bus outage. Account and user changes are unaffected — they reach the server as pushed JWTs, not through the config file — so this only bites for server-level settings (listeners, limits, clustering).
 
 ---
 

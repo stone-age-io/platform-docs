@@ -35,7 +35,9 @@ The rule engine (`rule-router`) is a **single-binary component** that runs along
 - **At the edge** alongside a NATS leaf node at a customer site — when you want local rule evaluation that keeps working during WAN outages.
 - **Both** — a common pattern is one set of rules running centrally (for aggregation, cross-site alerting) and another at the edge (for site-local reflexes).
 
-Wherever it runs, the engine is stateless per message and horizontally scalable. Need more throughput? Run another instance against the same NATS cluster. Durable state lives in NATS KV, not in the engine process.
+Wherever it runs, the engine is stateless per message and horizontally scalable. Need more throughput? Run another instance against the same NATS cluster. Durable state lives in NATS KV, not in the engine process — with one exception worth knowing before you scale out: **throttle windows** (§5) live in each instance's memory, so two instances keep two sets of windows, and a restart or rule reload clears them.
+
+How a second instance shares work depends on the trigger's transport. The default JetStream trigger is a durable consumer named from the subject and the configured consumer prefix, so instances sharing a prefix share the consumer and split the messages. A `mode: core` trigger is a plain subscription: without a `queue` group, **every instance receives every message** and fires the rule once each.
 
 The binary hosts three selectable features that all share the same YAML rule syntax, read from the same NATS KV buckets, and use the same evaluation engine. What changes between them is the **trigger** — where events originate — and what **actions** are available.
 
@@ -57,12 +59,13 @@ Every rule, regardless of feature, follows the same **Trigger → Condition → 
 
 ### Key Engine Properties
 
-- **Stateless per Message, Scalable:** Each rule evaluation is independent. The engine itself holds no per-message state — that lives in NATS KV, which rules read from and write to. This makes the engine horizontally scalable while still supporting rich stateful patterns.
+- **Stateless per Message, Scalable:** Each rule evaluation is independent. The engine holds no durable state — that lives in NATS KV, which rules read from and write to — apart from in-memory throttle windows. This makes the engine horizontally scalable while still supporting rich stateful patterns.
+- **One Action per Rule:** A rule has exactly one action. "Write the state *and* notify" is two rules, or a rule whose output triggers the next.
 - **Microsecond Evaluation:** Rules evaluate in microseconds, supporting thousands of messages per second per instance. Cached KV lookups are sub-microsecond, so condition chains with multiple lookups stay fast.
 - **YAML-Based:** Rules are defined in simple, human-readable YAML files (or stored in a NATS KV bucket for GitOps-style hot-reload — see the rule-router upstream docs for that pattern).
 - **Rich Variable Injection:** Use `{field_name}` to access message data or `{@system_var}` for context like `{@timestamp()}`, `{@subject}`, or `{@kv.bucket.key}` lookups.
 
-For full YAML syntax, the complete variable/function reference, array processing with `forEach`, and signature verification, see the [rule-router documentation](https://github.com/skeeeon/rule-router).
+For full YAML syntax, the complete variable/function reference, array processing with `forEach`, payload modes (`passthrough`, `merge`), and signature verification, see the [rule-router documentation](https://github.com/skeeeon/rule-router). This page tracks rule-router **v0.19.0**.
 
 ---
 
@@ -96,12 +99,16 @@ The Router feature is the default. It consumes from NATS subjects, evaluates con
 
 This rule fires when any message on `telemetry.*.temp` carries a `value` over 45. It publishes an enriched alert, pulling the device's location from a KV bucket. The `{@subject.1}` token extracts the wildcard segment of the subject.
 
+**A NATS trigger is a JetStream consumer by default**, which means a stream must already cover `telemetry.*.temp` — without one the rule is rejected at load ("no stream found for trigger subject"). The same default applies to the action: publishes are JetStream publishes that wait for an ack, so `alerts.>` needs a stream too, or the rule logs an ack timeout on every fire. For subjects deliberately left unstreamed — heartbeats, high-rate telemetry where a lost message is fine — set `mode: core` on the trigger (at-most-once, no stream needed, optional `queue` group) or on the action.
+
+A NATS trigger can also serve **request/reply**: `reply: true` subscribes over core NATS and answers each request with a `respond` action.
+
 ### When to Use the Router Feature
 
 - Routing and filtering — splitting a stream into specialized subjects.
 - Enrichment — hydrating sparse events with KV-sourced context.
 - Message translation — reshaping payloads before forwarding.
-- Stateful patterns (alarm stacking, presence tracking, debounce) — see §5 below.
+- Stateful patterns (alarm stacking, presence tracking) — see §5 below. For debounce and rate limiting, use the built-in `throttle` (§5).
 
 ---
 
@@ -111,13 +118,24 @@ The Gateway feature bridges HTTP and NATS in both directions, using the same TCA
 
 ### Inbound: Webhook → NATS
 
-Legacy devices or third-party services that can't speak NATS natively send HTTP POSTs to a configurable path. The gateway evaluates rules against the request and publishes the result to NATS. Inbound requests are **"fire and forget"** — the HTTP response is immediate (200 OK), with processing happening asynchronously on the NATS side.
+Legacy devices or third-party services that can't speak NATS natively send HTTP POSTs to a configurable path. The gateway evaluates rules against the request and publishes the result to NATS. By default inbound requests are **"fire and forget"** — the HTTP response is immediate (`200 {"accepted"}`), with processing happening asynchronously on the NATS side.
+
+Two things change that default:
+
+- **Signature verification.** An HTTP trigger can declare an `hmac` block (header, secret, algorithm, encoding, optional prefix). It is a fail-closed gate: a missing or bad signature returns `401` and the rule never evaluates. That covers GitHub, Shopify and most generic HMAC webhooks. Providers that sign a timestamp with the body — Stripe, Slack, Standard Webhooks — get named `scheme`s on rule-router's main branch, not yet in a release. Any endpoint reachable from the internet should have one: without it, anyone who learns the path can publish into your bus.
+- **Synchronous routes.** A rule with a `respond` action writes its result as the HTTP response; a NATS action with `request: true` bridges the call to a NATS request/reply service and returns the reply (`503` if nothing answers, `504` on timeout).
 
 ```yaml
 - trigger:
     http:
       path: "/webhooks/github"
       method: "POST"
+      hmac:
+        header: "X-Hub-Signature-256"
+        secret: "${GITHUB_WEBHOOK_SECRET}"
+        algorithm: "sha256"
+        encoding: "hex"
+        prefix: "sha256="
   conditions:
     operator: and
     items:
@@ -251,20 +269,28 @@ A common challenge in IoT is "Alarm Fatigue" — getting 100 emails because a se
 Instead of sending an alert every time a condition is met, the engine manages state in a dedicated KV bucket:
 
 1.  **Threshold Hit:** A rule checks whether an alarm already exists in KV for `alarms.device_01.high_temp`.
-2.  **State Check:** If the key doesn't exist, the rule writes the alarm state and triggers an outbound notification.
-3.  **De-duplication:** If the key *already* exists, the rule knows the administrator has already been notified and stays quiet.
-4.  **Auto-Clear:** When the temperature returns to normal, a separate rule deletes the KV key — effectively "clearing" the alarm and optionally sending a "Recovery" notification.
+2.  **State Check:** If the key doesn't exist, the rule writes the alarm state. A write is an ordinary publish to the bucket's subject, `$KV.alarms.device_01.high_temp`, with the body as the value.
+3.  **Notify:** A rule has one action, so the notification is a second rule — triggered by that write on `$KV.alarms.>`, or by the same threshold condition.
+4.  **De-duplication:** If the key *already* exists, the rules know the administrator has already been notified and stay quiet.
+5.  **Auto-Clear:** When the temperature returns to normal, a separate rule overwrites the key with a cleared state — effectively "clearing" the alarm — and a recovery notification can hang off that write the same way.
 
-**The rule stays stateless; the KV bucket holds the state.** You don't need a complex database to track alarm status.
+**The rules stay stateless; the KV bucket holds the state.** You don't need a complex database to track alarm status.
 
 ### Other KV-Backed Patterns
 
 The same principle — rule reads KV, acts, optionally writes KV — supports a whole family of behaviors:
 
 - **Presence tracking via TTL.** A KV key with a short TTL gets refreshed by each relevant event; the key's expiration *is* the "gone" event. Great for occupancy tracking or heartbeat monitoring.
-- **Debounce.** A KV key blocks firing again until it expires. The rule checks the key; if present, it skips the action; if absent, it fires and writes a fresh TTL'd key.
-- **Rate limiting.** A KV counter incremented per event with a TTL window. Once the counter exceeds the limit, subsequent events are suppressed until the window rolls over.
 - **Deduplication.** A KV key per seen event ID prevents re-processing duplicates across restarts or replays.
+
+### Throttle and debounce are built in
+
+Rate limiting and debounce are **not** KV patterns — a rule template has no arithmetic, so a rule cannot increment a counter. Each rule takes a `throttle` block instead (formerly `debounce`, which still loads with a deprecation warning), with a `window` and an optional `key` template for one window per device or room:
+
+- **`mode: leading`** (default) fires the first match in the window and drops the rest — alerting: the page now, and exactly one.
+- **`mode: trailing`** holds the latest match and fires it when the window closes — real debounce, for a dial being turned or a setpoint being edited.
+
+Put it on the **action**, not the trigger: a trigger throttle skips evaluation entirely, so a boring reading can consume the window and the alarming one behind it is never evaluated. And remember where the windows live — in the instance's memory (§1). A restart or reload resets them, and a trailing value still pending at a crash is lost. Where suppression must survive a restart, a KV key the rule checks with `exists` and the bucket's TTL expires is the durable version.
 
 ---
 
@@ -273,7 +299,7 @@ The same principle — rule reads KV, acts, optionally writes KV — supports a 
 - **Be Specific with Subjects:** Avoid triggering on `>` (all messages). Use narrow subjects like `telemetry.*.temp` to reduce unnecessary CPU cycles.
 - **Use Field Paths Wisely:** The engine supports nested field access (e.g., `{user.profile.email}`). Keep your JSON structures reasonably flat to maximize readability and evaluation speed.
 - **Use KV for context:** Don't embed static data (like "Unit Location") in every message. Store that metadata in a KV bucket and have rules hydrate the alert using a `{@kv.lookup}`.
-- **Keep State in KV, Not in Rules:** If you find yourself trying to remember something across messages, the answer is a KV key, not a more complex rule.
+- **Keep State in KV, Not in Rules:** If you find yourself trying to remember something across messages, the answer is a KV key, not a more complex rule. The one built-in exception is `throttle`.
 - **Name Subjects Consistently:** Subject names are contracts between layers. Rule authors, stream processors, and Telegraf all address the same subjects. Pick a hierarchical convention and stick to it.
 
 ---
@@ -314,7 +340,7 @@ To balance out the previous section: the rule engine is the right tool whenever 
 - **Access control and authorization** — a single rule with KV lookups resolves credential → user → permissions → decision. (This is *your application's* access control — a badge reader deciding whether to unlock a door, say. It has nothing to do with the platform's own authorization, which is enforced by PocketBase API rules and never by a rule engine — see [Authorization & Roles](./authorization.md).)
 - **Webhook ingestion and egress** — translating between HTTP and NATS in both directions.
 - **Scheduled publishing and fan-out** — cron-triggered rules that publish to NATS or HTTP, optionally iterating over KV-stored lists.
-- **Debounce, throttle, and rate limiting** — KV-backed state machines that suppress or gate events.
+- **Debounce, throttle, and rate limiting** — a per-rule `throttle` block, leading or trailing.
 
 When your problem fits this shape, the engine will do it with microsecond latency, in a rule definition you can version-control as YAML, and with no operational overhead beyond running the binary.
 

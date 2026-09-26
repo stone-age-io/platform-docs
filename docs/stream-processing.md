@@ -8,7 +8,7 @@ For the full layer model, see [Platform Layers](./platform-layers.md).
 
 ## 1. When You Need a Stream Processor
 
-Layer 1 rules express "when X happens, check Y, do Z." They're stateless per-message — durable state lives in NATS KV. That model covers a remarkable amount of ground, but it has real limits.
+Layer 1 rules express "when X happens, check Y, do Z." They're stateless per-message — durable state lives in NATS KV, and the only state the engine holds itself is its in-memory throttle windows. That model covers a remarkable amount of ground, but it has real limits.
 
 **You need a stream processor when:**
 
@@ -124,9 +124,9 @@ When a problem could plausibly be solved at either layer, here's a rough guide:
 
 | Characteristic | Rule Engine (Layer 1) | Stream Processor (Layer 2) |
 |---|---|---|
-| State scope | Per-rule, in KV | Per-pipeline, in-memory + checkpointed |
-| Time windows | TTL-based presence, debounce, throttle | Tumbling, sliding, session windows |
-| Aggregation | Counter-style via KV increment | SUM, AVG, COUNT, PERCENTILE over windows |
+| State scope | In KV; throttle windows in each instance's memory, lost on restart | Per-pipeline, in-memory + checkpointed |
+| Time windows | TTL-based presence (KV); a per-rule `throttle` window, leading or trailing | Tumbling, sliding, session windows |
+| Aggregation | None — templates have no arithmetic, so a rule can carry a value forward but not accumulate one | SUM, AVG, COUNT, PERCENTILE over windows |
 | Cross-stream correlation | Limited (single subject at a time) | Native joins |
 | Retraction of results | None | Supported |
 | Cost of running | Very low (microsecond evaluation) | Moderate (continuous memory/CPU) |

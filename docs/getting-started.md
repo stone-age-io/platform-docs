@@ -77,6 +77,23 @@ database, the generated NATS config, the account JWTs and the JetStream store.
 container cannot work out for itself — use the host's real name rather than
 `localhost` if anyone else will use it.
 
+The entrypoint reads a few more variables, all optional except the password:
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `STONE_AGE_BOOTSTRAP_PASSWORD` | — (**required on first boot**) | Password for both the SuperUser and the Platform Operator user. The container exits with an explanation if it is missing. |
+| `STONE_AGE_BOOTSTRAP_EMAIL` | `admin@example.com` | Email for both of those accounts. |
+| `STONE_AGE_BOOTSTRAP_ORG` | `System` | Name of the `$SYS` organization. |
+| `STONE_AGE_BOOTSTRAP_OPERATOR_ORG` | `Operator` | Name of your own organization — the one whose NATS account is the hub for shared services. |
+| `STONE_AGE_DATA_DIR` | `/data` | Where the database and NATS config live inside the container. |
+| `STONE_AGE_HTTP_PORT` | `8090` | The HTTP listen port. |
+
+Seeding happens only while `nats-config/nats.conf` is missing from the data
+directory, so a restart never re-seeds, and edits you make to the generated
+`nats.conf` survive restarts. Any other `STONE_AGE_*` setting from
+[Configuration](./configuration.md) works as usual. The image also carries a
+Docker `HEALTHCHECK` against `GET /api/ready` ([Health & Metrics](./health-metrics.md)).
+
 ### Pre-compiled binary
 
 Download for your architecture from the
@@ -126,7 +143,7 @@ This is the first command you run on a fresh install. It creates a **SuperUser**
 ./stone-age migrate up
 ```
 
-This applies the embedded migrations, which import `schema.json` — the collections **and the API rules that are the platform's only authorization layer** ([Authorization](./authorization.md)). Skipping this step is the classic first-install mistake; the next step depends on the fields it creates.
+This applies the embedded migrations, which import `schema.json` — the collections **and the API rules that are the platform's authorization layer** ([Authorization](./authorization.md)). Skipping this step is the classic first-install mistake; the next step depends on the fields it creates.
 
 ### Step 3: Bootstrap the first Organization and Platform Operator user
 
@@ -134,9 +151,11 @@ This applies the embedded migrations, which import `schema.json` — the collect
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "Acme MSP"
 ```
 
-The `bootstrap` command creates your first **Platform Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, links the pre-existing NATS System Account/User/Role to it, and — via `--operator-org` — creates the provider's *own* organization, whose NATS account is the hub for shared provider services. `--org` defaults to `System`; omit `--email`, `--password`, or `--operator-org` and it prompts.
+The `bootstrap` command creates your first **Platform Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, links the pre-existing NATS System Account/User/Role to it, and — via `--operator-org` — creates the provider's *own* organization, whose NATS account is the hub for shared provider services. `--org` defaults to `System`. Omit `--email` or `--operator-org` and it prompts; omit `--password` and it reads `STONE_AGE_BOOTSTRAP_PASSWORD`, prompting only if that is unset too. Prefer either of those to `--password`, which lands in shell history and the process list.
 
-Together with the embedded admin panel, `bootstrap` is the **only** way to grant Platform Operator status. No API rule permits writing `is_operator`, so a Platform Operator cannot be minted over REST — not by an Owner, and not by another Platform Operator.
+Together with the embedded admin panel, `bootstrap` is the **only** way to grant Platform Operator status. No API rule permits writing `is_operator` — not on update, and not on create — so a Platform Operator cannot be minted over REST, not by an Owner and not by another Platform Operator.
+
+`bootstrap` leaves the new user's active organization set to the operator organization, which is where day-to-day work happens; the System organization exists for cluster-level NATS operations.
 
 From here forward, use the **Platform Operator** user to administer the platform from the UI. The SuperUser is best reserved for infrastructure-level management (schema imports, NATS Operator key custody, troubleshooting via the embedded admin UI at `/_/`).
 
@@ -250,7 +269,7 @@ Skip §4's `serve` command if you use this; the server is already running.
 nats-server -c ./nats-config/nats.conf
 ```
 
-The normal topology, and the only one that supports clustering or upgrading the Control Plane without interrupting the bus. Use this if you are unsure — it is the default, and Option A is the opt-in.
+The classic split: the bus keeps running while the Control Plane restarts, which is the independence the [plane split](./platform-layers.md) promises. Option A gives that up for one process — restarting `stone-age` restarts the bus. The two are not exclusive: the embedded server can be clustered with an external `nats-server`, which buys back independence for planned upgrades, and full high availability means three or more external nodes. [Operations §2.1](./operations.md#21-where-the-nats-server-runs) lays out the three rungs and moving between them. Option A is the opt-in; `serve` without `--nats` expects a server like this one.
 
 Either way the running server is identical, because the config is. We won't go deep on running NATS here — their [documentation](https://docs.nats.io) covers production topologies, leaf nodes, clustering, and TLS in depth.
 
@@ -268,16 +287,17 @@ If you used **Option A**, the platform is already running and you can skip strai
 
 The UI is available at `http://localhost:8090` (sign in with your Platform Operator user). The embedded admin UI is at `http://localhost:8090/_/` (sign in with your SuperUser).
 
-With NATS now running, the console can hold a live connection to the bus — this is what turns the static inventory from §2 into a live view. Once you're signed in as the Platform Operator, point the browser at NATS:
+With NATS now running, the console can hold a live connection to the bus — this is what turns the static inventory from §2 into a live view. The browser connects **as the NATS identity linked to your membership in the active organization**, so it needs two things: an address and an identity.
 
-1. Navigate to **Settings** in the sidebar.
-2. Under **NATS Connection**, add your NATS WebSocket URL — usually `ws://localhost:9222` for a local server, or `wss://...` once TLS is in place.
-3. **Linked Identity:** the bootstrap step linked the seeded NATS **System User** to the System organization. Assign that user to your membership so the browser has credentials to connect with.
-4. Optionally enable **Auto-connect on login**, then click **Connect**.
+1. **The address.** Navigate to **Settings** in the sidebar. Under **NATS Connection**, the **Server URLs** list already shows the deployment's addresses — `nats.websocket_urls` if it is set, otherwise the built-in `ws://localhost:9222` that `nats export` configures. For a local install there is nothing to add. Adding a URL here does not extend that list; it **replaces** it on this browser only, which is for pointing one device at a local leaf node ([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
+2. **The identity.** `bootstrap` left you in your operator organization, which has a NATS account but no identity in it yet. Under **NATS** in the sidebar, create a **Role** (the permission template), then a **User** holding that role. Back in **Settings**, choose that user as the **Operational Identity**.
+3. Optionally enable **Auto-connect on login**, then click **Connect**.
 
 You should see a green **Status: Connected** indicator.
 
-> **For real workloads, create a new Organization (and its NATS Account/User) rather than reusing the System account.** The System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data. Note that **creating an Organization requires a Platform Operator** — `organizations.createRule` admits nothing else, so do this while signed in as the Platform Operator user from Step 3 ([Authorization §3](./authorization.md#3-cross-organization-identities)).
+> **Use your own organization for real work, not the System account.** `bootstrap` links the seeded NATS **System User** to the System organization, and switching into it and choosing that user is a quick way to prove the connection — but the System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data. New tenants get their own organizations. Note that **creating an Organization requires a Platform Operator** — `organizations.createRule` admits nothing else, so do this while signed in as the Platform Operator user from Step 3 ([Authorization §3](./authorization.md#3-cross-organization-identities)).
+>
+> Choosing *which* identity a membership uses is an owner/admin action. Other roles can keep or clear their own link but not re-point it — the identity a membership names is the one whose credential that browser reads, so a free choice would be a credential read ([Authorization](./authorization.md)).
 
 ---
 

@@ -58,7 +58,8 @@ small because the heavy jobs stay with the tools built for them.
 Start with the Control Plane binary: run `./stone-age serve` and open your
 browser. The database, REST API and console are already inside it. Add NATS,
 Nebula, `rule-router` and the agent alongside it as you need them — bare metal,
-containers or VMs, on FreeBSD, Linux or Windows.
+containers or VMs. The Control Plane ships for Linux, macOS and Windows; the
+agent and `rule-router` also ship for FreeBSD.
 
 Self-hosted and hosted accounts run **the same binaries**, so starting on your
 own hardware and moving later is not a rebuild. These docs describe the software
@@ -116,11 +117,11 @@ The rule engine, the Agent, stream processors, Telegraf and your time-series dat
 ## Key Features
 
 - **Inventory-as-Identity:** The same record is the asset and the credential. A Thing is a first-class auth record that can hold a NATS user and a Nebula host, so "the camera in the lobby" is one row that is simultaneously an inventory entry, a login, a messaging identity, and a mesh node. There is no separate device registry to keep in sync. See [Architecture §3.1](./architecture.md#31-inventory-as-identity).
-- **Infrastructure-as-Tenant:** The same principle one level up. Creating an Organization — a Platform Operator action — provisions an isolated NATS Account and a private Nebula CA, so the management record and the infrastructure it implies are created and destroyed as a unit. Tenant boundaries are enforced cryptographically at the messaging and network layers, not by application-level filters.
+- **Infrastructure-as-Tenant:** The same principle one level up. Creating an Organization — a Platform Operator action — provisions an isolated NATS Account and a private Nebula CA, so the management record and the infrastructure it implies are created and destroyed as a unit — and suspending the Organization withdraws its NATS Account, disconnecting every device and browser in the tenant at once, reversibly. Tenant boundaries are enforced cryptographically at the messaging and network layers, not by application-level filters.
 - **A contract layer, not just a schema store:** Thing Types declare *where* a kind of participant speaks (a subject prefix), their operations declare *what verbs* it has (`publish` / `subscribe` / `request` / `reply`, each with a subject suffix), Subject grammar is described as data, so a consumer can resolve from the records alone which subjects a device uses. Payload shape is deliberately NOT described: a `message_schemas` collection existed and was dropped, because nothing validated against it. See [Thing Types](./thing-types.md).
-- **Role-scoped access, enforced in one place:** Five per-organization roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) plus a Platform Operator flag, enforced solely by PocketBase API rules on each collection. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
+- **Role-scoped access, enforced in one place:** Five per-organization roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) plus a Platform Operator flag, enforced by PocketBase API rules on each collection. The one deliberate exception is an invariant rather than a permission: a single hook refuses any relation that points into another Organization's records, which no rule can express. Credentials are protected by row scoping — you can read the identity you authenticate with and no other — and every role can rotate its own. See [Authorization & Roles](./authorization.md).
 - **Digital Twins:** Live device state lives in NATS KV buckets and streams to the browser over WebSocket. Dashboards reflect changes in real time without polling the database. At the edge the twin is a preset over general [KV bucket sync](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync), so a site can keep any bucket it declares in step through a WAN outage.
-- **A history a tenant can actually read:** An org-scoped activity feed — actor, action, record, timestamp — readable by every role, carrying no record values. It is deliberately separate from the operator-only audit log and its full before/after snapshots. See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed).
+- **A history a tenant can actually read:** An org-scoped activity feed — actor, action, record, timestamp — readable by every role, carrying no record values. It is deliberately separate from the Platform-Operator-only audit log, which records the names of the fields every write changed and keeps full before/after values only for an allowlist of collections that hold no credentials. See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed).
 - **One name for a tenant, everywhere:** An Organization's **code** is the ecosystem's single globally unique identifier; everything under it is unique only within that Organization. Ids are for storage, codes are for addressing — so anything that has to survive leaving the database travels by code: a NATS subject, a sibling application's join key, or a QR label printed and stuck on the equipment. Those labels carry the **bare code** and nothing else, which is what keeps a forged sticker from becoming a redirect. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 - **Outbound-only security:** Devices and Agents initiate connections outward to NATS and Nebula. No inbound ports are required, so edge nodes stay invisible to the public internet.
 - **Declarative automation:** A unified rule engine (router, gateway, and scheduler features) expresses NATS routing, webhook ingestion and egress, and cron-driven publishes as YAML rules.
@@ -160,7 +161,7 @@ than a prerequisite chain, and any page is a fine place to enter:
 3.  **[Architecture](./architecture.md)** — Learn how the Control Plane and Data Plane work together.
 4.  **[Getting Started](./getting-started.md)** — Go from zero to a live dashboard in five minutes.
 5.  **[Platform UI and Entities](./platform-ui-entities.md)** — Explore Organizations, Locations, and Things.
-6.  **[Dashboards & Widgets](./dashboards.md)** — The Visualizer: sixteen widget types, the three data-source kinds, and dashboard variables.
+6.  **[Dashboards & Widgets](./dashboards.md)** — The Visualizer: sixteen widget types, subscription and KV data sources (with optional JetStream history), and dashboard variables.
 7.  **[Authorization & Roles](./authorization.md)** — Who can do what: the five roles, the capability matrix, and the credential model.
 8.  **[API Reference](./api-reference.md)** — The ten endpoints the platform adds on top of PocketBase REST, and why each one is a route rather than an API rule.
 9.  **[Stone CLI](./stone-cli.md)** — Drive the same entities, NATS, and a GitOps workspace from the terminal with the `stone` client.
@@ -171,8 +172,9 @@ than a prerequisite chain, and any page is a fine place to enter:
 14. **[Automation](./automation.md)** — Build intelligent routing, scheduled publishing, and stateful alarms with the rule engine (Layer 1).
 15. **[Stream Processing](./stream-processing.md)** — Windowed aggregations, joins, and anomaly detection (Layer 2).
 16. **[Observability](./observability.md)** — Long-term data storage and historical analysis (Layer 3).
-17. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
-18. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
+17. **[Health & Metrics](./health-metrics.md)** — `/api/ready` and `/metrics` on the Control Plane and the Agent: what each check means and what to alert on.
+18. **[Configuration Reference](./configuration.md)** — `config.yaml` keys, `STONE_AGE_*` environment variables, and operational notes.
+19. **[Operations & Production](./operations.md)** — backups, recovery, upgrades, version compatibility, and the production checklist.
 
 ---
 

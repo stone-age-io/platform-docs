@@ -19,7 +19,6 @@ tenancy:
   memberships_collection: "memberships"
   invites_collection: "invites"
   invite_expiry_days: 7
-  log_to_console: false
 
 nats:
   account_collection_name: "nats_accounts"
@@ -28,13 +27,17 @@ nats:
   operator_name: "stone-age.io"
   server_url: "nats://localhost:4222"       # where THIS PROCESS dials
   websocket_urls: []                        # where a BROWSER dials. Not the same thing.
-  encryption_key: ""                        # encrypts account/user seeds at rest
+  leaf_url: ""                              # where an EDGE box's leaf remote dials. Not the same thing either.
+  jetstream_domain: "hub"                   # this hub's own JetStream domain
+  encryption_key: ""                        # encrypts the minting keys at rest (§2.2)
   managed_export_subject: "helpdesk.>"
   log_to_console: false
   default_limits:
-    max_connections: 10
-    max_subscriptions: 50
-    max_payload: 1048576    # 1 MB
+    max_connections: 100
+    max_subscriptions: 5000
+    max_payload: 1048576                    # 1 MiB, nats-server's own default
+    max_jetstream_disk_storage: 5368709120  # 5 GiB
+    max_jetstream_memory_storage: 67108864  # 64 MiB
   export_collection_name: "nats_account_exports"
   import_collection_name: "nats_account_imports"
   embedded: false                             # run NATS inside this process
@@ -46,7 +49,7 @@ nebula:
   host_collection_name: "nebula_hosts"
   log_to_console: false
   default_ca_validity_years: 10
-  encryption_key: ""        # encrypts CA and host private keys at rest
+  encryption_key: ""        # encrypts the CA and host private_key columns at rest
 
 audit:
   collection_name: "audit_logs"
@@ -55,6 +58,14 @@ audit:
     max_age: ""             # Go duration string, e.g. "720h" for 30 days. "" disables.
     max_records: 0          # 0 disables record-count retention.
     interval: "0 2 * * *"   # Cron schedule for the cleanup job.
+
+readiness:
+  interval: 15s
+  timeout: 5s
+
+metrics:
+  enabled: true
+  token: ""   # empty = open, the default
 
 branding:
   dir: ""     # a host directory of overrides; "" uses the embedded defaults
@@ -66,7 +77,7 @@ branding:
 
 ### `tenancy`
 
-Controls the multi-tenancy collections managed by the `pb-tenancy` library.
+Controls the multi-tenancy collections: organizations, memberships and invitations. This is platform code (`hooks/org_membership.go`, `hooks/invites.go`); it was the `pb-tenancy` library until that was absorbed.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
@@ -74,7 +85,8 @@ Controls the multi-tenancy collections managed by the `pb-tenancy` library.
 | `memberships_collection` | string | `"memberships"` | Name of the User↔Org link collection. |
 | `invites_collection` | string | `"invites"` | Name of the pending-invite collection. |
 | `invite_expiry_days` | int | `7` | How long an outstanding invite token remains valid. |
-| `log_to_console` | bool | `false` | Verbose tenancy lifecycle logging. |
+
+There is no `tenancy.log_to_console` any more. The one thing it did was silence invitation-email failures, which now go through the application logger unconditionally. An old config that still sets it is harmless: the key is not read.
 
 ### `nats`
 
@@ -88,18 +100,26 @@ Controls the `pb-nats` library: NATS account/user/role provisioning, exports/imp
 | `operator_name` | string | `"stone-age.io"` | The NATS Operator name stamped into the NATS Operator JWT at first run. |
 | `server_url` | string | `"nats://localhost:4222"` | Where the Control Plane connects to NATS as a System Account client. **Not** the browser address — see §2.1. |
 | `websocket_urls` | string list | `[]` | The WebSocket addresses a **browser** dials, served to the console at runtime by `GET /api/client-config`. See §2.1. |
-| `encryption_key` | string | `""` | 32-character key encrypting NATS account and user **seeds** at rest. Empty means plaintext in SQLite. See §2.2. |
+| `leaf_url` | string | `""` | Where an **edge box's** leaf remote dials this hub — usually port 7422, and often a different hostname from either address above. Served to gateways as `hub_leaf_url` by [`GET /api/me/leaf-config`](./leaf-nodes.md). Empty means no edge box can bootstrap. Must start with `nats-leaf://` or `tls://`; the platform refuses to start otherwise. |
+| `jetstream_domain` | string | `"hub"` | This hub's own JetStream domain — what an edge addresses the hub *as* across the link (`$JS.<domain>.API`). Served to gateways as `hub_domain`. Must match the `jetstream { domain }` in the hub's `nats.conf`. Agents cache it, so changing it later reaches a site only when that site re-runs `agent -leaf-config`. |
+| `encryption_key` | string | `""` | 32-character key encrypting the NATS **minting keys** at rest: the operator, account and user seeds and private keys, and the signing keys. **Not** issued credentials — see §2.2. Empty means plaintext in SQLite. |
 | `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the provider's hub account. The matching hub-side import remaps it to `<subtree>.<organization code>.>`, so the tenant token is baked into the NATS-Operator-signed account JWT and provenance is unforgeable — which means a managed organization needs a [code](./platform-ui-entities.md#organizations) before its export routes anywhere. Must end in `.>`; the platform refuses to start otherwise. See [ADR 0002](./decisions/0002-organization-code-namespace.md). |
 | `log_to_console` | bool | `false` | Verbose NATS-library logging. |
-| `default_limits.max_connections` | int | `10` | Default max connections for new Org accounts. |
-| `default_limits.max_subscriptions` | int | `50` | Default max subscriptions for new Org accounts. |
-| `default_limits.max_payload` | int | `1048576` | Default max payload bytes for new Org accounts (1 MB). |
+| `default_limits.max_connections` | int | `100` | Max connections for new Org accounts. Headroom, not a fence — see the note below. |
+| `default_limits.max_subscriptions` | int | `5000` | Max subscriptions for new Org accounts. |
+| `default_limits.max_payload` | int | `1048576` | Max payload bytes for new Org accounts (1 MiB, nats-server's own default). |
+| `default_limits.max_jetstream_disk_storage` | int | `5368709120` | JetStream file storage for new Org accounts (5 GiB). What a plan is sold with. |
+| `default_limits.max_jetstream_memory_storage` | int | `67108864` | JetStream memory storage for new Org accounts (64 MiB). A blast-radius limit — keep it small and the same across plans. |
 | `export_collection_name` | string | `"nats_account_exports"` | Account-level Export collection name. See [Connectivity §1](./connectivity.md). |
 | `import_collection_name` | string | `"nats_account_imports"` | Account-level Import collection name. |
 | `embedded` | bool | `false` | Run a NATS server inside the Control Plane process. Acted on by `serve` only. Equivalent to `--nats`. |
 | `embedded_config` | string | `"./nats-config/nats.conf"` | The `nats.conf` that `embedded` loads — the file `nats export` writes. Equivalent to `--nats-config`. |
 
-> **Note:** Account-level limits set here are platform-wide defaults applied to *new* Organizations. Existing Org accounts can be edited individually in the UI without re-deploying.
+> **The limits are stamped into each new organization's signed account JWT, at provisioning time only.** Changing a number here does not reach an account that already exists; that account's `nats_accounts` record has to be edited, and that record's update rule is Platform Operator only — the limits are the resource envelope a tenant was sold, so raising them is not a tenant action.
+>
+> **`-1` means unlimited. `0` on either JetStream field disables JetStream for the account entirely** — and the [Digital Twin](./thing-types.md) with it, since the twin is two KV buckets. Never use `0` to mean "no limit".
+>
+> **The two storage numbers do different jobs.** Disk tracks what a plan is sold with. Memory is shared: a memory-backed stream competes for the RAM every other tenant on the box needs, so it is the one breach not confined to the account that caused it. **Connections and subscriptions are headroom.** Their breach mode is a device that cannot connect or a subscription that quietly fails, so set them well above any modelled load and alert as you approach them. Clients behind an edge leaf node do **not** count toward `max_connections`: the hub sees one leaf connection per site, so the count is browsers, the `stone` CLI, services, and devices that dial the hub directly.
 
 > **`embedded` does not configure the NATS server.** The `nats.conf` does — ports, JetStream, WebSockets, clustering, TLS. `embedded` only decides whether the Control Plane runs that config itself or leaves it to a separate `nats-server`. The two produce an identical server, which is why moving between them is a config change rather than a migration. See [Operations §2.1](./operations.md#21-where-the-nats-server-runs).
 >
@@ -122,7 +142,7 @@ The console resolves the address in three tiers: a per-device override in localS
 
 - **The device override replaces this list; the two are never merged.** The NATS client shuffles its server list by default, so a merged list is a pool picked at random rather than a priority order — and the reason a device overrides is to reach its *local leaf node* instead of the hub. Those are different JetStream domains holding different data under the same bucket names, so merging would make *which dataset you are looking at* a coin flip per reconnect.
 - **Multiple entries mean one cluster.** Peers, not failover order. Do not list a hub URL and a leaf URL together.
-- **There is no JetStream domain setting, on purpose.** The console passes no domain, so `$JS.API` resolves to the JetStream of whichever server was dialed — hub URL gives the hub, leaf URL gives that leaf’s `edge-<code>`. The URL already selects the domain, and a separate knob could only disagree with it, failing as an empty bucket list with no diagnosis.
+- **There is no JetStream domain setting, on purpose.** The console passes no domain, so `$JS.API` resolves to the JetStream of whichever server was dialed — hub URL gives the hub, leaf URL gives that leaf’s own domain, which is its Thing's code. The URL already selects the domain, and a separate knob could only disagree with it, failing as an empty bucket list with no diagnosis.
 - **An HTTPS page cannot open `ws://`.** Browsers block it outright, so the settings form rejects a plaintext URL rather than saving one that can never connect.
 
 In an environment variable, separate multiple URLs with **spaces**, not commas — viper splits that value on whitespace, and the platform rejects a comma-joined entry at startup rather than treating it as one malformed URL:
@@ -133,10 +153,18 @@ STONE_AGE_NATS_WEBSOCKET_URLS="wss://a.example.com:9222 wss://b.example.com:9222
 
 ### 2.2 The encryption keys
 
-`nats.encryption_key` and `nebula.encryption_key` encrypt the **secret columns** at rest: NATS account and user seeds, and Nebula CA and host private keys. Both default to empty, which means those values sit in the SQLite file in plaintext.
+`nats.encryption_key` and `nebula.encryption_key` encrypt the **secret columns** at rest: the NATS operator, account and user seeds and private keys and the account signing keys, and the Nebula CA and host `private_key` columns. Both default to empty, which means those values sit in the SQLite file in plaintext.
+
+!!! warning "What these keys do not cover: issued credentials"
+    The keys protect the material needed to **mint** identities. They do not protect credentials already issued, and cannot:
+
+    - `nats_users.creds_file` contains the user seed by construction, and the browser reads it straight from the API to open its own NATS connection.
+    - `nebula_hosts.config_yaml` embeds the host key inline, because Nebula requires it there.
+
+    So a stolen database with the key held elsewhere yields no ability to mint new identities, and **every credential already issued**. Carry that threat with disk encryption, encrypted backups and access control on the host. The readiness check says the same thing when encryption is on: *"minting keys; issued credentials are plaintext by construction"*. The platform repository's `SECURITY.md` describes what a stolen database does and does not yield.
 
 !!! danger "Set these before creating anything real, and back the keys up separately"
-    A row written with a key cannot be read back without it. There is no recovery path: losing the key loses every seed and private key it protected, which means re-provisioning every NATS identity and re-issuing every Nebula certificate in every affected organization.
+    A row written with a key cannot be read back without it. There is no recovery path: losing the key loses every seed and private key it protected, which means re-provisioning every NATS identity and re-issuing every Nebula certificate in every affected organization. Supply them through `STONE_AGE_NATS_ENCRYPTION_KEY` and `STONE_AGE_NEBULA_ENCRYPTION_KEY` rather than committing them to `config.yaml`.
 
     Equally, turning encryption **on** for a database that already has rows does not retroactively encrypt them, and turning it **off** does not decrypt what is already encrypted. Decide at install time.
 
@@ -162,7 +190,7 @@ Controls the `pb-nebula` library: CA, network, and host certificate management.
 | `host_collection_name` | string | `"nebula_hosts"` | Host certificate collection name. |
 | `log_to_console` | bool | `false` | Verbose Nebula-library logging. |
 | `default_ca_validity_years` | int | `10` | Default validity for newly-generated org CAs. |
-| `encryption_key` | string | `""` | 32-character key encrypting Nebula **CA and host private keys** at rest. Empty means plaintext in SQLite. See §2.2. |
+| `encryption_key` | string | `""` | 32-character key encrypting the Nebula **CA and host `private_key` columns** at rest. Empty means plaintext in SQLite. The generated `config_yaml` still embeds the host key in plaintext — see §2.2. |
 
 ### `audit`
 
@@ -171,11 +199,13 @@ Controls the `pb-audit` library: audit logging of create, update, delete, and au
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `collection_name` | string | `"audit_logs"` | Where audit records are written. |
-| `log_to_console` | bool | `false` | Mirror audit events to stdout. |
+| `log_to_console` | bool | `false` | Mirror audit events to stdout. The older spelling `audit.log_console` is still honoured. |
 | `retention.max_age` | string | `""` | Go duration string (e.g. `"720h"` = 30 days). Empty disables age-based pruning. |
 | `retention.max_records` | int | `0` | Max records to keep. `0` disables count-based pruning. |
 | `retention.interval` | string | `"0 2 * * *"` | Cron expression for the retention sweep job. |
 
+> **What the audit log holds:** every create, update, delete and auth event records `changed_fields` — the *names* of the fields that moved. Full before/after *values* are kept only for an allowlist of collections (`auditSnapshotCollections` in the platform's `main.go`: organizations, memberships, users, the inventory and type collections, NATS roles, Nebula networks and email templates). Everything credential-bearing — NATS users and accounts, Nebula hosts and CAs, invites, exports and imports — records field names and no values, so the log is not an archive of every credential ever minted.
+>
 > **Who can read the audit log:** `audit_logs` list and view are `@request.auth.is_operator = true`. Platform Operators and SuperUsers only — **no tenant role, including `owner`, can read it**, and the console's `/audit` route is gated on the same flag to match. A tenant admin cannot self-serve an audit export. The request has to go through a Platform Operator. What a tenant *can* read for itself is the `activity` feed — actor, action, record, timestamp, and no values — which is a separate collection with its own rules and no retention setting here. See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed).
 
 ### `branding`
@@ -186,7 +216,7 @@ Controls the `pb-audit` library: audit logging of create, update, delete, and au
 
 The point of the overlay is that re-skinning the console needs no frontend rebuild — the console is embedded in the binary, so a compiled-in brand would mean one build per provider. Missing files fall back individually. A starting template ships in `branding.example/` in the repository.
 
-**This brand is the operator's, and an Organization's own logo does not replace it.** The sidebar mark and the login screen resolve to `branding` and nothing else — it is the one fixed landmark, and the brand row is also the link to `/`, so letting a tenant logo win there made it change on every organization switch, directly above the switcher that had just done it, captioned with the operator's `appName`. A tenant's logo appears in the **org switcher** instead, where switching it is the control. The one deliberate exception is the [QR label](./platform-ui-entities.md#codes-and-qr-labels), which prints the operator's brand on purpose — whoever finds broken equipment in a public hallway needs to know who services it.
+**This brand is the operator's, and an Organization's own logo does not replace it.** The sidebar mark and the login screen resolve to `branding` and nothing else — it is the one fixed landmark, and the brand row is also the link to `/`, so letting a tenant logo win there made it change on every organization switch, directly above the switcher that had just done it, captioned with the operator's `appName`. A tenant's logo appears in the **org switcher** instead, where switching it is the control. The [QR label](./platform-ui-entities.md#codes-and-qr-labels) prints neither: a label belongs to one organization, so it carries that organization's code and the record's code and name, and no operator brand.
 
 ### `readiness`
 
@@ -245,8 +275,9 @@ This is where per-site health is visible in detail, and it keeps answering with
 the WAN down — which is exactly when you want it. The Control Plane cannot
 report it: it holds the NATS operator and the `$SYS` account and has no
 credential inside any organization's account. (Whether a site's leaf node is
-*attached* is a separate, cheaper question, and the console answers that one by
-asking the hub directly.) See [Leaf Nodes](./leaf-nodes.md).
+*attached* is a separate, cheaper question, which a tenant answers by asking the
+hub over its own NATS connection — a dashboard widget, not a console screen.) See
+[Leaf Nodes](./leaf-nodes.md).
 
 ---
 
@@ -265,11 +296,13 @@ Examples:
 export STONE_AGE_NATS_SERVER_URL="nats://nats.internal:4222"
 
 # Mirror audit events to stdout (useful in development)
-export STONE_AGE_AUDIT_LOG_CONSOLE=true
+export STONE_AGE_AUDIT_LOG_TO_CONSOLE=true
 
-# Bump default limits for new orgs
-export STONE_AGE_NATS_DEFAULT_LIMITS_MAX_CONNECTIONS=100
-export STONE_AGE_NATS_DEFAULT_LIMITS_MAX_SUBSCRIPTIONS=500
+# Give new orgs a bigger JetStream disk allowance (10 GiB)
+export STONE_AGE_NATS_DEFAULT_LIMITS_MAX_JETSTREAM_DISK_STORAGE=10737418240
+
+# Keep the encryption keys out of config.yaml
+export STONE_AGE_NATS_ENCRYPTION_KEY="$(cat /run/secrets/nats_key)"
 
 # Tighten the invite window
 export STONE_AGE_TENANCY_INVITE_EXPIRY_DAYS=2
@@ -311,7 +344,7 @@ These apply uniformly to all subcommands (`serve`, `migrate`, `bootstrap`, `nats
 - **Set the encryption keys at install time.** `nats.encryption_key` and `nebula.encryption_key` cannot be introduced retroactively for rows that already exist, and losing one loses the material it protected. They are also **not** what `--encryptionEnv` covers. See §2.2.
 - **Audit retention runs on a schedule, not on every write.** A misconfigured `interval` will just delay cleanup, not break ingestion.
 - **The schema is embedded in the binary**, not loaded from disk. Updating the embedded `schema.json` is only half the change: it reaches **freshly-created databases only**. To change the schema — or an API rule — on an existing deployment, the platform needs a new `migrations/schema_update_*.go` file, which runs at startup. This is the most common way a rule fix fails to ship. See [Authorization §7](./authorization.md#7-changing-the-rules) and [Operations §5.1](./operations.md#51-how-upgrades-work).
-- **API rules are the platform's only authorization layer.** Nothing in `config.yaml` grants or restricts access; the rules in the embedded schema do all of it. See [Authorization & Roles](./authorization.md).
+- **API rules are the platform's authorization layer.** Nothing in `config.yaml` grants or restricts access; the rules in the embedded schema do all of it, with one deliberate hook beside them that refuses a relation pointing into another organization. See [Authorization & Roles](./authorization.md).
 
 ---
 

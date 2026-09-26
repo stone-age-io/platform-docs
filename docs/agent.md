@@ -8,7 +8,7 @@ The Agent is what turns a bare server or IoT gateway into a participant in the D
 
 ## 1. Overview
 
-The agent is a single Go binary with zero external dependencies (other than the optional Prometheus exporters). Its design philosophy is simple: **Stay invisible until needed.**
+The agent is a single Go binary with zero external dependencies. Its design philosophy is simple: **Stay invisible until needed.**
 
 - **Lightweight:** Consumes < 50MB of RAM and negligible CPU.
 - **Secure:** No inbound management API — every instruction arrives over the authenticated NATS connection the Agent dialed outbound, so no port forward is ever needed to manage a device. (It is not, however, "no listening ports": `/ready` and `/metrics` bind `127.0.0.1:9100` unless you set `observability.addr` empty, and a site gateway hosts a NATS server that local devices connect *in* to. See [§6](#6-what-listens-and-what-dials-out).)
@@ -23,12 +23,18 @@ The agent is a single Go binary with zero external dependencies (other than the 
 Prebuilt archives are attached to every [release](https://github.com/stone-age-io/agent/releases) — Linux amd64/arm64, Windows amd64, FreeBSD amd64. Each one carries the binary, the per-OS example configs under `configs/`, and the install guides under `docs/`:
 
 ```sh
-VERSION=0.2.1
+VERSION=0.3.2
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
-sudo mkdir -p /etc/agent && sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
+sudo mkdir -p /etc/agent /opt/agent/scripts
+sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
 ```
+
+The scripts directory is not optional housekeeping: `commands.scripts_directory` defaults to `/opt/agent/scripts`, and the Agent **refuses to start** if the directory it names does not exist. Set it to `""` to turn script execution off entirely.
+
+!!! warning "0.3.1 is a security release — upgrade anything older"
+    Before 0.3.1, anyone able to publish to `cmd.exec` could run arbitrary commands on a device that had a single script in its `scripts_directory`, whatever the allowlist said: the check approved a request by its last path element and then handed the *unreduced* string to a shell. See §3.C for the rules that close it. The fix changes one behaviour a caller can see — a script request must now be a bare filename (`deploy.sh`, not `/opt/agent/scripts/deploy.sh`), and a full path is refused.
 
 The agent then installs itself as a service on the host's own service manager — `agent -service install`, which resolves to systemd, a Windows service, or rc.d. There are no unit files to place by hand. `agent -version` reports what a host is running without starting it.
 
@@ -104,7 +110,7 @@ The platform's session token for a Thing lives **7 days**, renewed by each sync.
 
 The tradeoff is recovery. A device powered off or offline for more than 7 days returns with a lapsed token, and with no password it cannot re-authenticate on its own — it needs the password set once more, or a fresh bootstrap. Devices that are frequently offline should keep the password configured. Deleting only the `.creds` file is always safe: the Agent restores it from its stored session without the password.
 
-**Deactivating a Thing ends the session immediately, not in 7 days.** Clearing `active` refreshes the record's `tokenKey`, which invalidates every token already issued — the 7-day lifetime is not a floor on how long a decommissioned device keeps access. This is the intended behaviour, and it has one recovery consequence worth planning for: a Thing that was reactivated after its password had been removed from the service environment cannot re-authenticate on its own. Reactivation restores the *NATS* credential automatically; the PocketBase session has to be re-established with a password. An Owner or Admin can reset it from the Thing's detail view.
+**Deactivating a Thing ends the session immediately, not in 7 days.** Clearing `active` refreshes the record's `tokenKey`, which invalidates every token already issued — the 7-day lifetime is not a floor on how long a decommissioned device keeps access. This is the intended behaviour, and it has one recovery consequence worth planning for: a Thing that was reactivated after its password had been removed from the service environment cannot re-authenticate on its own. Reactivation issues a **new** NATS credential on the platform, but the Agent can only fetch it over a platform session, and that session died with the deactivation — so it has to be re-established with a password. An Owner or Admin sets a new one on the Thing's **edit form** (the Authentication card), then puts it back in the service environment; the next start adopts the new credential.
 
 ### 2.3 Rotation
 
@@ -115,11 +121,13 @@ For an Agent, rotation has two triggers:
 - **From the device:** the `cmd.rotate_creds` command (§3.D).
 - **From the Console:** **Regenerate** on the Thing's NATS identity, adopted on the next sync.
 
-**Rotation is not revocation.** The previous credential stays valid until it expires or an Owner/Admin revokes it. Rotating after a suspected compromise does not lock the old credential out — revoke it.
+**Rotation is not revocation.** Rotating (and **Regenerate**) re-signs the JWT for the **same** key pair, so the seed inside the previous `.creds` is unchanged and that file keeps working until it expires. After a suspected compromise, use **Revoke** on the NATS identity instead: it generates a new key pair, puts the old public key on the account's revocation list — so every copy of the old file is rejected at once — and issues a working replacement, which the Agent adopts on its next sync. The identity stays active; Revoke is the "these credentials leaked" button, not a way to take a device out of service.
+
+The rotate route also refuses a **suspended** identity (`403`). Without that check a re-sign would mint a JWT issued after the suspension's revocation cutoff — which NATS accepts — and the self-service button would double as a self-service un-suspend.
 
 Revocation needs no manual recovery step at the edge. The credential sync path never touches NATS, so it keeps working while the NATS connection does not: the Agent exits when its credential is rejected, the service manager restarts it, and the sync on the way back up adopts the current credential.
 
-That recovery loop is exactly what **deactivating** the Thing severs, and deliberately so. Deactivation revokes the NATS credential *and* invalidates the platform session the Agent would have used to fetch a replacement, so the device stays dark rather than healing itself. Reach for it when you want a device gone; reach for revocation alone when you want its current credential replaced. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+That recovery loop is exactly what **deactivating** the Thing severs, and deliberately so. Deactivation *suspends* the NATS credential — revoked, with nothing reissued — blocklists the Thing's Nebula certificate once peer configs are redeployed, *and* invalidates the platform session the Agent would have used to fetch a replacement, so the device stays dark rather than healing itself. Reach for it when you want a device gone; reach for Revoke alone when you want its current credential replaced. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ---
 
@@ -133,7 +141,7 @@ The Agent publishes on a schedule and answers commands on request. Everything it
 | `{prefix}.{code}.telemetry.system` | JetStream | CPU, memory, disk |
 | `{prefix}.{code}.telemetry.service` | JetStream | Service status |
 | `{prefix}.{code}.telemetry.inventory` | JetStream | Hardware/software inventory |
-| `{prefix}.{code}.cmd.*` | Core NATS (request/reply) | `ping`, `service`, `logs`, `exec`, `health`, `rotate_creds` |
+| `{prefix}.{code}.cmd.*` | Core NATS (request/reply) | `ping`, `service`, `logs`, `exec`, `health`, `rotate_creds`, `nebula` |
 
 Every telemetry payload carries `code`, `location`, and `ts`, so a message is self-describing to any direct subscriber.
 
@@ -157,8 +165,7 @@ There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway
 
 ### A. Telemetry & Observability
 
-- **Built-in collection (default):** The Agent reads CPU, memory, and disk itself. No exporter, no sidecar, nothing else to install.
-- **Prometheus exporters (optional):** Point it at a local `node_exporter` (Linux/BSD) or `windows_exporter` instead, and it scrapes that.
+- **Built-in collection:** The Agent reads CPU, memory, and disk itself. No exporter, no sidecar, nothing else to install. This is the only collector: the old exporter mode (`tasks.system_metrics.source: "exporter"`, which scraped `node_exporter` or `windows_exporter` instead) was removed in 0.3.1. A config still carrying `source` or `exporter_url` loads unchanged and gets built-in metrics. If you want node_exporter's series, run it and let Prometheus scrape it directly.
 - **Inventory:** A fuller hardware/software picture, published on startup and daily thereafter.
 - **Heartbeats:** A liveness beacon on a core NATS subject. A Layer 1 rule can turn those beats — or their absence — into a Digital Twin KV update or an alert.
 
@@ -168,16 +175,20 @@ Agent telemetry flows through every layer of the platform: Layer 1 rules can ale
 
 The Agent can monitor the status of system services (e.g., `nginx`, `docker`, `mssql`).
 
-- **Monitoring:** Reports if a service is running, stopped, or crashing.
-- **Remote Control:** Authorized users can trigger `start`, `stop`, or `restart` commands directly from the Stone Age UI.
+- **Monitoring:** `tasks.service_check` reports the state of each service in its `services` list on a schedule. It is **on by default**, and a config that leaves it on with an empty list is refused at load — list your services, or set `enabled: false`.
+- **Remote Control:** `cmd.service` takes `start`, `stop`, `restart` or `status`, each gated by `commands.allowed_services`. `status` (0.3.2) reads one service's state without changing it — the same lookup the telemetry makes, in the same words (`Running`, `Stopped`, `NotInstalled`, …) — so you no longer wait for the next `service_check` cycle to see it.
+
+There is no dedicated agent-command screen in the console. Commands are ordinary NATS requests, sent by anything whose NATS Role may publish to the subject — in the console, a **Button** or **Publisher** [dashboard widget](./dashboards.md); from a terminal, `stone nats req`.
 
 ### C. Command & Script Execution
 
-For custom logic, the Agent can execute local scripts or shell commands.
+For custom logic, `cmd.exec` runs a local script or an allowlisted shell command — and nothing else. The rules, as of the 0.3.1 security fix:
 
-- **Whitelisting:** To ensure security, the Agent will only execute commands or scripts defined in its local `allowed_commands` list, and scripts must live in its configured `scripts_directory`.
-- **Request/Reply:** Uses the NATS Request/Reply pattern so the UI can display the command output (stdout/stderr) to the administrator in real-time.
-- **Log retrieval:** The `logs` command tails a file, restricted to configured path patterns with traversal protection.
+- **Scripts are files, named bare.** A script request is a bare filename with the platform's script extension (`.sh`, or `.ps1` on Windows) naming a regular file directly inside `commands.scripts_directory`. Anything with a separator, a drive letter or a `..` is refused rather than reduced. The Agent builds the path itself and starts the file directly — no shell parses the request. Scripts are checked first and never go through `allowed_commands`.
+- **Commands are allowlist entries.** Anything else must match a line of `commands.allowed_commands` (whitespace-normalized), and the Agent runs **the allowlist entry**, not the request — so a newline smuggled into a request cannot split one allowed line into two commands. Linux runs it through `/bin/bash`, FreeBSD through `/bin/sh`.
+- **The reply comes once, when the command finishes** — this is request/reply, not a stream. It carries the combined output and an `exit_code` whenever the command actually ran (0 included), and a failure keeps its output, so the stderr explaining it leaves the box. `commands.timeout` (30s by default) is a real bound: it kills everything the command started (its process group, or `taskkill /T` on Windows), and a timed-out command returns what it had printed.
+- **Log retrieval:** `cmd.logs` reads a file only if it exactly equals a file one of `commands.allowed_log_paths` names. The allowlist alone decides; there is no second denylist behind it, so narrow the pattern rather than relying on one.
+- **Overlay control:** with `nebula.enabled`, `cmd.nebula` takes `sync` (re-fetch the host's config now rather than on `nebula.sync_interval`) or `restart`. It is the one handler that **answers before it acts** — both actions can interrupt the tunnel the request arrived over, so a reply sent afterwards might never land. `accepted` means the work has started; the outcome is reported through `cmd.health`.
 
 ### D. Credential Upkeep
 
@@ -191,7 +202,7 @@ For custom logic, the Agent can execute local scripts or shell commands.
 Three mechanisms enforce cryptographic isolation at the edge:
 
 - **NKey Authentication:** The Agent signs every NATS connection challenge locally with the nkey seed in its `.creds` file. Be precise about where that key comes from, though: the Control Plane mints the keypair (`pb-nats` generates it and embeds the seed in `creds_file`), so the private key originates on the platform and is *delivered* to the device — it is not generated there. That is exactly why the credential lifecycle in §2 is built the way it is: HTTPS is required, the key is re-transmitted only when it has actually changed, it is written `0600` through an atomic replace, and platform response bodies are never logged.
-- **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — the `nats_roles` and `nats_users` collections are closed to every role below admin for reads as well as writes, precisely because a role's permission fields are copied verbatim into the JWT the platform signs.
+- **Sandboxed Logic:** The Agent does not have "God Mode." Its permissions are restricted by the **NATS Role** assigned to it in the Control Plane. If an Agent is only meant to report temperature, its NATS credentials will physically prevent it from sending a "Restart Server" command. Assigning or changing that role is an **Owner/Admin** action — `nats_roles` is closed to every role below admin for reads as well as writes, and `nats_users` nearly so (each console user reads only the one identity linked to their own membership, and a Thing only its own), precisely because a role's permission fields are copied verbatim into the JWT the platform signs.
 - **Nebula Encryption:** Administrative traffic between your workstation and the host (SSH, for instance) can be encrypted end-to-end via the Nebula mesh, bypassing the public internet entirely. With `nebula.enabled` the Agent runs that mesh host **in-process** and keeps its config current, which is what makes revocation, renewal and CA rotation actually reach the device. A newly applied config that cannot reach a lighthouse is restarted and then rolled back to the last one known to have worked, so a bad config cannot take a fleet off the network. The Agent's own NATS traffic is outbound and TLS-protected either way — the overlay is for everything else.
 
 ---
@@ -208,7 +219,7 @@ subject_prefix: "agents"
 
 platform:                            # one home for the platform relationship
   url: "https://platform.acme.io"
-  identity: "chicago-warehouse-vent-01@things.acme.io"
+  identity: "chicago-warehouse-vent-01@acme.thing.local"   # <code>@<org code>.thing.local
   password_env: "AGENT_PLATFORM_PASSWORD"   # optional after first boot
   sync_interval: "24h"               # renews the 7-day platform session
 
@@ -225,17 +236,23 @@ tasks:
   system_metrics:
     enabled: true
     interval: "1m"
-    source: "builtin"       # or "exporter" to scrape node_exporter
+  service_check:            # on by default: list services or set enabled: false
+    enabled: true
+    interval: "1m"
+    services: ["nginx"]
   inventory:
     enabled: true
     interval: "24h"
 
 commands:
-  scripts_directory: "/opt/stone-age/scripts"
+  scripts_directory: "/opt/agent/scripts"   # must exist; "" disables scripts
+  allowed_services: ["nginx"]
   allowed_commands:
     - "df -h"
     - "uptime"
 ```
+
+The `identity` is the Thing's login email, and the console builds it for you when it creates the Thing — `<code>@<org code>.thing.local` — so copy it from the success dialog rather than composing it.
 
 A site gateway adds `nats.server_config` and/or a `sync:` block to the same file — see [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and `nebula` are not gateway keys and may be set on any device.
 
@@ -272,10 +289,10 @@ Two footnotes that matter in practice:
   device's health. Set `observability.metrics_token` (accepted as Bearer or as
   Basic with any username) before moving `addr` off loopback, or set `addr` empty
   and let `cmd.health` over NATS be the only answer.
-- **9100 is also node_exporter's default port** on Linux and FreeBSD. If you run
-  the exporter on the same box — which [§3](#3-capabilities) offers as an
-  alternative metrics source — move one of the two, or neither will bind
-  reliably. Windows is unaffected: `windows_exporter` uses 9182.
+- **9100 is also node_exporter's default port** on Linux and FreeBSD. If you also
+  run node_exporter on the same box for Prometheus to scrape, move one of the
+  two, or neither will bind reliably. Windows is unaffected: `windows_exporter`
+  uses 9182.
 
 ---
 

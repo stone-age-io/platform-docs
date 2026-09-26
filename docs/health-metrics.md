@@ -28,7 +28,7 @@ None of that moves a liveness probe. So the checks here are deliberately about *
 
 **A check must be answerable first-hand by the process running it.**
 
-This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read anything a site reports about itself. The console can, because a browser connects as the logged-in user — which is also how an operator finds out whether a site's leaf node is attached, by asking the bus over that same connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)). The Agent can, because it runs inside the account.
+This is the NATS account boundary restated. The Control Plane holds the NATS operator and the `$SYS` account, and it has **no user credential inside any organization's account** — so it cannot read an org's `twin` KV, and it cannot read anything a site reports about itself. The console can, because a browser connects as the logged-in user — which is also how a tenant finds out whether a site's leaf node is attached: a dashboard widget asking the bus over that same connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)). The Agent can, because it runs inside the account.
 
 Do not "improve" a check by minting the platform a credential in a tenant's account. That turns a credential issuer into a data-plane participant in every tenant's bus, which is the one boundary the whole NATS design is built around. Per-site liveness is therefore **absent** from the Control Plane's list on purpose, and lives on the edge instead ([§5](#5-the-edge-agent)).
 
@@ -115,7 +115,7 @@ Two of these surprise people:
 | `nats_trust` | the server there **rejects this database's `$SYS` credential** | The silent killer. See below. |
 | `nebula_cert_expiry` | never — warns only | Certificates the platform signed. See [§4](#4-certificate-expiry). |
 | `nats_websocket_urls` | never — warns only | Empty means the console falls back to `ws://localhost:9222`. |
-| `encryption_at_rest` | never — warns only | `nats.encryption_key` / `nebula.encryption_key` unset. |
+| `encryption_at_rest` | never — warns only | `nats.encryption_key` / `nebula.encryption_key` unset. When both are set it says `ok` and what that covers: the minting keys, not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). |
 
 Three are worth expanding on.
 
@@ -182,12 +182,12 @@ A state set rather than a number, because a numeric encoding of "ok/warn/fail/sk
 | Metric | Type | Labels | What it is |
 |---|---|---|---|
 | `stone_age_records` | gauge | `collection` | Rows in a platform collection. |
-| `stone_age_inactive_records` | gauge | `collection` | Rows with `active = false` — decommissioned devices and leaf nodes. |
+| `stone_age_inactive_records` | gauge | `collection` | Things with `active = false` — decommissioned devices, gateways included. Only `things` is counted. |
 | `stone_age_nats_users_revoked` | gauge | | Users whose key is on their account's revocation list. |
-| `stone_age_database_size_bytes` | gauge | | `data.db` plus its WAL. The number to alert on for disk growth. |
+| `stone_age_database_size_bytes` | gauge | | `data.db` plus its WAL and shared-memory files. The database's disk growth — **not** uploaded files, which live beside it in `pb_data/storage`. |
 | `stone_age_certificates` | gauge | `kind` | Nebula certificates in service. |
 | `stone_age_certificates_expired` | gauge | `kind` | Expiry already passed. |
-| `stone_age_certificates_expiring` | gauge | `kind` | Expiring within the warning window. |
+| `stone_age_certificates_expiring` | gauge | `kind` | Expiring within the warning window: 30 days for `nebula_host`, 90 for `nebula_ca`. |
 | `stone_age_certificate_expiry_seconds` | gauge | `kind` | **Unix timestamp** of the soonest expiry of that kind. |
 | `stone_age_http_requests_total` | counter | `route`, `method`, `status` | Requests served. |
 | `stone_age_http_request_duration_seconds` | histogram | `route`, `method` | Request latency. |
@@ -197,17 +197,19 @@ Plus `stone_age_nats_*` when — and only when — the bus runs in-process via `
 
 Three things to know before building a dashboard on these:
 
-**`stone_age_records{collection="things"}` counts devices CONFIGURED.** It is not availability, and an alert on it can never fire. Per-site liveness is `agent_*` on the edge box ([§5](#5-the-edge-agent)); whether a site's leaf node is *attached* is answered by the console asking the hub, not by anything here ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)).
+**`stone_age_records{collection="things"}` counts devices CONFIGURED.** It is not availability, and an alert on it can never fire. Per-site liveness is `agent_*` on the edge box ([§5](#5-the-edge-agent)); whether a site's leaf node is *attached* is answered by asking the hub over a tenant's own NATS connection, not by anything here ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)).
+
+**`stone_age_database_size_bytes` is the database only.** Uploaded files — photos, floor plans, logos — live in `pb_data/storage` and ride in every backup, but no series here measures them. Watch that directory with your host's disk metrics.
 
 **There are no per-organization labels, anywhere.** `/metrics` is open by default, and with per-org data reduced to row counts a tenant label would be a customer name attached to an inventory count. That is also why `stone_age_certificate*` reports the *soonest per kind* rather than one series per certificate: a per-host series would need an identifying label to be useful, which is a per-tenant device inventory.
 
-**A collector that fails emits nothing rather than zero.** Zero is a legitimate value here — "no Nebula hosts configured" — so reporting it on failure would turn a broken query into a confident wrong answer, and an alert on `== 0` would fire for the wrong reason. The absent series plus a non-zero `stone_age_collector_errors` says what actually happened.
+**A collector that fails emits nothing rather than zero.** Zero is a legitimate value here — "no Nebula hosts configured" — so reporting it on failure would turn a broken query into a confident wrong answer, and an alert on `== 0` would fire for the wrong reason. For the database collector, the absent series comes with a non-zero `stone_age_collector_errors`. The certificate collector does not raise that counter: when it cannot read, its series are simply absent, so pair any certificate alert with `absent(stone_age_certificates)` if a silent gap matters to you.
 
 ### The `route` label is a pattern, never a path
 
 Request paths carry record ids (`/api/collections/things/records/abc123def456789`). Labelling by path would mint a new time series per record touched — and on a platform whose job is holding per-device rows, that is one series per device per method. The label is the *matched route pattern*, falling back to `other`.
 
-`status` is a class (`2xx`/`4xx`/`5xx`), not an exact code. PocketBase answers `404` when an update rule rejects and `400` on a denied create, so "how many 404s" would be a question about authorization, traffic and genuinely missing records all at once. The class is what an alert wants; the [audit log](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) has the specifics.
+`status` is a class (`2xx`/`4xx`/`5xx`, or `unknown` for the rare request that ends with neither a status nor an error), not an exact code. PocketBase answers `404` when an update rule rejects and `400` on a denied create, so "how many 404s" would be a question about authorization, traffic and genuinely missing records all at once. The class is what an alert wants; the [audit log](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) has the specifics.
 
 ### Embedded NATS series
 
@@ -225,15 +227,16 @@ Nebula certificate expiry is the **one** expiring credential the Control Plane c
 
 It matters because a Nebula certificate fails silently, on a schedule nobody is watching, and all at once. A CA minted with a ten-year validity lapses long after everyone who knew about it stopped thinking about it — and it takes every host in the mesh with it, including the out-of-band path you would have used to fix it.
 
-**Alert relative to `time()`, not on a stored countdown:**
+**Alert relative to `time()`, not on a stored countdown, and give the CA the longer horizon:**
 
 ```promql
-stone_age_certificate_expiry_seconds - time() < 30 * 86400
+stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400
+stone_age_certificate_expiry_seconds{kind="nebula_ca"}   - time() < 90 * 86400
 ```
 
 The gauge is an absolute timestamp precisely so this works. A "days remaining" gauge is stale the moment it is stored, and every retained sample drifts further from the truth; writing the horizon into the alert keeps the threshold somewhere you can change it.
 
-`kind` is `nebula_ca` or `nebula_host`. **Put a separate alert on the CA** — every host certificate chains to it. Host certificates count `active = true` rows only, so a decommissioned device's lapsed certificate does not page anyone.
+`kind` is `nebula_ca` or `nebula_host`. **The CA gets 90 days, not 30.** Every host certificate chains to it, and a host certificate is reissued in a moment, but a CA can only be *rotated* — a staged procedure with a deliberate wait in the middle that 30 days does not comfortably fit. `stone_age_certificates_expiring`, the readiness check and the console all use the same split: 30 days for a host, 90 for a CA. Host certificates count `active = true` rows only, so a decommissioned device's lapsed certificate does not page anyone.
 
 The check **warns and never fails**, for the same reason an islanded edge warns: readiness failing means "stop sending this node traffic", and a lapsed *device* certificate is no reason to pull the console out of a load balancer.
 
@@ -257,7 +260,19 @@ observability:
 Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router. Empty `addr` serves neither, but the checks still run and still log; a bind failure is logged rather than fatal, because a monitoring port that cannot bind must not stop the agent doing its job.
 
 !!! warning "9100 is also node_exporter's port"
-    On Linux and FreeBSD the default collides with `node_exporter`, which [§3 of the Agent guide](./agent.md#3-capabilities) offers as an alternative metrics source. On a box running both, move one of them — and since a bind failure is only logged, the symptom is a scrape target that quietly never came up rather than a crash. `windows_exporter` uses 9182, so Windows is unaffected.
+    On Linux and FreeBSD the default collides with `node_exporter`, if you run one on the same box for your own reasons — the Agent no longer reads from it; its own collector is the only metrics source. On a box running both, move one of them — and since a bind failure is only logged, the symptom is a scrape target that quietly never came up rather than a crash. `windows_exporter` uses 9182, so Windows is unaffected.
+
+Every Agent registers these, gateway or not:
+
+| Check | State when it trips | Notes |
+|---|---|---|
+| `nats` | **fail** | The agent's own NATS connection is down. The only check here whose failure means the agent is not doing its job at all. |
+| `jetstream` | **warn** | JetStream is not usable on the connected server, so telemetry is going nowhere. Heartbeats and commands are unaffected. |
+| `task_metrics` | **warn** | More than half of the system-metrics collections failed. Skipped when metrics are disabled. |
+| `nebula` | **warn** | The overlay is enabled but not running, fell back to its cached config, or has no tunnels. Skipped when the overlay is off. |
+| `platform_sync` | **warn** | No successful credential sync with the platform recently — the session token lapses after seven days without one. Skipped when the agent does not get its credentials from the platform. |
+
+A gateway — an Agent running a leaf — adds three more:
 
 | Check | State when it trips | Notes |
 |---|---|---|
@@ -265,9 +280,11 @@ Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the Po
 | `hub_uplink` | **warn** | No outbound leaf connection to the hub: this site is *islanded*. |
 | `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
 
+These three exist only where there is a leaf, so a plain device never reports a failing check about a leaf it was never asked to run.
+
 **An islanded edge warns, it does not fail.** Local NATS still works and devices keep running — that autonomy is the entire reason a leaf node exists, so returning `503` would invert the design and have an orchestrator restart a site that is working exactly as intended. `sync` warns for the same reason: a relay backlog on an islanded site is the design working.
 
-Metrics: `agent_edge_nats_connected`, `agent_edge_nats_connections`, `agent_edge_hub_uplink_connected`, `agent_edge_jetstream_bytes` — plus the same `agent_ready` / `_check_state` / `_check_timestamp_seconds` / `_build_info` set.
+Metrics: every Agent exports the `agent_ready` / `_check_state` / `_check_timestamp_seconds` / `_build_info` set; a gateway adds `agent_edge_nats_connected`, `agent_edge_nats_connections`, `agent_edge_hub_uplink_connected` and `agent_edge_jetstream_bytes`.
 
 **Watch `agent_edge_sync_up{bucket,direction}` once you declare buckets by hand.** It grows one series per declared bucket per direction, and it exists because a silently skipped entry looks exactly like a healthy agent — most often a mirror whose hub-side bucket was never created. `agent_edge_relay_pending{bucket}` is the matching backlog depth: rising while `hub_uplink` warns is an outage draining normally; rising while the uplink is fine is not.
 
@@ -309,7 +326,8 @@ A starting set of alerts:
 | Not ready | `stone_age_ready == 0` |
 | A specific check failing | `stone_age_check_state{state="fail"} == 1` |
 | Prober wedged | `time() - stone_age_check_timestamp_seconds > 120` |
-| Certificate expiring | `stone_age_certificate_expiry_seconds - time() < 30 * 86400` |
+| Host certificate expiring | `stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400` |
+| CA expiring | `stone_age_certificate_expiry_seconds{kind="nebula_ca"} - time() < 90 * 86400` |
 | Database growth | `predict_linear(stone_age_database_size_bytes[6h], 7 * 86400) > <your disk>` |
 | Edge prober wedged | `time() - agent_check_timestamp_seconds > 120` |
 | Site islanded | `agent_edge_hub_uplink_connected == 0` |
@@ -336,7 +354,7 @@ All of these take `STONE_AGE_`-prefixed environment overrides — `STONE_AGE_MET
 
 ## 8. Summary
 
-- `/api/ready` is for **your orchestrator, and for you right after a deploy**. It reports what is *silently* wrong, and every non-OK result carries the command that fixes it.
+- `/api/ready` is for **your orchestrator, and for you right after a deploy**. It reports what is *silently* wrong, and every warning or failure carries the command that fixes it.
 - `/metrics` is for **your monitoring stack**. Alert on `ready`, on individual check states, on the probe timestamp going stale, and on certificate expiry.
 - Both are unauthenticated by default. `/metrics` takes a token; closing either off properly is a proxy's job.
 - Only `fail` makes a process unready. `warn` means look, not evacuate.

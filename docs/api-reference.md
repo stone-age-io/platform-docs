@@ -32,6 +32,19 @@ Roles are per-organization memberships and resolve against the caller's **active
 organization (`users.current_organization`). See
 [Authorization §2](./authorization.md#2-capability-matrix).
 
+Two things are deliberately left out of the table, because neither is a route the
+platform adds to answer something a rule cannot:
+
+- **`GET /branding/{path}`** — unauthenticated static files for the operator's
+  theme overlay (`theme.css`, `logo.svg`, `branding.json`). It serves a host
+  directory, not data. See [Configuration §`branding`](./configuration.md#branding).
+- **`POST /api/files/token`** — stock PocketBase, but you cannot fetch an uploaded
+  file without it. Every file field on the platform is **protected**, so
+  `/api/files/...` accepts only a short-lived *file* token (`?token=`), minted by
+  this endpoint, and checks it against the collection's view rule. **An auth token
+  is not a file token**: a URL built with one answers `404`. See
+  [Platform Entities §5](./platform-ui-entities.md#photos-and-file-fields).
+
 ---
 
 ## 2. Three rules that apply to all of them
@@ -158,13 +171,28 @@ it — so **re-read your own record afterwards** to pick up the new credential.
 
 For a `users` caller the identity is the `nats_user` on the membership for the
 active organization; for a `things` caller it is the relation on the Thing itself.
-Either way nothing is read from the request.
+Either way nothing is read from the request. (Which identity a membership links to
+is itself owner/admin-only — every role may keep or clear its own link but not
+re-point it, because the credential read follows the link. See
+[Authorization §4](./authorization.md#4-the-row-scoped-credential-model).)
 
-!!! note "Revocation is deliberately not part of this route"
-    Setting `regenerate` on a revoked user would re-enable it. Revocation stays an
-    owner/admin action through the normal update rule on `nats_users`, or a
-    consequence of [deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
-    that holds the identity.
+| Response | When |
+| :--- | :--- |
+| `200` | Re-minted |
+| `400` | A `users` caller with no active organization |
+| `403` | The linked identity is **suspended** (`active = false`) |
+| `404` | No membership in the active organization, or no identity linked |
+
+!!! note "A suspended identity cannot rotate itself back to life"
+    pb-nats treats `active = false` as "revoked, reissue nothing". But a
+    regenerate mints a JWT issued *after* the account's revocation cutoff, which
+    NATS accepts — so without the `403` this route would be a self-service
+    un-suspend. Suspending and reactivating stay owner/admin actions through the
+    normal update rule on `nats_users`, or a consequence of
+    [deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
+    that holds the identity. Rotation is also not how you retire a **leaked**
+    file: `regenerate` re-signs for the same seed, so the leaked `.creds` keeps
+    working. That is `revoke`, which moves to a new key pair (owner/admin).
 
 ---
 
@@ -233,21 +261,30 @@ Each identity block takes a `mode`:
 
 | Mode | Effect | Extra fields |
 | :--- | :--- | :--- |
-| `auto` | Mint a new identity | `nats.role_id`; `nebula.network_id`, `nebula.overlay_ip` |
+| `auto` | Mint a new identity | `nats.role_id` (optional — defaults to the organization's `is_default` role); `nebula.network_id`, `nebula.overlay_ip` |
 | `link` | Attach an existing one, verified to belong to this organization | `nats.user_id`; `nebula.host_id` |
 | `none` | Leave it unbound — a pure inventory row | — |
 
-An absent block is `none`, and an unrecognised mode is rejected rather than
-treated as `none`.
+`name` and `code` are both required (`400` without either). An absent block is
+`none`, and an unrecognised mode is rejected rather than treated as `none`.
+
+`nats.mode: "auto"` needs an **active** NATS account to sign under, so while the
+organization is [suspended](./authorization.md#31-suspending-an-organization) it
+answers `400` ("no active NATS account for this organization"). `link` and `none`
+still work.
 
 ```json
 {
   "id": "7h8i9j0k1l2m3n4",
   "code": "cam-lobby",
-  "email": "cam-lobby@things.acme.io",
+  "email": "cam-lobby@acme.thing.local",
   "password": "…"
 }
 ```
+
+The email is generated as `<thing code>@<organization code>.thing.local` — the
+organization's **code**, never its name, because a name is not unique and can
+change.
 
 **The password is returned exactly once** — PocketBase stores only its hash, so
 this response is the only chance to record it.
@@ -442,13 +479,17 @@ wait in the middle of it.
   decoded string as a destination. See [ADR 0002](./decisions/0002-organization-code-namespace.md#why-a-qr-payload-is-the-bare-code).
 - **No bulk certificate re-issue.** See `cert-audit` above.
 - **No route granting Platform Operator status.** `bootstrap` and the embedded
-  admin panel are the only two paths; no API rule permits writing `is_operator`.
+  admin panel are the only two paths. `users.updateRule` refuses `is_operator`,
+  and so does every branch of `users.createRule` — including the one that lets
+  a Platform Operator onboard users, so an operator cannot mint an operator.
 - **No server-side twin push.** `twin_desired` is a delivery mechanism — nothing in
   the platform applies a desired value to a device. See
   [Architecture §4.3](./architecture.md#43-the-console-says-differs-never-pending).
 - **JetStream and KV management is not an HTTP API.** Streams and buckets are
   created over the browser's own NATS connection, so they are bounded by the
-  caller's **NATS** permissions rather than by PocketBase API rules.
+  caller's **NATS** permissions rather than by PocketBase API rules — and, in
+  total, by the account's JetStream storage limits (`max_jetstream_disk_storage`,
+  `max_jetstream_memory_storage`), which are set when the account is provisioned.
 
 ---
 

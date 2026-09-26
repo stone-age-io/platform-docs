@@ -14,13 +14,13 @@ Operational state lives in different places, with different owners and different
 | :--- | :--- | :--- | :--- |
 | **Identity hierarchy** — NATS Operator key, NATS Accounts, Nebula CAs, user/Thing credentials | Control Plane (`pb_data`) | **Severe.** The NATS Operator key is the root of the entire chain of trust — losing it orphans every Account and credential it signed. | This page (§3). |
 | **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
-| **Live state** — Digital Twin KV, JetStream streams | NATS servers (JetStream storage) | Low to moderate. Twins repopulate from device heartbeats; stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
+| **Live state** — Digital Twin KV, other KV buckets, JetStream streams | NATS servers (JetStream storage) | Depends on the bucket. The reported twin (`twin`) repopulates as devices report again. The **desired** twin (`twin_desired`) does not — operators wrote it, nothing re-derives it, and losing it loses every setpoint. Neither does any other bucket a tenant created, nor its contents. Stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
 | **Historical telemetry** | Your Layer 3 TSDB | Your call — it's [BYO](./observability.md). | Your TSDB's own backup tooling. |
 | **Edge leaf config** | `nats-leaf.conf` + creds on the edge box | None. Regenerate with `agent -leaf-config` — see [Leaf Nodes](./leaf-nodes.md). | Nothing needed. |
 
-The takeaway: **`pb_data` is the crown jewels.** It's also a single directory dominated by one SQLite database, which makes protecting it straightforward.
+The takeaway: **`pb_data` is the crown jewels.** It's also a single directory — one SQLite database plus `pb_data/storage`, which holds every uploaded file (Thing and Location photos, floor plans, organization logos, avatars) — which makes protecting it straightforward. The upload half grows with the inventory and rides in every backup; `stone_age_database_size_bytes` counts only the database, so watch the directory's disk usage too ([Health & Metrics §3](./health-metrics.md#3-get-metrics)).
 
-> **Backups contain secrets.** A Control Plane backup includes the NATS Operator key, every org's Nebula CA private key, and credential material. Treat backup artifacts with the same care as the live database: restrict the S3 bucket, encrypt at rest, and don't leave downloaded copies on workstations. Consider `--encryptionEnv` (see [Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
+> **Backups contain secrets.** A Control Plane backup includes the NATS Operator key, every org's Nebula CA private key, and credential material — including every issued `.creds` file and Nebula host config in plaintext, since at-rest encryption covers the minting keys and not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). Treat backup artifacts with the same care as the live database: restrict the S3 bucket, encrypt at rest, and don't leave downloaded copies on workstations. Consider `--encryptionEnv` (see [Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
 
 ---
 
@@ -33,8 +33,8 @@ The platform deliberately puts high availability where it matters and fast recov
 The runtime path — telemetry, commands, rules, live dashboards — never depends on a single process:
 
 - **NATS clusters horizontally.** Run three or five `nats-server` nodes and the bus survives node loss; JetStream streams and KV buckets with `replicas: 3` survive it durably. This is stock NATS operations — their [docs](https://docs.nats.io) cover it well.
-- **Leaf nodes keep sites autonomous.** A WAN or hub outage doesn't stop site-local devices, rules, or stream processors. Traffic buffers and reconverges when connectivity returns. See [Leaf Nodes](./leaf-nodes.md).
-- **Rule engines and stream processors are stateless per message** and horizontally scalable; durable state is in replicated KV.
+- **Leaf nodes keep sites autonomous.** A WAN or hub outage doesn't stop site-local devices, rules, or stream processors. The KV buckets a site declares for sync reconverge when connectivity returns; anything else published while islanded reaches the hub only if a stream at the leaf holds it. See [Leaf Nodes](./leaf-nodes.md).
+- **Rule engines and stream processors scale horizontally**, and their durable state is in replicated KV. What they hold in memory — rule-router's throttle windows, for one — is per instance and is lost on restart.
 
 ### Control Plane: recovery-oriented, not failover-oriented
 
@@ -175,11 +175,11 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
 - **`curl -s localhost:8090/api/ready | jq`** first. One request answers most of
   this list: whether the schema imported, whether an operator exists, whether the
   NATS server still trusts this database’s operator, and whether the binary is
-  older than the `pb_data` you just restored. Every non-OK check carries the
+  older than the `pb_data` you just restored. Every warning or failure carries the
   command that fixes it. See [Health & Metrics](./health-metrics.md).
 - Console login works (Platform Operator user) and the **NATS Status: Connected** indicator is green.
 - Create a throwaway Thing in a test org — confirms the provisioning hooks and the System Account connection end-to-end.
-- A gateway Thing's page shows its leaf node attached again. That reading comes from the hub over the console's own NATS connection, so it is a live fact rather than a replayed one.
+- Sites are attached again. There is no console screen for this; ask the hub over a tenant's own NATS connection — the site-connectivity widget recipe in [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up), or `$SYS.REQ.ACCOUNT.PING.CONNZ` from the `nats` CLI. That reading comes from the hub, so it is a live fact rather than a replayed one.
 
 **Rehearse this.** A backup you've never restored is a hypothesis, not a backup. The `pb` migration flow in §5.3 doubles as a restore drill — do it on a schedule, not just before upgrades.
 
@@ -191,7 +191,7 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
 
 The platform binary embeds its schema and runs **migrations** automatically: replace the binary, restart, and any pending schema migrations apply at startup. Because the UI and schema are compiled into the same artifact, the Control Plane upgrades **atomically** — there is no window where the UI, API, and schema disagree.
 
-> **A migration file is what makes a schema or API-rule change reach *your* deployment.** The embedded `schema.json` is applied when a database is first created; an existing `pb_data` keeps its collections and its rules until a `migrations/schema_update_*.go` accompanies the change. So "the fix is in the new binary" is only true if the release shipped the migration — which matters most for **authorization** changes, since the API rules are the platform's only enforcement layer. See [Authorization §7](./authorization.md#7-changing-the-rules).
+> **A migration file is what makes a schema or API-rule change reach *your* deployment.** The embedded `schema.json` is applied when a database is first created; an existing `pb_data` keeps its collections and its rules until a `migrations/schema_update_*.go` accompanies the change. So "the fix is in the new binary" is only true if the release shipped the migration — which matters most for **authorization** changes, since the API rules are the platform's permission layer. See [Authorization §7](./authorization.md#7-changing-the-rules).
 
 The procedure:
 
@@ -237,7 +237,7 @@ If the upgrade misbehaves, you found out on staging — against your actual sche
 
 The Control Plane is the only component with a database and migrations. Everything else upgrades by binary swap, in any order, because the interfaces between components are protocols, not shared code (§6):
 
-- **`rule-router`, stream processors, Telegraf** — restart with the new binary; they reconnect to NATS and resume. Stateless per message; durable state is in KV.
+- **`rule-router`, stream processors, Telegraf** — restart with the new binary; they reconnect to NATS and resume. Durable state is in NATS; what they hold in memory (rule-router's throttle windows, for one) is lost on restart.
 - **Agents** — swap and restart; designed around reconnection and fail-soft behaviour. On a site gateway, restarting the agent bounces the leaf server too **if** `nats.server_config` is set; leave it unset and a separately supervised `nats-server` keeps the bus up across the upgrade, which is usually what you want on a live site.
 - **NATS and Nebula** — stock upstream upgrade procedures; the platform places no constraints beyond theirs (see §6).
 
@@ -315,9 +315,9 @@ A condensed pre-flight list for taking a deployment to production:
 - [ ] **The readiness probe wired into whatever runs the process** — `GET /api/ready`, which returns `503` only when something is genuinely broken and `200` for warnings, so it is safe to put in front of a load balancer. Point your scraper at `GET /metrics` while you are there. Both are unauthenticated by default and neither needs a NATS connection or a session; `metrics.token` closes the second one, and a proxy closes either ([Health & Metrics](./health-metrics.md)).
 - [ ] **`pb_data` on its own dataset/volume**, ideally ZFS with automatic snapshots (§3.3).
 - [ ] **App-settings encryption** enabled via `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP, S3 and OAuth2 secrets — **and nothing else**.
-- [ ] **Column encryption set separately** — `nats.encryption_key` and `nebula.encryption_key` in `config.yaml` are what encrypt NATS account and user seeds and Nebula CA and host private keys. They are empty by default, they cannot be applied retroactively to rows that already exist, and losing a key loses the material it protected. A checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
+- [ ] **Column encryption set separately** — `nats.encryption_key` and `nebula.encryption_key` in `config.yaml` are what encrypt the minting keys: the NATS operator, account and user seeds and signing keys, and the Nebula CA and host private keys. They are empty by default, they cannot be applied retroactively to rows that already exist, and losing a key loses the material it protected. A checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext. Neither covers **issued** credentials — `creds_file` and `config_yaml` stay plaintext by construction, so disk encryption and encrypted backups carry that part ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
 - [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)). Remember the log is **Platform-Operator-only**: no tenant role can read it. The plain "who changed this, and when" question is now self-served by the tenant-facing `activity` feed; what still reaches you is any request needing the *values* a change carried ([Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)).
-- [ ] **NATS account limits reviewed** — the shipped defaults (`max_connections: 10`, `max_subscriptions: 50`) are conservative; size them for your real per-org fleets ([Configuration §2](./configuration.md#2-section-reference)).
+- [ ] **NATS account limits reviewed** — the shipped defaults are 100 connections, 5000 subscriptions, 5 GiB of JetStream disk and 64 MiB of JetStream memory per organization. Size disk to what each plan is sold with, keep memory small, and set connections well above real load. They are stamped at provisioning, so decide **before** creating tenants: an existing account changes only by a Platform Operator editing its record ([Configuration §2](./configuration.md#2-section-reference)).
 - [ ] **NATS clustered** (3+ nodes) with `replicas: 3` on JetStream streams and KV buckets that matter.
 - [ ] **Credential expiry reviewed** — the NATS Users and Nebula Hosts lists flag anything expiring within 30 days, and anything already expired. Nebula host certificates always carry an expiry (`validity_years`); NATS user JWTs carry one only if it was set. Expired device credentials fail silently and, because a fleet is usually provisioned in a batch, they tend to fail *together*. Regenerate before the date, not after the outage. **Nebula’s expiry is the worse one**, because Nebula is the out-of-band path: reissuing a host certificate needs the Control Plane you were trying to reach over the mesh in the first place, so an expired fleet takes away the route you would have used to fix it.
 - [ ] **Nebula expiry alerted, not just visible** — the list badges above only help someone already looking at the right screen, and a CA minted with a ten-year validity lapses long after everyone who knew about it stopped thinking about it. The Control Plane reports Nebula certificate expiry without anyone logging in:
@@ -325,16 +325,18 @@ A condensed pre-flight list for taking a deployment to production:
     - `GET /metrics` publishes `stone_age_certificate_expiry_seconds{kind}` (`nebula_ca` / `nebula_host`), the soonest expiry of that kind **as an absolute Unix timestamp**, alongside `stone_age_certificates`, `_expired` and `_expiring` counts. Alert relative to now rather than on a stored countdown, so the horizon lives in the alert:
 
         ```
-        stone_age_certificate_expiry_seconds - time() < 30 * 86400
+        stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400
+        stone_age_certificate_expiry_seconds{kind="nebula_ca"}   - time() < 90 * 86400
         ```
 
     Host certificates count only `active = true` rows, so a decommissioned device’s lapsed certificate does not page anyone. There is no per-organization label: `/metrics` is open by default, and a tenant name beside a certificate inventory is free reconnaissance. Set an alert on the CA series in particular — every host certificate chains to it.
 
-    **Give the CA a wider horizon than a host: 90 days, not 30.** A host certificate is reissued in a moment; a CA can only be *rotated*, which is a staged procedure with a wait in the middle of it, and 30 days is less than that procedure comfortably needs. The console warns on a CA at 90 days and on a host at 30 for this reason — match your alert to the same split rather than running both off the 30-day expression above.
-- [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing is the control that actually cuts a device off (session killed, credential revoked), that it applies to a site gateway exactly as to any other device, and that reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+    **Give the CA a wider horizon than a host: 90 days, not 30.** A host certificate is reissued in a moment; a CA can only be *rotated*, which is a staged procedure with a wait in the middle of it, and 30 days is less than that procedure comfortably needs. The console, `_expiring` and the readiness check all use 90 days for a CA and 30 for a host for this reason — hence the two expressions above rather than one.
+- [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing is the control that actually cuts a device off, that it applies to a site gateway exactly as to any other device, and what it does: new logins refused, every issued session token killed, the linked NATS identity suspended (revoked, nothing reissued), and the linked Nebula host blocklisted — which takes effect as peers pick up their next config, since Nebula has no CRL. Reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)). **Deactivate, never delete:** deleting a Thing cascades to neither identity, so its credential and certificate stay live.
+- [ ] **A tenant-suspension path agreed** — clearing `active` on an **organization** withdraws its NATS account: the account claim is deleted, so every device, edge agent and browser in that tenant disconnects at once, and it stays withdrawn across restarts. It is Platform Operator only and **reversible** — no credential is revoked or re-minted, so re-ticking the box restores the account and every existing `.creds` connects again. It is deliberately narrow: it does not touch Nebula, does not lock the console, and does not end anyone's session, so a suspended tenant still signs in and reads what it owns. The operator and system organizations refuse it.
 - [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through a Platform Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
 - [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).
-- [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the only tenancy enforcement in the platform, and the suite is the only thing that checks them. If the release changed a rule, confirm it also shipped a migration (§5.1).
+- [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the platform's tenancy enforcement, and the suite is the only thing that checks them against a live server. If the release changed a rule, confirm it also shipped a migration (§5.1).
 - [ ] **A `stone pull` workspace in git** for reviewable, diffable tenant configuration ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
 
 ---

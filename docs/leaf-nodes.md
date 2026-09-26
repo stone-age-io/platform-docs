@@ -54,11 +54,11 @@ Bound to the `things` collection, taking **no record id**: the target is the cal
 
 **There is deliberately no marker, flag or capability check on it.** Everything served is either public trust material — the Operator, account and `$SYS` account JWTs, which every server in the network validates anyway — or the caller's own credential, which it must already hold in order to connect at all. A Thing that will never run a leaf node can call this route and learns nothing it could not already read. A gate would have been a permission over data that is not secret, and it would have needed a marker field to gate on.
 
-What is *not* served: account **seeds**, signing keys, and any `$SYS` **user** credential. The `nats_system_operator` collection stays superuser-only, and a gateway holds no read grant on `nats_users` or `nats_accounts` beyond its own linked identity. The blast radius of a leaked edge credential is those ten values plus that Thing's own access — a fixed list, not a consequence of how those collections' rules later evolve.
+What is *not* served: account **seeds**, signing keys, and any `$SYS` **user** credential. The `nats_system_operator` collection stays superuser-only, and a gateway reads nothing in any `nats_*` or `nebula_*` collection beyond its own linked NATS identity and Nebula host — and no inventory collection at all, not even the other Things in its organization. The blast radius of a leaked edge credential is those ten values plus that Thing's own access — a fixed list, not a consequence of how those collections' rules later evolve.
 
 ### The domain is the code, computed and never stored
 
-The platform derives `domain` from `code` at request time. The agent writes it into **both** `server_name` and `jetstream { domain }` in the generated config, and the console matches a leaf's reported `server_name` back to a Thing's `code` to show a site attached (§7) — so those two must not diverge, and the surest way to guarantee that is to have only one of them.
+The platform derives `domain` from `code` at request time. The agent writes it into **both** `server_name` and `jetstream { domain }` in the generated config, and a site-status widget matches a leaf's reported `server_name` back to a Thing's `code` to name the site it found (§7) — so those two must not diverge, and the surest way to guarantee that is to have only one of them.
 
 There is no `edge-` prefix and no organization segment in it either. JetStream is already scoped to the account, so the account *is* the namespace; a prefix would be decoration that every consumer then has to strip.
 
@@ -74,31 +74,36 @@ A generated `nats-leaf.conf` has to satisfy NATS operator-mode validation, and *
 !!! note "Preloading the `$SYS` **account** JWT grants nothing"
     It is public trust material, like the Operator JWT beside it. Connecting *as* `$SYS` requires a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects, and it is worth being precise about which one is which, because the first looks alarming and is not.
 
-The platform's generator now runs its own output through the real `nats-server` config parser in a test. Keep that shape if you touch it — substring checks cannot express "and the server accepts it".
+The generator lives in the Agent, not the platform (`internal/edge/leafconf.go` in the agent repository), and it now runs its own output through the real `nats-server` config parser in a test (`TestBuildLeafConfIsAcceptedByNATSServer`). The platform's side of the contract is the ten field names, which it pins separately. Keep that shape if you touch either — substring checks cannot express "and the server accepts it".
 
 ---
 
 ## 5. Deploy flow
 
-1. In the console, create the site's **Thing** — any Thing Type your organization uses for sites; nothing on the platform needs to know it is a gateway (§1). Copy the login password from the success dialog — it is shown once.
+1. In the console, create the site's **Thing** — any Thing Type your organization uses for sites; nothing on the platform needs to know it is a gateway (§1). Copy the login email and password from the success dialog — the password is shown once.
 2. Install the [Agent](./agent.md) on the edge box and configure the platform block:
 
     ```yaml
     code: "s01"
     platform:
       url: "https://platform.acme.io"
-      identity: "s01@things.acme.io"
+      identity: "s01@acme.thing.local"   # <code>@<org code>.thing.local
       password_env: "AGENT_PLATFORM_PASSWORD"
     nats:
       urls: ["nats://127.0.0.1:4222"]
       auth:
         type: "platform"
         creds_file: "/etc/agent/device.creds"
+    tasks:
+      service_check:
+        enabled: false       # on by default, and refused with no services listed
     sync:
       twin: true             # optional, see §6
     observability:
       addr: "127.0.0.1:9100" # optional, see §7
     ```
+
+    Two startup checks catch people here. `tasks.service_check` is on by default and the config is refused if it lists no services — turn it off, as above, or list the site's services. And `commands.scripts_directory` defaults to `/opt/agent/scripts`, which must exist; the install steps in [The Agent §1](./agent.md#getting-the-binary) create it.
 
 3. `agent -leaf-config` → writes `nats-leaf.conf` (0644) and the creds (0600) beside each other.
 4. Start the leaf, either way:
@@ -114,7 +119,9 @@ The platform's generator now runs its own output through the real `nats-server` 
 
 ## 6. Offline autonomy and KV bucket sync
 
-Once the leaf is up, the rest of the layered platform runs at the edge without the hub: a [rule engine](./automation.md) keeps evaluating site-local reflexes, a [stream processor](./stream-processing.md) keeps producing aggregates, and devices keep publishing to the local leaf, which buffers and forwards once connectivity returns.
+Once the leaf is up, the rest of the layered platform runs at the edge without the hub: a [rule engine](./automation.md) keeps evaluating site-local reflexes, a [stream processor](./stream-processing.md) keeps producing aggregates, and devices keep publishing to the local leaf, where local subscribers keep receiving.
+
+**What the leaf does not do is store and forward on its own.** A core NATS message published while the uplink is down reaches the site's subscribers and nobody at the hub, ever — interest re-propagates when the link returns, but nothing replays what was missed. The only data that crosses back is data something *stored*: a declared KV bucket the Agent relays (below), or a JetStream stream at the leaf that a hub-side stream sources from. The Agent creates neither kind of stream for you; a site that must not lose telemetry through an outage needs that stream declared deliberately.
 
 The `sync:` block keeps **KV buckets** in step across the link, so the site keeps deciding locally through a WAN outage. Two directions, two mechanisms, a list each:
 
@@ -134,7 +141,7 @@ sync:
 | Bucket | Written by | Flows | Mechanism |
 | :--- | :--- | :--- | :--- |
 | `twin` | the device, at the edge | edge → hub | relay |
-| `twin_desired` | operators, at the hub | hub → edge | JetStream **mirror** |
+| `twin_desired` | people and rules, at the hub | hub → edge | JetStream **mirror** |
 
 Everything below holds for the twin, and now also for any bucket a site declares.
 
@@ -152,7 +159,7 @@ Off by default, because it moves data-plane traffic and an upgrade must not sile
 
 - **A mirror's filter cannot be narrowed later.** `nats-server` rejects any change to a mirror block on an existing stream, so changing `keys:` on a mirror means deleting and recreating that bucket *at every site*. Scope it before you roll it out; the agent reports a mismatch rather than pretending it can repair one.
 
-- **Only the two preset buckets get created at the hub.** The agent creates the local side of any declared bucket and the hub side of none but `twin` and `twin_desired`. A typo that makes a stray local bucket is one site's problem; one that makes a stray hub bucket is everyone's, with whatever retention that site guessed. For any other bucket the hub side must already exist — and the Control Plane cannot make it either, holding the operator and no credential inside an organization's account ([Health & Metrics §1](./health-metrics.md#1-why-this-exists-at-all)). Something holding a *user* credential has to: the console, or `stone kv bucket create`.
+- **Only the two preset buckets get created at the hub.** The agent creates the local side of any declared bucket and the hub side of none but `twin` and `twin_desired`. A typo that makes a stray local bucket is one site's problem; one that makes a stray hub bucket is everyone's, with whatever retention that site guessed. For any other bucket the hub side must already exist — and the Control Plane cannot make it either, holding the NATS Operator and no credential inside an organization's account ([Health & Metrics §1](./health-metrics.md#1-why-this-exists-at-all)). Something holding a *user* credential has to: the console, or `stone kv bucket create`.
 
 A declared bucket whose hub side is missing is reported, not created: `agent_edge_sync_up{bucket,direction}` goes to `0` and the agent's `sync` readiness check warns. It **warns** rather than fails, because an islanded edge with a backlog is the design working — `agent_edge_relay_pending{bucket}` is the depth to watch.
 
@@ -178,7 +185,7 @@ with `{}` as the payload returns the account's current connection list. Entries 
 **Each account carries its own `$SYS` subject space.** `$SYS.REQ.ACCOUNT.PING.*` is scoped to the caller's own account and answers for that organization and no other; the operator-wide `$SYS.REQ.SERVER.PING.*` endpoints, which would span every tenant, are not reachable from a tenant credential. The server enforces both halves, and the platform pins them in a test against a real hub with a real leaf attached.
 
 !!! warning "Do not put `$SYS` in a publish deny list"
-    The widget needs `$SYS.REQ.ACCOUNT.PING.>` in its NATS Role's **publish allow** list; the shipped `console-readonly` role carries it. Do not add a deny beside it. In NATS a publish DENY beats a publish ALLOW, so a role carrying `$SYS.>` in its deny list cannot reach the account-scoped endpoints no matter what its allow list says — and if the request ever times out for one organization and not another, this is almost certainly why. The symptom is a bare timeout, because the real reason arrives asynchronously on the connection's error handler and never on the request itself.
+    The widget needs `$SYS.REQ.ACCOUNT.PING.>` in its NATS Role's **publish allow** list. The `console-readonly` role the demo seed creates carries it; nothing seeds that role in an ordinary deployment, so a role you author yourself needs the entry added. Do not add a deny beside it. In NATS a publish DENY beats a publish ALLOW, so a role carrying `$SYS.>` in its deny list cannot reach the account-scoped endpoints no matter what its allow list says — and if the request ever times out for one organization and not another, this is almost certainly why. The symptom is a bare timeout, because the real reason arrives asynchronously on the connection's error handler and never on the request itself.
 
     **Narrowing the deny to `$SYS.REQ.SERVER.>` is not a fix either**, only a quieter one. It looks like it restricts the operator-wide endpoints, but those are served *inside the `$SYS` account*, and an account is a closed subject namespace — a tenant credential publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder with or without a deny. The account boundary already enforces it, so the platform ships no `$SYS` deny at all, and pins both halves against a real server.
 
@@ -200,9 +207,11 @@ CONNZ answers one question — is this site's leaf attached to the hub. For the 
 
 - **The edge box is the trust boundary.** Tenant isolation is the NATS *account* boundary, which a site cannot cross. One NATS identity per gateway, shared by the leaf remote, the rule engine, and the agent.
 - The site holds **public trust material** (Operator JWT, account JWT, `$SYS` account JWT) plus its own user's creds. It **cannot mint new account users**.
-- **Taking a site out of service is `active` on its Thing**, Owner/Admin only. Clearing it does three things at once: the agent can no longer authenticate, the session token it already holds is invalidated immediately, and the site's NATS credential is revoked — so the config pull and the leaf remote connection both stop. Reactivating issues a **new** credential; the previous `.creds` stays revoked permanently, so re-run `agent -leaf-config` on the box. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+- **Taking a site out of service is `active` on its Thing**, Owner/Admin only. Clearing it does four things at once: the agent can no longer authenticate, the session token it already holds is invalidated immediately, the site's NATS credential is suspended (revoked, with nothing reissued), and its Nebula host is deactivated, which blocklists the certificate across the CA once peer configs are redeployed. So the config pull, the leaf remote connection and the overlay all stop. It sets `active`, never `revoke` — revoke would hand back a working replacement.
+
+    Reactivating issues a **new** NATS credential; the previous `.creds` stays revoked permanently. Getting it onto the box takes a platform session, and that died with the deactivation — so if the password was removed from the service environment, set a new one first (see [The Agent §2.2](./agent.md#22-removing-the-password)). The Agent's credential sync on its next start then writes the new creds to the same file the leaf config points at; restart the leaf server (or the agent, if it hosts it) so the leaf remote reconnects with them. Re-running `agent -leaf-config` does the same write and also needs that session. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 - **Deactivate, do not delete.** Revoking a Nebula certificate requires the certificate to still be in the database so its fingerprint can be published; deleting the record leaves it trusted until it expires.
-- The Thing's PocketBase password is resettable by an org Admin/Owner from the console, gated by the collection's `manageRule` — a scoped, audited record action rather than a superuser-only operation.
+- The Thing's PocketBase password can be reset by an org Admin/Owner on the Thing's **edit form** (the Authentication card, where they type a new one), gated by the collection's `manageRule` — a scoped, audited record action rather than a superuser-only operation.
 - Narrowing a site's blast radius is a record edit: reassign its NATS Role or add per-user permission overrides. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 
 !!! warning "`active` and an attached leaf answer different questions"

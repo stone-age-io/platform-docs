@@ -27,7 +27,7 @@ Because all layers communicate through NATS subjects, Layer 3 is a **pure consum
 > Prometheus-compatible stack described below. See
 > [Health & Metrics](./health-metrics.md).
 
-> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane, in **two** collections: `audit_logs`, the forensic trail with full before/after snapshots, restricted to **Platform Operators** — no tenant role, not even `owner`, can query it — and `activity`, an org-scoped feed of actor, action and record that every role can read and that carries no values at all. Audit retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)); the boundary between the two is described in [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed). Either way, don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
+> **The audit log is a different thing entirely.** Layer 3 is the history of your *telemetry*. The history of *administrative changes* — who created a Thing, who rotated a credential — lives in the Control Plane, in **two** collections: `audit_logs`, the forensic trail — the names of the fields every change touched, plus full before/after values for an allowlist of collections that deliberately excludes everything credential-bearing — restricted to **Platform Operators** (no tenant role, not even `owner`, can query it); and `activity`, an org-scoped feed of actor, action and record that every role can read and that carries no values at all. Audit retention is configured under `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)); the boundary between the two is described in [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed). Either way, don't plan to satisfy a compliance request for an admin-change trail out of your TSDB.
 
 ---
 
@@ -41,7 +41,7 @@ If you do not have an existing observability stack, we recommend the following b
 
 **Telegraf** is a lightweight agent used for collecting and reporting metrics. In our ecosystem, it acts as the bridge between NATS and your database.
 
-- **NATS Consumer:** Telegraf subscribes to your NATS subjects (e.g., `telemetry.>`) using a durable JetStream consumer, so nothing is lost during maintenance.
+- **NATS Consumer:** Telegraf subscribes to your NATS subjects (e.g., `telemetry.>`) as an ordinary NATS client, authenticated with a `.creds` file like any other. One organization's account is one tenant, so it is one Telegraf process per organization.
 - **Parsing:** It converts NATS JSON payloads into metrics.
 - **Output:** It pushes those metrics to your storage engine.
 
@@ -67,13 +67,16 @@ While the Stone-Age.io Platform Dashboard is perfect for operational control, **
 A typical production pipeline follows this path:
 
 1.  **Agent / Device:** Collects local metrics (CPU, Temp, etc.) and publishes to NATS.
-2.  **NATS Cluster:** Routes the data to real-time UI widgets AND persistent JetStream.
-3.  **Telegraf:** Acts as a JetStream consumer, pulling data from the bus at its own pace.
-4.  **VictoriaMetrics:** Receives data from Telegraf via the remote-write protocol.
+2.  **NATS Cluster:** Routes the data to real-time UI widgets, and into a JetStream stream where one covers the subject.
+3.  **Telegraf:** Subscribes to the subjects and parses each message into metrics.
+4.  **VictoriaMetrics:** Receives data from Telegraf as InfluxDB line protocol.
 5.  **Perses/Grafana:** Queries VictoriaMetrics to render historical graphs.
 
-**Why this is resilient:**
-If your VictoriaMetrics server goes down for maintenance, the data stays safe in the **NATS JetStream**. Once the database is back online, Telegraf catches up from where it left off, ensuring no gaps in your history. The live path — dashboards, alerts, Layer 1 rules — is completely unaffected.
+**What survives what:**
+
+- **The TSDB goes down.** Telegraf keeps collecting and holds a bounded buffer of metrics in memory (`metric_buffer_limit`), flushing it when the database returns. Past that limit the oldest are dropped, so a long outage leaves a gap.
+- **Telegraf goes down.** A plain subscription like the example below misses whatever was published meanwhile — core NATS holds nothing for a subscriber that is not there. If a gap-free history matters, put a JetStream stream over those subjects and ingest from the stream rather than from the live subject, so the stream's retention is what covers the outage. Telegraf's `nats_consumer` plugin has JetStream options for this; check its documentation for your version before relying on them.
+- **Either way, the live path — dashboards, alerts, Layer 1 rules — is completely unaffected.**
 
 <center>
 ```mermaid
@@ -122,29 +125,42 @@ flowchart LR
 
 ## 4. Example Telegraf Configuration
 
-To begin ingesting data from the Data Plane, configure Telegraf with a NATS input:
+To begin ingesting data from the Data Plane, configure Telegraf with a NATS input and a VictoriaMetrics output:
 
 ```toml
 [[inputs.nats_consumer]]
   ## NATS Servers to connect to
   servers = ["nats://nats.acme.io:4222"]
-  
-  ## Subjects to consume
+
+  ## The server runs in operator mode, so Telegraf needs a credential.
+  ## Create a NATS user for it in the organization and download its .creds.
+  ## It only subscribes, so give it a role with no publish rights.
+  credentials = "/etc/telegraf/acme-telegraf.creds"
+
+  ## Subjects to consume. One input is one NATS connection, and connections
+  ## count against the organization's account limit, so list every subject
+  ## here rather than adding a second input.
   subjects = ["telemetry.>"]
-  
-  ## Use a durable queue group to ensure no data is missed
-  queue_group = "telegraf_ingestor"
-  
+
+  ## Only matters if you run more than one Telegraf against this account:
+  ## instances sharing a queue group split the load instead of duplicating it.
+  ## It does not make the subscription durable.
+  queue_group = "telegraf-acme"
+
   ## Data format to expect from your Things/Agents
   data_format = "json"
-  
+
   ## Map JSON fields to Telegraf tags/fields
   tag_keys = ["device_id", "location"]
 
 [[outputs.http]]
-  ## Push data to VictoriaMetrics
-  url = "http://victoria-metrics:8428/api/v1/write"
+  ## VictoriaMetrics accepts InfluxDB line protocol and turns
+  ## `measurement,tags field=value` into `measurement_field{tags}`.
+  url = "http://victoria-metrics:8428/influx/write"
+  data_format = "influx"
 ```
+
+`outputs.http` rather than `outputs.influxdb` is deliberate: the InfluxDB output appends a `db=` parameter to every write, and VictoriaMetrics turns it into a constant `db` label on every series. The platform repository carries a fuller, working example in `demo/telegraf/`.
 
 ---
 
