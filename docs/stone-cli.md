@@ -408,7 +408,7 @@ stone thing update reader-01 --active=false      # a device: suspend through the
 ```
 
 !!! note "There is no `--active` flag on `nats-user`"
-    For a device, suspend the **Thing** — its `active` flag suspends the linked NATS identity along with its sessions and Nebula host, which is the whole operation. For an identity with no Thing, 0.5.0 has no typed flag: `stone nats-user edit <username>` opens the record as YAML, and setting `active: false` there and saving PATCHes it (owner/admin). `pull` omits `active` on `nats_users`, so it cannot be changed through `apply`.
+    For a device, suspend the **Thing** — its `active` flag suspends the linked NATS identity along with its sessions and Nebula host, which is the whole operation. For an identity with no Thing, 0.5.0 has no typed flag: `stone nats-user edit <username>` opens the record as YAML, and setting `active: false` there and saving PATCHes it (owner/admin). The next release adds `stone nats-user update <username> --active=false` (and `=true` to reactivate); it is on stone-cli's main branch, unreleased. `pull` omits `active` on `nats_users`, so it cannot be changed through `apply`.
 
 See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). The org switch always succeeds even if this step can't; when it short-circuits, it prints an informational `nats-sync: skipped — <reason>` line, never an error. `stone nats sync-context` has nothing else to do, so for it the same reasons are an **error** — `nothing to sync — <reason>`, non-zero exit:
 

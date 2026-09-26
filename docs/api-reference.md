@@ -421,7 +421,7 @@ one some deployment will disable and then be unable to explain.
   "checks": [
     { "name": "nats_reachable", "state": "ok", "took": "2ms" },
     { "name": "nebula_cert_expiry", "state": "warn",
-      "detail": "1 Nebula host certificate expiring within 30 days (soonest 2026-10-11)",
+      "detail": "expiring: 1 host certificate within 30 days (soonest 2026-10-11)",
       "fix": "Re-issue before the date above. Nebula certificates fail all at once and silently." }
   ]
 }

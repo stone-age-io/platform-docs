@@ -79,7 +79,7 @@ Consumers resolve templates against a Thing's context using these reserved varia
 | `{thing}` | `things.code` |
 | `{thing_type_code}` | `things.type.code` |
 
-> **Known defect in the Publisher widget.** The only resolver call in the console today fills `{org}` with the caller's active organization **name**, not its code, and `{thing}` with the Thing's record id when it has no code. A name can contain spaces and dots, so a prefix using `{org}` resolves to a wrong or invalid subject there. The table above is the contract ([ADR 0002](./decisions/0002-organization-code-namespace.md): ids for storage, codes for addressing); until the widget is fixed, avoid `{org}` in prefixes you publish to from the console, and give every bound Thing a code.
+> **Codes are optional, so a variable can have nothing to resolve to.** The Publisher widget fills `{org}` from the organization's code; an organization without one leaves `{org}` literal in the subject, visibly unresolved, rather than substituting its name (which can contain spaces and dots — not a subject token). `{thing}` falls back to the Thing's record id when it has no code, which is a valid token but not a stable handle. Give every organization and every bound Thing a code ([ADR 0002](./decisions/0002-organization-code-namespace.md): ids for storage, codes for addressing).
 
 ### Default prefix
 
