@@ -52,7 +52,7 @@ The division of labor in practice:
 Prebuilt binaries are attached to every release — linux, darwin and windows, amd64 and arm64 each:
 
 ```sh
-VERSION=0.5.0
+VERSION=0.5.1
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -120,7 +120,7 @@ stone org current                  # the current org: id, code, name
 stone org switch warehouse-ops     # by code, name, or 15-char id — code is tried first
 ```
 
-Since 0.5.0 organizations are addressed by their **code** — the platform's globally unique root identifier ([ADR 0002](./decisions/0002-organization-code-namespace.md)). A name still resolves (`org switch "Warehouse Ops"` works), but the code is tried first, so an organization *coded* `acme` beats a different one merely *named* `acme`.
+Since 0.5.0 organizations are addressed by their **code** — the platform's globally unique root identifier ([ADR 0002](./decisions/0002-organization-code-namespace.md)). A name still resolves (`org switch "Warehouse Ops"` works), but the code is tried first, so an organization *coded* `acme` beats a different one merely *named* `acme`. Since 0.5.1 `auth login`, `auth whoami` and `context show` print the current organization the same way — `acme (Acme Industries) [r03ixjyfs4fbkp2]` — falling back to the bare id when offline. That is display only: `context.yaml` still stores the id, and `-o json`/`-o yaml` output is unchanged.
 
 `org switch` updates `users.current_organization` **on the server** (so the console and the CLI agree on context) and caches it locally. From then on, org-scoped commands auto-filter `ls` and auto-inject `organization` on `create`. If `--nats-url` is set on the context, `switch` also re-issues your per-org NATS credentials — see §7.
 
@@ -171,7 +171,7 @@ In the **Role required** column, *any* means any role in the current organizatio
 - On `thing`, the `nats_user` and `nebula_host` relations are owner/admin only. A member can create and edit a Thing but any `--nats-user` / `--nebula-host` flag will be rejected.
 - On your **own** `membership` record the only write is to the NATS identity link, and only to **keep or clear** it — pointing it at a different identity is rejected. `nats_users` serves the credential of whichever identity your membership names, so choosing one is owner/admin, like changing a role. `--role`, `--user`, and `--invited-by` are rejected outright — self-promotion is not a supported path.
 
-Both ends of the invitation flow are here. `stone invite create --email …` issues one; `stone invite accept <token>` redeems it, taking the `?token=` value from the invitation link rather than the invite record's id. Redeeming sets `current_organization` only when it was blank, so follow it with `stone org switch` — which is also what writes the nats-cli context the new membership has no creds for yet.
+Both ends of the invitation flow are here. `stone invite create --email …` issues one; `stone invite accept <token>` redeems it, taking the `?token=` value from the invitation link rather than the invite record's id. Redeeming sets `current_organization` only when it was blank, so follow it with `stone org switch` (since 0.5.1 the `next:` hint it prints carries the organization's code, ready to paste) — which is also what writes the nats-cli context the new membership has no creds for yet.
 
 The full matrix, and the reasoning behind each restriction, is on [Authorization & Roles](./authorization.md).
 
