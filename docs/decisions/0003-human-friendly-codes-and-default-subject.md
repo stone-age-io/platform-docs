@@ -1,6 +1,6 @@
 # ADR 0003: Human-Friendly Codes, Type Prefixes, and a Location-Free Default Subject
 
-**Status:** Accepted — implemented in the platform, except `stone` (step 7). Step 6's move of the demo to bare application identifiers was dropped.
+**Status:** Accepted — implemented. Step 6's move of the demo to bare application identifiers was dropped.
 **Date:** 2026-09-25 (implemented 2026-09-25)
 
 > The Decision below is the design as it was argued. See [As implemented](#as-implemented) for what shipped, the one part that was dropped, and why.
@@ -206,4 +206,4 @@ Nothing in rule 6 required the move. It says subject layout past the default is 
 
 **Existing blank codes are not backfilled.** A code is frozen the moment it exists, so a migration generating codes for old records would be choosing permanent identifiers on nobody's behalf. The migration logs how many Things and Locations have none.
 
-**Not done: `stone` (step 7).** `thing provision` still requires `--code`, neither type entity has a `--prefix` flag, and code lookups still match case exactly. (`stone code suggest` is no longer part of it.) A `thing create` or `location create` without `--code` already gets a generated code, because that goes through the record API and the create hook.
+**`stone` (step 7) followed separately.** `thing provision` no longer requires `--code`, `thing-type` and `location-type` gained `--prefix`, and a lookup by code ignores case while every other key stays exact. `thing create` and `location create` needed no change: they go through the record API, so the create hook already generated a code when `--code` was left out. `stone code suggest` was dropped with the endpoint.

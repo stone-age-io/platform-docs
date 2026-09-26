@@ -186,7 +186,7 @@ stone thing ls --fields code,name                            # requested fields 
 stone nebula-host edit edge-west                             # opens $EDITOR as YAML, PATCHes on save
 ```
 
-**Codes are generated server-side when left out** ([ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md)). `stone thing create` or `stone location create` without `--code` gets a code like `CA-9KD-4PX` under the type's prefix, and `-o yaml` or a later `get` shows it. A code you pass is stored as typed. Two things `stone` has not caught up with yet: `thing provision` still requires `--code`, and neither type entity has a `--prefix` flag, so set a type's prefix in the console, or with `edit` or `apply`.
+**Codes are generated server-side when left out** ([ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md)). `stone thing create`, `stone location create` or `stone thing provision` without `--code` gets a code like `CA-9KD-4PX` under the type's prefix; `provision` prints it, and `-o yaml` or a later `get` shows it for the others. A code you pass is stored as typed. Set a type's prefix with `--prefix` on `thing-type` or `location-type` (1–4 capitals; a Thing Type and a Location Type in one organization cannot share one). A code, and a Thing's or Location's `--type`, are frozen once set: an update that changes the type answers 404, and a wrong type is fixed by delete and recreate. `provision` without `--code`, `--prefix`, and lookups that ignore case need a stone build newer than 0.5.1.
 
 ### Provisioning a real device
 
@@ -199,11 +199,11 @@ stone thing provision --code gw-01 --name "Gateway 01" \
     --nebula-mode auto --nebula-network <id> --nebula-ip 10.128.0.42
 ```
 
-Each identity takes `--nats-mode` / `--nebula-mode` of `none` (default), `auto` (mint one — NATS uses the org's default role unless `--nats-role` names another; Nebula needs `--nebula-network` and `--nebula-ip`, the route does not allocate an address) or `link` (attach an existing one with `--nats-user` / `--nebula-host`). `--name` and `--code` are required. Attaching either identity is owner/admin; a member may provision with both modes left at `none`. The organization comes from your active context, never the request.
+Each identity takes `--nats-mode` / `--nebula-mode` of `none` (default), `auto` (mint one — NATS uses the org's default role unless `--nats-role` names another; Nebula needs `--nebula-network` and `--nebula-ip`, the route does not allocate an address) or `link` (attach an existing one with `--nats-user` / `--nebula-host`). `--name` is required; `--code` is optional and generated when left out. Attaching either identity is owner/admin; a member may provision with both modes left at `none`. The organization comes from your active context, never the request.
 
 ### Lookup by id or natural key
 
-`get`, `update`, `delete`, and `edit` accept either a 15-char PocketBase id or the entity's **natural key** from the table above (`code`, `name`, `hostname`, …). Key lookups are exact-match and scoped to the current Organization. On the platform code uniqueness ignores case, so `cam-1` and `CAM-1` cannot both exist; `stone` still matches the case you type, so type a code the way it is stored. Multiple matches fail with the candidate ids listed; no match fails with `no <entity> with <key> "<arg>"`. Where an entity has a second key (`organization`: `code`, then `name`), the keys are tried one at a time in that order. `membership` is id-only.
+`get`, `update`, `delete`, and `edit` accept either a 15-char PocketBase id or the entity's **natural key** from the table above (`code`, `name`, `hostname`, …). Key lookups are scoped to the current Organization and exact-match, except that a **code ignores case**: `stone thing get ca-9kd-4px` finds `CA-9KD-4PX`. The platform's code uniqueness ignores case too, so the folded match cannot find two records. Names and every other key stay exact. Multiple matches fail with the candidate ids listed; no match fails with `no <entity> with <key> "<arg>"`. Where an entity has a second key (`organization`: `code`, then `name`), the keys are tried one at a time in that order. `membership` is id-only.
 
 ### Field types
 
