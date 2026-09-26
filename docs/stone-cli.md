@@ -178,13 +178,15 @@ The full matrix, and the reasoning behind each restriction, is on [Authorization
 ```sh
 stone location create --name "HQ" --code hq
 stone thing-type create --name "Temp Sensor" --code temp-sensor \
-    --subject-prefix "sensor.{location}.{thing}"
+    --subject-prefix "sensor.{thing}"
 stone thing-type-operation create --name heartbeat --capability publish \
     --subject-suffix heartbeat
 stone thing get warehouse-hvac --fields code,name,location   # read back by natural key
 stone thing ls --fields code,name                            # requested fields become the columns
 stone nebula-host edit edge-west                             # opens $EDITOR as YAML, PATCHes on save
 ```
+
+**Codes are generated server-side when left out** ([ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md)). `stone thing create` or `stone location create` without `--code` gets a code like `CA-9KD-4PX` under the type's prefix, and `-o yaml` or a later `get` shows it. A code you pass is stored as typed. Two things `stone` has not caught up with yet: `thing provision` still requires `--code`, and neither type entity has a `--prefix` flag, so set a type's prefix in the console, or with `edit` or `apply`.
 
 ### Provisioning a real device
 
@@ -201,7 +203,7 @@ Each identity takes `--nats-mode` / `--nebula-mode` of `none` (default), `auto` 
 
 ### Lookup by id or natural key
 
-`get`, `update`, `delete`, and `edit` accept either a 15-char PocketBase id or the entity's **natural key** from the table above (`code`, `name`, `hostname`, …). Key lookups are exact-match and scoped to the current Organization. Multiple matches fail with the candidate ids listed; no match fails with `no <entity> with <key> "<arg>"`. Where an entity has a second key (`organization`: `code`, then `name`), the keys are tried one at a time in that order. `membership` is id-only.
+`get`, `update`, `delete`, and `edit` accept either a 15-char PocketBase id or the entity's **natural key** from the table above (`code`, `name`, `hostname`, …). Key lookups are exact-match and scoped to the current Organization. On the platform code uniqueness ignores case, so `cam-1` and `CAM-1` cannot both exist; `stone` still matches the case you type, so type a code the way it is stored. Multiple matches fail with the candidate ids listed; no match fails with `no <entity> with <key> "<arg>"`. Where an entity has a second key (`organization`: `code`, then `name`), the keys are tried one at a time in that order. `membership` is id-only.
 
 ### Field types
 

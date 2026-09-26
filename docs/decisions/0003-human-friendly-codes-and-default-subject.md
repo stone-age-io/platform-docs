@@ -1,7 +1,9 @@
 # ADR 0003: Human-Friendly Codes, Type Prefixes, and a Location-Free Default Subject
 
-**Status:** Proposed
-**Date:** 2026-09-25
+**Status:** Accepted — implemented in the platform, except `stone` (step 7). Step 6's move of the demo to bare application identifiers was dropped.
+**Date:** 2026-09-25 (implemented 2026-09-25)
+
+> The Decision below is the design as it was argued. See [As implemented](#as-implemented) for what shipped, the one part that was dropped, and why.
 
 > This ADR builds on [ADR 0002](./0002-organization-code-namespace.md) and does not revisit it: ids for storage, codes for addressing, and a code is frozen once set. It changes how Thing and Location codes are *made*, how they are compared, and what the platform's default subject contains. What the Time-Series Database does without a location in the subject is [ADR 0004](./0004-long-term-data-and-location-path.md).
 
@@ -63,7 +65,7 @@ The prefix is **not** `thing_types.code`. That code is subject token 0 (`ip_came
 
 **This removes blank codes for Things and Locations.** This amends ADR 0002 rule 2 for these two collections: presence is now guaranteed by the hook, the same technique `organizations.code` uses, not by `required` in the schema. The unique indexes stay partial, which is harmless.
 
-**Clients get codes from the server, not their own generator.** `GET /api/codes/suggest?kind=thing|location&type=<type id>&count=<n>`, available to the roles that can create the record (owner, admin, member), returns up to 500 codes that are not in use when they are returned. Suggestions are **not reserved**: in a space of about 210 million per prefix, a clash between suggesting and creating is negligible, and if one happens the unique index refuses the create and the client asks again. The UI form uses the endpoint to pre-fill the code field. `stone code suggest --type ip_camera -n 50` uses it to pre-print a pallet's labels before the devices are registered.
+**Clients get codes from the server, not their own generator.** `GET /api/codes/suggest?kind=thing|location&type=<type id>&count=<n>`, available to the roles that can create the record (owner, admin, member), returns up to 500 codes that are not in use when they are returned. Suggestions are **not reserved**: in a space of about 210 million per prefix, a clash between suggesting and creating is negligible, and if one happens the unique index refuses the create and the client asks again. The UI form uses the endpoint to pre-fill the code field. `stone code suggest --type ip_camera -n 50` uses it to pre-print a pallet's labels before the devices are registered. *(Amended: the endpoint shipped and was then removed. See [As implemented](#as-implemented).)*
 
 ### 3. Codes keep their case; uniqueness and human lookups ignore it
 
@@ -102,7 +104,7 @@ The docs suggest one layout and say plainly that the account owner decides:
 
 > Token 0 is a **kind**: a Thing Type code, `agents`, or an application identifier. Token 1 is the **code** of the thing or instance. Everything after that belongs to the kind. Applications use a bare `{app-identifier}.…`, the same shape as Thing Types.
 
-The platform enforces only two things: how an empty prefix resolves, and the character rules that make a code a safe token. An application identifier and a Thing Type code share token 0. The same organization admin controls both, so a clash would be self-inflicted and visible to them, and we don't police it. The demo's `app.{kind}.{thing}.{operation}` becomes `{kind}.{thing}.{operation}` (`wms.…`, `rules.…`).
+The platform enforces only two things: how an empty prefix resolves, and the character rules that make a code a safe token. An application identifier and a Thing Type code share token 0. The same organization admin controls both, so a clash would be self-inflicted and visible to them, and we don't police it. The demo's `app.{kind}.{thing}.{operation}` becomes `{kind}.{thing}.{operation}` (`wms.…`, `rules.…`). *(Amended: the demo keeps `app.`. A bare `kiosk.{thing}` would have put the kiosk controller inside the kiosk nodes' own tree. See [As implemented](#as-implemented). The rule itself stands: both shapes are guidance.)*
 
 ---
 
@@ -120,7 +122,7 @@ The stricter alternative, uppercasing every code on save, was rejected: it drops
 
 ## Why one generator on the server
 
-`ui/src/utils/subjectResolver.ts` carried a header comment claiming it mirrored a Go package that was never written. Two generators, one in Go and one in TypeScript, would drift the same way, and a code is frozen and printed, so drift here is permanent. One implementation behind a hook and an endpoint means the UI, `stone`, the API and any future client produce the same codes, and only the server can check a suggestion against existing records.
+`ui/src/utils/subjectResolver.ts` carried a header comment claiming it mirrored a Go package that was never written. Two generators, one in Go and one in TypeScript, would drift the same way, and a code is frozen and printed, so drift here is permanent. One implementation behind a hook means the UI, `stone`, the API and any future client produce the same codes, and only the server can check a code against existing records.
 
 ---
 
@@ -128,11 +130,11 @@ The stricter alternative, uppercasing every code on save, was rejected: it drops
 
 1. **Case-insensitive unique indexes** on `things`, `locations`, `thing_types`, `location_types`. There is no data to sweep.
 2. **`prefix` on both type collections:** field, pattern validator, partial unique index, and the cross-collection hook.
-3. **Generator:** a Go package, create hooks on `things` and `locations`, and `GET /api/codes/suggest`.
+3. **Generator:** a Go package, create hooks on `things` and `locations`, and `GET /api/codes/suggest`. *(Amended: removed after it shipped.)*
 4. **Type freeze** in the `things` and `locations` update rules.
 5. **Default subject:** `DEFAULT_PREFIX` in `subjectResolver.ts` and its spec, the help text in `ThingTypeFormView.vue`, and a check of `PublisherWidget.vue`.
-6. **Demo:** `internal/demoseed` (contract, inventory, tests), `demo/rules/northwind`, `demo/telegraf`. Keep `{location}` on the fixed-equipment types so the demo shows both layouts. Move apps from `app.{kind}` to bare `{kind}`.
-7. **`stone`:** code-based lookups ignore case; add `stone code suggest`.
+6. **Demo:** `internal/demoseed` (contract, inventory, tests), `demo/rules/northwind`, `demo/telegraf`. Keep `{location}` on the fixed-equipment types so the demo shows both layouts. Move apps from `app.{kind}` to bare `{kind}`. *(Amended: not done; see [As implemented](#as-implemented).)*
+7. **`stone`:** code-based lookups ignore case; add `stone code suggest`. *(Amended: dropped with the endpoint.)*
 8. **Docs:** `thing-types.md`, `connectivity.md`, `platform-ui-entities.md`, `stone-cli.md`, and the Agent note in `connectivity.md`, which stops being an exception.
 
 ---
@@ -178,3 +180,30 @@ The stricter alternative, uppercasing every code on save, was rejected: it drops
 - **Requiring a prefix.** A blank prefix costs nothing; the generator produces `XXX-XXX`.
 - **A location twin key maintained by the platform.** The platform writes only to the system account, so keeping a per-organization KV key current would mean every client chaining an HTTP call and a NATS call on every move, with no recovery when the second fails. See [ADR 0004](./0004-long-term-data-and-location-path.md).
 - **A reserved `app.` root for applications.** It protects against a clash that only the organization's own admin can cause, and it costs every application a token.
+
+---
+
+## As implemented
+
+Shipped in the platform as one change: `hooks/codes.go`, `migrations/schema_update_type_prefixes.go`, the `things` and `locations` update rules, `ui/src/utils/subjectResolver.ts`, and the forms. `scripts/test-authz.sh` section 24 covers the rules against a live server.
+
+**The suggest endpoint was removed.** `GET /api/codes/suggest` shipped with this change and was taken out before any release. Its only use was having a code in hand before the record existed, to write on a device or pre-print labels. Both are covered without it: a blank code is generated at save, and the Things list prints labels for every record in the current filter once they exist. What it cost was a route, an authorization surface to test, and a button on the Thing form. With it gone there is no way to get a generated code ahead of its record, and nothing needs one. `stone code suggest` is dropped with it.
+
+**The demo keeps its `app.` root.** Rule 6 had the demo move from `app.{kind}.{thing}` to a bare `{kind}.{thing}`. For the kiosk controller that means `app.kiosk.{thing}` becoming `kiosk.{thing}`, which is the kiosk nodes' own tree:
+
+- The kiosk stream binds `kiosk.*.event.>`, and the Thing Type screen would render the controller's subjects as if it were one more kiosk node.
+- A role granting kiosk nodes `kiosk.*.>` would match the controller's code too.
+
+Nothing in rule 6 required the move. It says subject layout past the default is guidance, and a grouped `app.{app}.…` root is as valid as a bare identifier. The demo shows the grouped shape; [Thing Types](../thing-types.md#subject-layout-past-the-default-is-guidance) describes both. The rejected alternative below still holds as platform policy: the platform reserves no `app.` token. Every demo type already sets an explicit prefix, so the new default subject changed none of them.
+
+**Operation suffixes already accepted variables.** Consumers join a prefix and a suffix before resolving, so `{thing}`, `{location}`, `{org}` and `{thing_type_code}` resolve in a suffix exactly as in a prefix. That was true before this ADR and documented nowhere; [Thing Types §3](../thing-types.md#reserved-variables) now says so. An application tree such as `acc.{location}.door.{thing}` with suffixes like `cmd.grant` therefore needs nothing new.
+
+**The Thing form's email preview used the organization's name.** It slugified the name, the same mistake `orgSlugFor` made before ADR 0002. It now shows the organization code, which is what the route uses.
+
+**Two small additions.** The Scanner widget's filter accepts `{value:lower}`, so `code:lower = "{value:lower}"` finds a code typed in the wrong case. The Thing Type form's subject-prefix help printed `{'{org}'}` literally, a JSX habit in a Vue template, and now prints `{org}`.
+
+**The migration runs before `schema_update_unique_org_code` on a fresh database**, because PocketBase orders migrations by file name. It is harmless: both re-import the same `schema.json`.
+
+**Existing blank codes are not backfilled.** A code is frozen the moment it exists, so a migration generating codes for old records would be choosing permanent identifiers on nobody's behalf. The migration logs how many Things and Locations have none.
+
+**Not done: `stone` (step 7).** `thing provision` still requires `--code`, neither type entity has a `--prefix` flag, and code lookups still match case exactly. (`stone code suggest` is no longer part of it.) A `thing create` or `location create` without `--code` already gets a generated code, because that goes through the record API and the create hook.

@@ -265,8 +265,15 @@ Each identity block takes a `mode`:
 | `link` | Attach an existing one, verified to belong to this organization | `nats.user_id`; `nebula.host_id` |
 | `none` | Leave it unbound — a pure inventory row | — |
 
-`name` and `code` are both required (`400` without either). An absent block is
-`none`, and an unrecognised mode is rejected rather than treated as `none`.
+`name` is required (`400` without it). `code` is optional: left blank, the route
+generates one under the Thing Type's prefix (`CA-9KD-4PX`), before anything is
+saved, because the email and the NATS username are both built from it. The
+response carries the code either way. A supplied code is refused if another
+Thing in the organization already holds it in any case (`cam-1` against
+`CAM-1`). See [Generated codes](./thing-types.md#generated-codes).
+
+An absent identity block is `none`, and an unrecognised mode is rejected rather
+than treated as `none`.
 
 `nats.mode: "auto"` needs an **active** NATS account to sign under, so while the
 organization is [suspended](./authorization.md#31-suspending-an-organization) it

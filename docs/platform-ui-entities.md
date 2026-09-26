@@ -71,7 +71,7 @@ Locations define the physical or logical hierarchy of your environment. They ans
 ### Concepts
 
 - **Hierarchy:** Locations support parent/child relationships (e.g., `Global > North America > Chicago > Warehouse A > Row 4`).
-- **Location Code:** A unique identifier (e.g., `CHI-W-A`), unique within the Organization and matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — no dots, no NATS wildcards, no spaces ([why](./thing-types.md#what-a-code-may-contain)). It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it.
+- **Location Code:** A unique identifier (e.g., `CHI-W-A`), unique within the Organization (ignoring case) and matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — no dots, no NATS wildcards, no spaces ([why](./thing-types.md#what-a-code-may-contain)). Prefer the name already on the door or drawing (`RM-204`); a Location saved without a code gets a [generated one](./thing-types.md#generated-codes) under its type's prefix, so none is left without. It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it. The Location's **type** is frozen once set too.
 - **Metadata:** A flexible JSON field for storing site-specific data like time zones, contact info, or local gateway IPs.
 
 ### Mapping & Visualization
@@ -98,7 +98,8 @@ A **Thing** is any entity that produces or consumes data — or just an asset yo
 ### Concepts
 
 - **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration. An Owner or Admin can set a new password from the **Authentication** card on the Thing's *edit* form if it is lost — type it in and save; nothing is generated or displayed. (The only time the platform shows a Thing password is the one it generates at creation.)
-- **Thing Code:** Similar to the Location code, same character rules, and used for NATS namespacing (e.g., `thing.LOC_01.SENSOR_01`), and it is likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons.
+- **Thing Code:** Same character rules as the Location code, used for NATS namespacing (e.g., `camera.CA-9KD-4PX`), and likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons. Leave it blank on the create form and the server generates one under the Thing Type's prefix, like `CA-9KD-4PX`, when you save. To put codes on a batch of devices, create the records first and print their labels from the list. A code stencilled on the hardware (`DOOR-1`) is still the right one to type in. See [Generated codes](./thing-types.md#generated-codes).
+- **Type:** Frozen once set. The code prefix and the default subject are both derived from it, so a wrong type is fixed by deleting and recreating the Thing, ideally before it is provisioned. See [A type is frozen once set](./thing-types.md#a-type-is-frozen-once-set).
 - **Metadata:** Used to store device-specific state that doesn't change often, such as hardware revision, install date, or calibration offsets.
 - **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, its NATS identity is suspended, and its Nebula certificate is blocklisted by every peer as their configs are redeployed. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. **Deactivate rather than delete:** deleting a Thing touches neither identity, so its credential keeps working and its certificate stays trusted with nothing left pointing at them. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
@@ -123,7 +124,9 @@ The subjects a Thing publishes to become the inputs to your Layer 1 rules — pi
 Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering. Location Types are purely for organization; Thing Types have grown into the platform's primary **contract layer** for describing what a participant does on the fabric.
 
 - **Location Types:** Categorize your sites (e.g., `Campus`, `Building`, `Room`, `Cabinet`).
-- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{location}.{thing}`), and a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a subject suffix). See [Thing Types](./thing-types.md) for the full model.
+- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{thing}`, or blank for the default `{thing_type_code}.{thing}`), and a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a subject suffix). See [Thing Types](./thing-types.md) for the full model.
+
+Both kinds of type carry an optional **code prefix**, 1–4 capital letters (`CA`, `BLD`), copied into every code generated for a record of that type. Thing prefixes and Location prefixes are separate sets within an organization, so a generated Thing code never looks like a Location code. Changing a prefix affects future codes only.
 
 Thing Types compose from one other collection that the UI also manages directly:
 

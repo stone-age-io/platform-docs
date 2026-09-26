@@ -12,16 +12,18 @@ NATS provides the messaging fabric for the platform. It is designed to be always
 
 ### Core Pub/Sub & Subject Namespacing
 
-In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's canonical namespacing pattern is **family-first** and Thing-Type-aware:
+In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's default namespacing pattern is **family-first** and Thing-Type-aware:
 
 ```
-{thing_type_code}.{location}.{thing}.{operation_suffix}
+{thing_type_code}.{thing}.{operation_suffix}
 ```
 
-- **Examples:** `temp_sensor.warehouse-a.sensor-01.reading`, `camera.warehouse-a.cam-042.motion`, `door.chicago.dock-3.opened`.
-- **The Agent is the exception, and deliberately.** It is a management daemon rather than a device publishing against a Thing Type contract, and its subjects are `{subject_prefix}.{code}.…` with no location segment — a gateway's heartbeat is `agents.gw-99.heartbeat`. See [The Agent §3](./agent.md#3-capabilities).
-- **Where the segments come from:** `{location}` and `{thing}` are the codes on the Location and Thing records; `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
-- **Wildcards:** Wildcards match subject tokens. Subscribe to `camera.>` to see every camera event across every site, or `camera.warehouse-a.*.motion` to see every camera's motion events at one site. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
+- **Examples:** `temp_sensor.TP-4KD-7PX.reading`, `camera.CA-9KD-4PX.motion`, `door.DOOR-1.opened`.
+- **No location, by default.** Things move, and a subject built from a Thing's current location would move with it, splitting its history across two sites and leaving its NATS permissions aimed at the old one. A Thing code is already unique within the organization, which is the NATS account. Where location is carried instead is covered in [Thing Types](./thing-types.md#two-constraints-worth-knowing-before-you-design-a-prefix) and [ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md).
+- **The Agent follows the same shape.** It is a management daemon rather than a device publishing against a Thing Type contract, and its subjects are `{subject_prefix}.{code}.…` — a gateway's heartbeat is `agents.gw-99.heartbeat`. See [The Agent §3](./agent.md#3-capabilities).
+- **Where the segments come from:** `{thing}` is the code on the Thing record, and `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
+- **Wildcards:** Wildcards match subject tokens. Subscribe to `camera.>` to see every camera event, or `camera.*.motion` to see every camera's motion events. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
+- **This is a starting point, not a rule.** The platform enforces only what an empty prefix resolves to and which characters a code may contain. A Thing Type can opt into `{location}` (`freezer.{location}.{thing}` for equipment that never moves), and an application can own its own tree, such as `acc.>` or `kiosk.>` in the demo. The account owner decides the rest.
 
 **Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
 
