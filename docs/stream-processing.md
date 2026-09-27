@@ -1,3 +1,7 @@
+---
+path: platform/stream-processing
+nav_order: 160
+---
 # Stream Processing
 
 Stream processing is **Layer 2** of the Stone-Age.io platform — the tier where genuinely stateful, time-aware computation happens. When the declarative event logic of the rule engine becomes awkward, a stream processor is the natural graduation.

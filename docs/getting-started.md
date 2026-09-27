@@ -1,3 +1,7 @@
+---
+path: platform/getting-started
+nav_order: 50
+---
 # Getting Started
 
 ## The short version

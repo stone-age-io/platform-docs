@@ -1,3 +1,7 @@
+---
+path: platform/overview
+nav_order: 20
+---
 # Overview
 
 Every site you manage, on one screen — and the equipment on those sites keeps
@@ -46,10 +50,11 @@ The hard part is that **"customer A cannot see customer B" has to be true in all
 
 The usual escape is to buy a platform that owns all four — which works, and costs you egress fees, proprietary APIs, and the premise that your data has to leave the building to be useful.
 
-!!! note "What this platform does *not* claim"
-    Not that there are fewer moving parts. Run every layer and you have a Control Plane, a broker, an overlay network, an Agent at each site, a rule engine, a stream processor, a metrics agent and a time-series database — eight component types, which is not obviously better than the stack you would have assembled yourself.
+::: note What this platform does *not* claim
+Not that there are fewer moving parts. Run every layer and you have a Control Plane, a broker, an overlay network, an Agent at each site, a rule engine, a stream processor, a metrics agent and a time-series database — eight component types, which is not obviously better than the stack you would have assembled yourself.
 
-    The claim is about **where the tenancy boundary lives**, and about being able to stop early and leave late. If you want the process count itself to go down, see §1 below — it has been going down.
+The claim is about **where the tenancy boundary lives**, and about being able to stop early and leave late. If you want the process count itself to go down, see §1 below — it has been going down.
+:::
 
 ## What the Platform Commits To
 

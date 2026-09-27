@@ -1,3 +1,7 @@
+---
+path: platform/decisions/0001-embedded-nats-server
+nav_order: 10
+---
 # ADR 0001: Embed the NATS Server in the Control Plane Binary
 
 **Status:** Accepted — implemented, except step 3 (config reload), which was not built

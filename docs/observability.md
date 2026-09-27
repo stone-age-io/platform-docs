@@ -1,3 +1,7 @@
+---
+path: platform/observability
+nav_order: 170
+---
 # Observability
 
 Observability is **Layer 3** of the Stone-Age.io platform — the tier that answers questions about the past. While the substrate (Layer 0) handles live state, the rule engine (Layer 1) handles reflexes, and stream processors (Layer 2) handle real-time analytical computation, Layer 3 is the historical record. It's what lets you ask "what happened last Tuesday" or "how has this trended over the last month."

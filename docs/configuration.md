@@ -1,3 +1,7 @@
+---
+path: platform/configuration
+nav_order: 190
+---
 # Configuration Reference
 
 The Stone-Age.io platform binary (`stone-age`) is configured through three sources, evaluated in priority order:
@@ -155,18 +159,20 @@ STONE_AGE_NATS_WEBSOCKET_URLS="wss://a.example.com:9222 wss://b.example.com:9222
 
 `nats.encryption_key` and `nebula.encryption_key` encrypt the **secret columns** at rest: the NATS operator, account and user seeds and private keys and the account signing keys, and the Nebula CA and host `private_key` columns. Both default to empty, which means those values sit in the SQLite file in plaintext.
 
-!!! warning "What these keys do not cover: issued credentials"
-    The keys protect the material needed to **mint** identities. They do not protect credentials already issued, and cannot:
+::: warning What these keys do not cover: issued credentials
+The keys protect the material needed to **mint** identities. They do not protect credentials already issued, and cannot:
 
-    - `nats_users.creds_file` contains the user seed by construction, and the browser reads it straight from the API to open its own NATS connection.
-    - `nebula_hosts.config_yaml` embeds the host key inline, because Nebula requires it there.
+- `nats_users.creds_file` contains the user seed by construction, and the browser reads it straight from the API to open its own NATS connection.
+- `nebula_hosts.config_yaml` embeds the host key inline, because Nebula requires it there.
 
-    So a stolen database with the key held elsewhere yields no ability to mint new identities, and **every credential already issued**. Carry that threat with disk encryption, encrypted backups and access control on the host. The readiness check says the same thing when encryption is on: *"minting keys; issued credentials are plaintext by construction"*. The platform repository's `SECURITY.md` describes what a stolen database does and does not yield.
+So a stolen database with the key held elsewhere yields no ability to mint new identities, and **every credential already issued**. Carry that threat with disk encryption, encrypted backups and access control on the host. The readiness check says the same thing when encryption is on: *"minting keys; issued credentials are plaintext by construction"*. The platform repository's `SECURITY.md` describes what a stolen database does and does not yield.
+:::
 
-!!! danger "Set these before creating anything real, and back the keys up separately"
-    A row written with a key cannot be read back without it. There is no recovery path: losing the key loses every seed and private key it protected, which means re-provisioning every NATS identity and re-issuing every Nebula certificate in every affected organization. Supply them through `STONE_AGE_NATS_ENCRYPTION_KEY` and `STONE_AGE_NEBULA_ENCRYPTION_KEY` rather than committing them to `config.yaml`.
+::: danger Set these before creating anything real, and back the keys up separately
+A row written with a key cannot be read back without it. There is no recovery path: losing the key loses every seed and private key it protected, which means re-provisioning every NATS identity and re-issuing every Nebula certificate in every affected organization. Supply them through `STONE_AGE_NATS_ENCRYPTION_KEY` and `STONE_AGE_NEBULA_ENCRYPTION_KEY` rather than committing them to `config.yaml`.
 
-    Equally, turning encryption **on** for a database that already has rows does not retroactively encrypt them, and turning it **off** does not decrypt what is already encrypted. Decide at install time.
+Equally, turning encryption **on** for a database that already has rows does not retroactively encrypt them, and turning it **off** does not decrypt what is already encrypted. Decide at install time.
+:::
 
 Generate 32 characters and keep them somewhere that is not the backup of the database they protect:
 
@@ -174,10 +180,11 @@ Generate 32 characters and keep them somewhere that is not the backup of the dat
 openssl rand -hex 16    # 32 characters
 ```
 
-!!! warning "This is not the same thing as `--encryptionEnv`"
-    PocketBase’s `--encryptionEnv` flag encrypts **app settings** — SMTP passwords, S3 credentials, OAuth2 secrets. It does **not** touch the NATS and Nebula columns above, because those collections belong to this platform rather than to PocketBase.
+::: warning This is not the same thing as `--encryptionEnv`
+PocketBase’s `--encryptionEnv` flag encrypts **app settings** — SMTP passwords, S3 credentials, OAuth2 secrets. It does **not** touch the NATS and Nebula columns above, because those collections belong to this platform rather than to PocketBase.
 
-    A production checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext. Both are needed, and they are configured in different places: `--encryptionEnv` is a CLI flag, these are `config.yaml` keys.
+A production checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext. Both are needed, and they are configured in different places: `--encryptionEnv` is a CLI flag, these are `config.yaml` keys.
+:::
 
 ### `nebula`
 

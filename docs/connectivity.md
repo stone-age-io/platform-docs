@@ -1,3 +1,7 @@
+---
+path: platform/connectivity
+nav_order: 120
+---
 # Connectivity
 
 Connectivity is the backbone of the Stone-Age.io Platform — **Layer 0** of the Data Plane. We rely on two industry-leading technologies to provide a secure, resilient, and low-latency substrate: **NATS.io** for messaging and **Nebula** for overlay networking.
@@ -154,10 +158,11 @@ This takes two fields, and the thing to internalise is that **they live on diffe
 
 Configure only the first and the gateway is willing to route while nobody sends it anything. Configure only the second and peers aim traffic at a gateway that refuses it. No peer derives another host's routes, and nothing warns you about the half you skipped.
 
-!!! warning "`unsafe_networks` is signed into the certificate — editing it is inert until the host picks up a new one"
-    Nebula authorizes routing on the **certificate**, not on config. A gateway whose certificate omits a prefix silently refuses to route it and **drops the packet before any firewall rule runs** — so the rule you are staring at is not the one failing, and no amount of correcting it helps.
+::: warning `unsafe_networks` is signed into the certificate — editing it is inert until the host picks up a new one
+Nebula authorizes routing on the **certificate**, not on config. A gateway whose certificate omits a prefix silently refuses to route it and **drops the packet before any firewall rule runs** — so the rule you are staring at is not the one failing, and no amount of correcting it helps.
 
-    Saving `unsafe_networks` therefore re-issues the gateway's certificate, and the change does nothing until that host has fetched it. `is_relay` is the opposite case: config-only, effective on the next config pull. `unsafe_routes`, on the consumer side, is also plain config.
+Saving `unsafe_networks` therefore re-issues the gateway's certificate, and the change does nothing until that host has fetched it. `is_relay` is the opposite case: config-only, effective on the next config pull. `unsafe_routes`, on the consumer side, is also plain config.
+:::
 
 ### Per-host tuning
 
@@ -167,10 +172,11 @@ Three optional overrides. All are config-only, and all inherit a default when le
 - **`mtu`** — defaults to 1300. Lower it on a path that fragments.
 - **`tun_device`** — the interface name; defaults to `nebula1`.
 
-!!! note "`preferred_ranges` is the one place IPv6 is accepted"
-    The platform is IPv4-only, but that is a constraint on the *overlay*. These are underlay prefixes, and Nebula ranks an IPv6 preferred range at the very top of its address priority list — refusing them would rule out the case the feature is best at.
+::: note `preferred_ranges` is the one place IPv6 is accepted
+The platform is IPv4-only, but that is a constraint on the *overlay*. These are underlay prefixes, and Nebula ranks an IPv6 preferred range at the very top of its address priority list — refusing them would rule out the case the feature is best at.
 
-    It is also validated on write rather than trusted, because Nebula's own failure mode here is silent: it logs a warning, skips the malformed entry, and forms the tunnel anyway over the public path. The only symptom of a typo is traffic quietly taking the slow route, so rejecting it at the point of entry is the only place it is visible.
+It is also validated on write rather than trusted, because Nebula's own failure mode here is silent: it logs a warning, skips the malformed entry, and forms the tunnel anyway over the public path. The only symptom of a typo is traffic quietly taking the slow route, so rejecting it at the point of entry is the only place it is visible.
+:::
 
 ### Host-Based Firewalls
 
@@ -180,10 +186,11 @@ Nebula security is **Identity-Based**, not IP-based.
 - You can define **Groups** (e.g., `sensors`, `gateways`, `admins`). 
 -  **Example Rule:** "Allow the `admins` group to SSH into the `gateways` group, but deny `sensors` from talking to anything except the `gateways`."
 
-!!! note "Group membership is on the certificate, so changing it costs a re-issue"
-    Exactly four host fields are signed into the certificate — **`hostname`, `overlay_ip`, `groups` and `unsafe_networks`** — and a change to any of them is inert until the host holds a new one. Moving a host between firewall groups is therefore the same class of edit as changing its routing, not a config tweak: peers keep applying the old group's rules until the new certificate is in place. Everything else about a host, firewall *rules* included, renders into `config_yaml` and takes effect on the next pull.
+::: note Group membership is on the certificate, so changing it costs a re-issue
+Exactly four host fields are signed into the certificate — **`hostname`, `overlay_ip`, `groups` and `unsafe_networks`** — and a change to any of them is inert until the host holds a new one. Moving a host between firewall groups is therefore the same class of edit as changing its routing, not a config tweak: peers keep applying the old group's rules until the new certificate is in place. Everything else about a host, firewall *rules* included, renders into `config_yaml` and takes effect on the next pull.
 
-    You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that signs the new certificate at once. Like any certificate change, it takes effect when that host fetches its new config — so renew, then redeploy that host.
+You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that signs the new certificate at once. Like any certificate change, it takes effect when that host fetches its new config — so renew, then redeploy that host.
+:::
 
 ---
 

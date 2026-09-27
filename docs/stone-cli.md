@@ -1,3 +1,7 @@
+---
+path: platform/stone-cli
+nav_order: 100
+---
 # Stone CLI
 
 `stone` is the command-line client for the Stone-Age.io Platform — the scriptable counterpart to the [Stone Age Console](./platform-ui-entities.md). Anything you can click in the console, you can drive from a terminal: managing tenant resources (Things, Locations, the Thing Type contract graph, memberships, NATS users/roles, Nebula hosts), publishing and subscribing on NATS, reading and writing JetStream KV, and — the part the UI can't do — pulling your tenant configuration down as a folder of YAML files you can review, diff, and apply back from `git` (§5).
@@ -105,10 +109,11 @@ stone auth logout       # clears the token from the context
 
 `login` authenticates against the `users` collection by default (override with `--collection`); the token, email, and user id are written into the context. The login can't be fully automated — it prompts for credentials — so in pipelines you log in once on the runner, or supply `--email`/`--password` flags from a secret store.
 
-!!! warning "An expired session used to look exactly like an empty organization"
-    PocketBase does not refuse a token it will not accept — it serves the request **as a guest**. Every list rule then filters the result to nothing, and the answer is `200` with an empty array. So a context whose token had aged out printed a table header and no rows, `stone org ls` said *"no organizations visible to this user"*, `stone pull` reported `pulled 0 records` and **exited zero**, and nothing anywhere said the word "login".
+::: warning An expired session used to look exactly like an empty organization
+PocketBase does not refuse a token it will not accept — it serves the request **as a guest**. Every list rule then filters the result to nothing, and the answer is `200` with an empty array. So a context whose token had aged out printed a table header and no rows, `stone org ls` said *"no organizations visible to this user"*, `stone pull` reported `pulled 0 records` and **exited zero**, and nothing anywhere said the word "login".
 
-    Since 0.4.0 the CLI refuses an expired token before sending it, naming the expiry and the command that fixes it, and reads the token's own `exp` claim rather than a stored timestamp — so contexts written before the change are covered too. A token whose expiry cannot be *parsed* is still sent: "unknown" is not "expired", and refusing one would turn a claim rename into an outage. `auth whoami` grew a `session:` line for the same reason — "am I still logged in" is the question it is asked, and it used to answer from local state that could not tell.
+Since 0.4.0 the CLI refuses an expired token before sending it, naming the expiry and the command that fixes it, and reads the token's own `exp` claim rather than a stored timestamp — so contexts written before the change are covered too. A token whose expiry cannot be *parsed* is still sent: "unknown" is not "expired", and refusing one would turn a claim rename into an outage. `auth whoami` grew a `session:` line for the same reason — "am I still logged in" is the question it is asked, and it used to answer from local state that could not tell.
+:::
 
 ### Organizations
 
@@ -240,10 +245,11 @@ stone thing update reader-01 --active=false        # decommission
 stone thing update reader-01 --active=true         # return to service
 ```
 
-!!! warning "`--active=false` is not a status label"
-    It is the same operation as the console's Deactivate button, with the same four effects: the device cannot sign in again, every session it already holds is killed at once, its linked **NATS identity is suspended** (key revoked, nothing reissued), and its linked **Nebula host is deactivated**, which puts its certificate on every peer's blocklist once those configs are redeployed. Reactivating issues a *new* `.creds` file — the old one stays revoked permanently, so the device has to be given the replacement. Owner/Admin only. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+::: warning `--active=false` is not a status label
+It is the same operation as the console's Deactivate button, with the same four effects: the device cannot sign in again, every session it already holds is killed at once, its linked **NATS identity is suspended** (key revoked, nothing reissued), and its linked **Nebula host is deactivated**, which puts its certificate on every peer's blocklist once those configs are redeployed. Reactivating issues a *new* `.creds` file — the old one stays revoked permanently, so the device has to be given the replacement. Owner/Admin only. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
-    This matters most in `apply`. `pull` writes every non-server field, so `active` lands in the workspace YAML — and a file carrying `active: false` decommissions real hardware on the next `apply`.
+This matters most in `apply`. `pull` writes every non-server field, so `active` lands in the workspace YAML — and a file carrying `active: false` decommissions real hardware on the next `apply`.
+:::
 
 Note the `=` in `--active=false`. Boolean flags set *true* when passed bare, so the space-separated form is a different command — `--active false` leaves `false` as a second positional argument and fails with `accepts 1 arg(s), received 2`. It errors rather than doing the wrong thing, but the `=` is required.
 
@@ -264,8 +270,9 @@ Owner/Admin of the active organization, and it takes no id — the CA is derived
 
 **`cert-audit` is a route because answering it means parsing a certificate.** It compares the network each host certificate carries against the network the host actually belongs to — no client can do that, so the platform answers and hands back the verdict. It exists because `pb-nebula` signed host certificates at `/32` until v0.3.0, and Nebula puts a certificate's prefix straight onto the tun device as a link route: a `/32` gives a host a route covering only itself, so the certificate verifies, the config renders, the host starts, the handshake completes, and no packet ever crosses the mesh. Nothing errors anywhere.
 
-!!! warning "Affected hosts are not re-signed automatically, and that is deliberate"
-    Re-signing moves a certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes — so an automatic sweep would rewrite every peer config in the mesh on the strength of a dependency bump. The audit names the hosts; re-issue them individually. Inactive hosts are excluded because they are revoked, and re-signing one would publish a new fingerprint while the old certificate stayed valid.
+::: warning Affected hosts are not re-signed automatically, and that is deliberate
+Re-signing moves a certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes — so an automatic sweep would rewrite every peer config in the mesh on the strength of a dependency bump. The audit names the hosts; re-issue them individually. Inactive hosts are excluded because they are revoked, and re-signing one would publish a new fingerprint while the old certificate stayed valid.
+:::
 
 ---
 
@@ -303,8 +310,9 @@ Putting the workspace in `git` is the documented workflow, so what `pull` writes
 
 The filter is **pull-side only** — a hand-written `revoke: true` still applies, and nothing here removes a capability you can express.
 
-!!! danger "If you pulled with `stone` before 0.4.0, treat those values as disclosed"
-    They are in the workspace and in its git history. Upgrading stops new ones being written; it cannot unwrite the old. Replace them with `stone nats-user update <username> --revoke` — which issues a new key pair and puts the old one on the account's revocation list; `--regenerate` would re-sign for the **same** seed, leaving the leaked file working — and `stone nebula-host update <hostname> --renew`, which likewise mints a fresh keypair rather than just a certificate. Then delete any invitation whose token was written out.
+::: danger If you pulled with `stone` before 0.4.0, treat those values as disclosed
+They are in the workspace and in its git history. Upgrading stops new ones being written; it cannot unwrite the old. Replace them with `stone nats-user update <username> --revoke` — which issues a new key pair and puts the old one on the account's revocation list; `--regenerate` would re-sign for the **same** seed, leaving the leaked file working — and `stone nebula-host update <hostname> --renew`, which likewise mints a fresh keypair rather than just a certificate. Then delete any invitation whose token was written out.
+:::
 
 ### What this is, and what it isn't
 
@@ -409,8 +417,9 @@ stone nats-user update device-01 --revoke        # leaked: kill every copy, issu
 stone thing update reader-01 --active=false      # a device: suspend through the Thing (§4)
 ```
 
-!!! note "There is no `--active` flag on `nats-user`"
-    For a device, suspend the **Thing** — its `active` flag suspends the linked NATS identity along with its sessions and Nebula host, which is the whole operation. For an identity with no Thing, 0.5.0 has no typed flag: `stone nats-user edit <username>` opens the record as YAML, and setting `active: false` there and saving PATCHes it (owner/admin). The next release adds `stone nats-user update <username> --active=false` (and `=true` to reactivate); it is on stone-cli's main branch, unreleased. `pull` omits `active` on `nats_users`, so it cannot be changed through `apply`.
+::: note There is no `--active` flag on `nats-user`
+For a device, suspend the **Thing** — its `active` flag suspends the linked NATS identity along with its sessions and Nebula host, which is the whole operation. For an identity with no Thing, 0.5.0 has no typed flag: `stone nats-user edit <username>` opens the record as YAML, and setting `active: false` there and saving PATCHes it (owner/admin). The next release adds `stone nats-user update <username> --active=false` (and `=true` to reactivate); it is on stone-cli's main branch, unreleased. `pull` omits `active` on `nats_users`, so it cannot be changed through `apply`.
+:::
 
 See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). The org switch always succeeds even if this step can't; when it short-circuits, it prints an informational `nats-sync: skipped — <reason>` line, never an error. `stone nats sync-context` has nothing else to do, so for it the same reasons are an **error** — `nothing to sync — <reason>`, non-zero exit:
 

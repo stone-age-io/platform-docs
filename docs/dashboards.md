@@ -1,3 +1,7 @@
+---
+path: platform/dashboards
+nav_order: 70
+---
 # Dashboards & Widgets
 
 The Visualizer is the console's dashboard surface: a resizable grid of widgets, each bound to a NATS subject (optionally replayed from JetStream) or a KV key. It is the screen you put in front of someone who does not administer the platform — a technician watching a site, or an unattended display in a control room.

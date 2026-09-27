@@ -1,3 +1,7 @@
+---
+path: platform/operations
+nav_order: 200
+---
 # Operations & Production
 
 This page covers running the Stone-Age.io Platform in production: what state you're protecting, the availability model, backup and recovery, upgrades, and how component versions relate to each other.

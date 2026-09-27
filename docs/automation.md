@@ -1,3 +1,7 @@
+---
+path: platform/automation
+nav_order: 150
+---
 # Automation
 
 Automation transforms raw telemetry into actionable intelligence. The **rule engine** is Stone-Age.io's Layer 1 — declarative, stateless-per-message event logic that composes on top of the NATS substrate.

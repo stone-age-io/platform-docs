@@ -1,3 +1,7 @@
+---
+path: platform/agent
+nav_order: 130
+---
 # The Agent
 
 The **Stone-Age.io Agent** is a lightweight, NATS-native management and observability daemon designed to run on Windows, Linux, and FreeBSD. It connects your physical hardware to the Data Plane, and it takes its instructions only over a connection it dialed itself — there is no inbound management API to expose, forward a port to, or firewall.
@@ -15,8 +19,9 @@ The agent is a single Go binary with zero external dependencies. Its design phil
 - **Resilient:** Automatically handles NATS reconnections and backoffs.
 - **Cross-Platform:** First-class support for Windows Services, Linux systemd, and FreeBSD rc.d.
 
-!!! note "It absorbed `leaf-sync`"
-    There used to be a second binary — `leaf-sync` — that bootstrapped a site's NATS leaf node and mirrored an organization's configuration into local KV. It is gone. Its leaf-node duties moved into the Agent, and the config mirror was dropped rather than moved, because nothing ever read the mirrored rows. A site that runs a leaf node runs **one** binary now, not two. See [Leaf Nodes](./leaf-nodes.md).
+::: note It absorbed `leaf-sync`
+There used to be a second binary — `leaf-sync` — that bootstrapped a site's NATS leaf node and mirrored an organization's configuration into local KV. It is gone. Its leaf-node duties moved into the Agent, and the config mirror was dropped rather than moved, because nothing ever read the mirrored rows. A site that runs a leaf node runs **one** binary now, not two. See [Leaf Nodes](./leaf-nodes.md).
+:::
 
 ### Getting the binary
 
@@ -33,8 +38,9 @@ sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
 
 The scripts directory is not optional housekeeping: `commands.scripts_directory` defaults to `/opt/agent/scripts`, and the Agent **refuses to start** if the directory it names does not exist. Set it to `""` to turn script execution off entirely.
 
-!!! warning "0.3.1 is a security release — upgrade anything older"
-    Before 0.3.1, anyone able to publish to `cmd.exec` could run arbitrary commands on a device that had a single script in its `scripts_directory`, whatever the allowlist said: the check approved a request by its last path element and then handed the *unreduced* string to a shell. See §3.C for the rules that close it. The fix changes one behaviour a caller can see — a script request must now be a bare filename (`deploy.sh`, not `/opt/agent/scripts/deploy.sh`), and a full path is refused.
+::: warning 0.3.1 is a security release — upgrade anything older
+Before 0.3.1, anyone able to publish to `cmd.exec` could run arbitrary commands on a device that had a single script in its `scripts_directory`, whatever the allowlist said: the check approved a request by its last path element and then handed the *unreduced* string to a shell. See §3.C for the rules that close it. The fix changes one behaviour a caller can see — a script request must now be a bare filename (`deploy.sh`, not `/opt/agent/scripts/deploy.sh`), and a full path is refused.
+:::
 
 The agent then installs itself as a service on the host's own service manager — `agent -service install`, which resolves to systemd, a Windows service, or rc.d. There are no unit files to place by hand. `agent -version` reports what a host is running without starting it.
 
@@ -155,13 +161,15 @@ Beyond the bus, the Agent has three capabilities that apply on a box which is al
 
 There is **no `edge.enabled` key and no gateway flag on the platform**: "gateway" is not a mode the config declares, it is the sum of the capabilities it turns on. A single flag naming the role would be a second control that can disagree with the first — `edge.enabled: false` beside `sync.twin: true` has no correct behaviour. See [Leaf Nodes](./leaf-nodes.md).
 
-!!! warning "`twin.enabled` was replaced by `sync:` in Agent v0.2.0"
-    The digital twin used to be two hardcoded buckets behind one boolean. It is now a preset over a general mechanism — see [Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync). The old key is **rejected by name at config load**, rather than ignored: viper drops unknown keys silently, and a file still carrying `twin.enabled` would sync nothing and say nothing about it.
+::: warning `twin.enabled` was replaced by `sync:` in Agent v0.2.0
+The digital twin used to be two hardcoded buckets behind one boolean. It is now a preset over a general mechanism — see [Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync). The old key is **rejected by name at config load**, rather than ignored: viper drops unknown keys silently, and a file still carrying `twin.enabled` would sync nothing and say nothing about it.
+:::
 
 **Local health is not one of them**, though it is often listed beside them. `observability.addr` serves `/ready` and `/metrics` on **every** Agent, defaulted to `127.0.0.1:9100`, because the reason to answer locally has nothing to do with running a leaf node: `cmd.health` travels over NATS, which is the link that breaks, so the box you most want to ask is the one that has just gone quiet. Nebula is the same shape — `nebula.enabled` is a per-device capability, not a gateway one.
 
-!!! note "Heartbeats are deliberately not JetStream"
-    A missed beat is the signal consumers care about, so last-write-wins is the correct semantic — a backlog of stale beats replayed after a reconnect would be actively misleading. This is why the server-side stream must bind `{prefix}.*.telemetry.>` rather than `{prefix}.>`: the heartbeat stays outside the stream by subject construction.
+::: note Heartbeats are deliberately not JetStream
+A missed beat is the signal consumers care about, so last-write-wins is the correct semantic — a backlog of stale beats replayed after a reconnect would be actively misleading. This is why the server-side stream must bind `{prefix}.*.telemetry.>` rather than `{prefix}.>`: the heartbeat stays outside the stream by subject construction.
+:::
 
 ### A. Telemetry & Observability
 

@@ -1,3 +1,7 @@
+---
+path: platform/health-metrics
+nav_order: 180
+---
 # Health & Metrics
 
 Every Stone-Age.io binary answers two questions about **itself**, without a login and without a NATS connection:
@@ -259,8 +263,9 @@ observability:
 
 Paths are `/ready` and `/metrics` — no `/api` prefix, since this is not the PocketBase router. Empty `addr` serves neither, but the checks still run and still log; a bind failure is logged rather than fatal, because a monitoring port that cannot bind must not stop the agent doing its job.
 
-!!! warning "9100 is also node_exporter's port"
-    On Linux and FreeBSD the default collides with `node_exporter`, if you run one on the same box for your own reasons — the Agent no longer reads from it; its own collector is the only metrics source. On a box running both, move one of them — and since a bind failure is only logged, the symptom is a scrape target that quietly never came up rather than a crash. `windows_exporter` uses 9182, so Windows is unaffected.
+::: warning 9100 is also node_exporter's port
+On Linux and FreeBSD the default collides with `node_exporter`, if you run one on the same box for your own reasons — the Agent no longer reads from it; its own collector is the only metrics source. On a box running both, move one of them — and since a bind failure is only logged, the symptom is a scrape target that quietly never came up rather than a crash. `windows_exporter` uses 9182, so Windows is unaffected.
+:::
 
 Every Agent registers these, gateway or not:
 
@@ -290,8 +295,9 @@ Metrics: every Agent exports the `agent_ready` / `_check_state` / `_check_timest
 
 The server-derived rows come from the leaf's own **loopback** monitoring port, which is how the edge reads its own server without ever holding a `$SYS` user credential. They are **omitted** when that port is unreachable rather than reported as zeros: zero would claim an islanded site with no devices, which is a far louder statement than "not scraped". The same rule governs the check registry, where `skipped` ranks *below* `ok` — a report that is entirely skipped must not read as a clean bill of health. See [Leaf Nodes](./leaf-nodes.md).
 
-!!! note "There is no longer a sync-freshness check"
-    Earlier versions of the edge agent mirrored an organization's config collections into local KV, and had `sync_freshness` and `sync_errors` checks over that loop. The mirror was removed — nothing consumed the mirrored rows — and those two checks went with it.
+::: note There is no longer a sync-freshness check
+Earlier versions of the edge agent mirrored an organization's config collections into local KV, and had `sync_freshness` and `sync_errors` checks over that loop. The mirror was removed — nothing consumed the mirrored rows — and those two checks went with it.
+:::
 
 ---
 

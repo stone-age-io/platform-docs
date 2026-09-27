@@ -1,3 +1,7 @@
+---
+path: platform/authorization
+nav_order: 80
+---
 # Authorization & Roles
 
 This page is the canonical description of who can do what in Stone-Age.io. Every other page defers to it.
@@ -204,8 +208,9 @@ POST /api/org/nebula-ca/rotate       { "step": "prepare" | "commit" | "finish" }
 
 **Three steps and not one, because Nebula verification is mutual and config distribution is pull-based.** A single write carrying both the new trust bundle and the new certificate splits the mesh for as long as propagation takes: a host that has fetched presents a new-CA certificate to one that has not, and the handshake fails in *both* directions. `prepare` exists to make the trust half land first, everywhere, before any issuance moves.
 
-!!! note "Why a route and not an owner branch on the update rule"
-    A rule branch permitting rotation would have to deny-list every other field on `nebula_ca` — and would silently re-open each one added afterwards. That is the same deny-list shape this repo has been bitten by twice, here on the record holding the trust anchor for a tenant's entire mesh. See §7.
+::: note Why a route and not an owner branch on the update rule
+A rule branch permitting rotation would have to deny-list every other field on `nebula_ca` — and would silently re-open each one added afterwards. That is the same deny-list shape this repo has been bitten by twice, here on the record holding the trust anchor for a tenant's entire mesh. See §7.
+:::
 
 ---
 
@@ -257,8 +262,9 @@ It is bound to `things` and takes **no record id**: the target is the caller's o
 
 **The route gates on nothing, and that is the interesting part.** Everything it serves is either public trust material — the Operator, account and `$SYS` account JWTs, which every server in the network validates anyway — or the caller's own credential, which it must already hold in order to connect at all. A Thing that will never run a leaf node can call it and learns nothing it could not already read. Adding a permission here would be a gate over data that is not secret, and it would have required inventing the marker field that §1 of [Leaf Nodes](./leaf-nodes.md) explains the absence of.
 
-!!! note "Why the `$SYS` **account** JWT is safe to serve"
-    The NATS Operator JWT names a system account, and the leaf's `resolver: MEMORY` has nowhere to fetch it — so without the `$SYS` account JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing. Connecting **as** `$SYS` needs a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects.
+::: note Why the `$SYS` **account** JWT is safe to serve
+The NATS Operator JWT names a system account, and the leaf's `resolver: MEMORY` has nowhere to fetch it — so without the `$SYS` account JWT preloaded, `nats-server` dies with `error resolving system account` before JetStream starts. Preloading it grants nothing. Connecting **as** `$SYS` needs a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects.
+:::
 
 Account **seeds** and signing keys are never served on this path, and `nats_system_operator` stays superuser-only.
 

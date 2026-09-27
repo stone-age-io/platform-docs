@@ -1,3 +1,7 @@
+---
+path: platform/thing-types
+nav_order: 110
+---
 # Thing Types
 
 Thing Types are the **contract layer** of the Stone-Age.io fabric. They describe what a participant on the fabric does — what it publishes, what it subscribes to, what it answers — as declarative data, independent of any specific instance.

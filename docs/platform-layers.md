@@ -1,3 +1,7 @@
+---
+path: platform/platform-layers
+nav_order: 30
+---
 # Platform Layers
 
 Stone-Age.io is not a single application with bundled features. It's a **layered platform** where each tier does one thing well, uses a shared substrate (NATS), and composes cleanly with the others.

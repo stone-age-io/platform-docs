@@ -1,3 +1,7 @@
+---
+path: platform/decisions/0004-long-term-data-and-location-path
+nav_order: 40
+---
 # ADR 0004: Long-Term Data Carries Codes; Location Comes From Inventory
 
 **Status:** Accepted — implemented, except the live TSDB check in step 5. See [As implemented](#as-implemented).

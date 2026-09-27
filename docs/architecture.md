@@ -1,3 +1,7 @@
+---
+path: platform/architecture
+nav_order: 40
+---
 # Architecture
 
 The Stone-Age.io Platform is architected to decouple **Control** (the "who" and "where") from **Data** (the "what" and "how"). This separation ensures that the platform remains lightweight and responsive, while the underlying infrastructure provides industrial-grade security and reliability.

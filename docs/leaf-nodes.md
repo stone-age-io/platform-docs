@@ -1,3 +1,7 @@
+---
+path: platform/leaf-nodes
+nav_order: 140
+---
 # Leaf Nodes
 
 A site that runs its own local NATS server keeps working when the WAN does not. The transport underneath is a stock NATS leaf node ([Connectivity §1](./connectivity.md#leaf-nodes)) — it dials the hub outbound and gives the site local autonomy during an outage.
@@ -71,8 +75,9 @@ A generated `nats-leaf.conf` has to satisfy NATS operator-mode validation, and *
 1. **Every leaf remote needs an `account` key** naming the local account.
 2. **`resolver_preload` needs the `$SYS` account JWT**, not just the organization's. The Operator JWT names a system account, and `resolver: MEMORY` has nowhere to fetch it — so without it the server dies with `error resolving system account: account missing`, *before JetStream ever starts*.
 
-!!! note "Preloading the `$SYS` **account** JWT grants nothing"
-    It is public trust material, like the Operator JWT beside it. Connecting *as* `$SYS` requires a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects, and it is worth being precise about which one is which, because the first looks alarming and is not.
+::: note Preloading the `$SYS` **account** JWT grants nothing
+It is public trust material, like the Operator JWT beside it. Connecting *as* `$SYS` requires a `$SYS` **user** credential, which the platform never serves to anything. Those are different objects, and it is worth being precise about which one is which, because the first looks alarming and is not.
+:::
 
 The generator lives in the Agent, not the platform (`internal/edge/leafconf.go` in the agent repository), and it now runs its own output through the real `nats-server` config parser in a test (`TestBuildLeafConfIsAcceptedByNATSServer`). The platform's side of the contract is the ten field names, which it pins separately. Keep that shape if you touch either — substring checks cannot express "and the server accepts it".
 
@@ -112,8 +117,9 @@ The generator lives in the Agent, not the platform (`internal/edge/leafconf.go` 
 5. `agent -service install && agent -service start`.
 6. Point any site-local [rule engine](./automation.md) at the same creds file.
 
-!!! note "Bootstrapping and running cannot be one invocation"
-    `-leaf-config` is a one-shot for a structural reason, not a stylistic one. A separately supervised `nats-server` needs its config file to exist *before* it starts — which is before the agent has anything to connect to.
+::: note Bootstrapping and running cannot be one invocation
+`-leaf-config` is a one-shot for a structural reason, not a stylistic one. A separately supervised `nats-server` needs its config file to exist *before* it starts — which is before the agent has anything to connect to.
+:::
 
 ---
 
@@ -163,8 +169,9 @@ Off by default, because it moves data-plane traffic and an upgrade must not sile
 
 A declared bucket whose hub side is missing is reported, not created: `agent_edge_sync_up{bucket,direction}` goes to `0` and the agent's `sync` readiness check warns. It **warns** rather than fails, because an islanded edge with a backlog is the design working — `agent_edge_relay_pending{bucket}` is the depth to watch.
 
-!!! note "`hub_domain` is cached, so moving it is not a change the console can push"
-    Edge sync needs the hub's JetStream domain, and the agent caches it in its platform session file rather than re-reading it. A deployment that moves its hub's JetStream domain does not reach running agents until each one re-runs `agent -leaf-config` — which is defensible, since such a move invalidates every generated `nats-leaf.conf` anyway, but it is not a console action.
+::: note `hub_domain` is cached, so moving it is not a change the console can push
+Edge sync needs the hub's JetStream domain, and the agent caches it in its platform session file rather than re-reading it. A deployment that moves its hub's JetStream domain does not reach running agents until each one re-runs `agent -leaf-config` — which is defensible, since such a move invalidates every generated `nats-leaf.conf` anyway, but it is not a console action.
+:::
 
 ---
 
@@ -184,10 +191,11 @@ with `{}` as the payload returns the account's current connection list. Entries 
 
 **Each account carries its own `$SYS` subject space.** `$SYS.REQ.ACCOUNT.PING.*` is scoped to the caller's own account and answers for that organization and no other; the operator-wide `$SYS.REQ.SERVER.PING.*` endpoints, which would span every tenant, are not reachable from a tenant credential. The server enforces both halves, and the platform pins them in a test against a real hub with a real leaf attached.
 
-!!! warning "Do not put `$SYS` in a publish deny list"
-    The widget needs `$SYS.REQ.ACCOUNT.PING.>` in its NATS Role's **publish allow** list. The `console-readonly` role the demo seed creates carries it; nothing seeds that role in an ordinary deployment, so a role you author yourself needs the entry added. Do not add a deny beside it. In NATS a publish DENY beats a publish ALLOW, so a role carrying `$SYS.>` in its deny list cannot reach the account-scoped endpoints no matter what its allow list says — and if the request ever times out for one organization and not another, this is almost certainly why. The symptom is a bare timeout, because the real reason arrives asynchronously on the connection's error handler and never on the request itself.
+::: warning Do not put `$SYS` in a publish deny list
+The widget needs `$SYS.REQ.ACCOUNT.PING.>` in its NATS Role's **publish allow** list. The `console-readonly` role the demo seed creates carries it; nothing seeds that role in an ordinary deployment, so a role you author yourself needs the entry added. Do not add a deny beside it. In NATS a publish DENY beats a publish ALLOW, so a role carrying `$SYS.>` in its deny list cannot reach the account-scoped endpoints no matter what its allow list says — and if the request ever times out for one organization and not another, this is almost certainly why. The symptom is a bare timeout, because the real reason arrives asynchronously on the connection's error handler and never on the request itself.
 
-    **Narrowing the deny to `$SYS.REQ.SERVER.>` is not a fix either**, only a quieter one. It looks like it restricts the operator-wide endpoints, but those are served *inside the `$SYS` account*, and an account is a closed subject namespace — a tenant credential publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder with or without a deny. The account boundary already enforces it, so the platform ships no `$SYS` deny at all, and pins both halves against a real server.
+**Narrowing the deny to `$SYS.REQ.SERVER.>` is not a fix either**, only a quieter one. It looks like it restricts the operator-wide endpoints, but those are served *inside the `$SYS` account*, and an account is a closed subject namespace — a tenant credential publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder with or without a deny. The account boundary already enforces it, so the platform ships no `$SYS` deny at all, and pins both halves against a real server.
+:::
 
 ### Why this is a recipe and not a screen
 
@@ -214,8 +222,9 @@ CONNZ answers one question — is this site's leaf attached to the hub. For the 
 - The Thing's PocketBase password can be reset by an org Admin/Owner on the Thing's **edit form** (the Authentication card, where they type a new one), gated by the collection's `manageRule` — a scoped, audited record action rather than a superuser-only operation.
 - Narrowing a site's blast radius is a record edit: reassign its NATS Role or add per-user permission overrides. Both are **Owner/Admin** actions, since they write to `nats_users` and `nats_roles`.
 
-!!! warning "`active` and an attached leaf answer different questions"
-    A CONNZ reply (§7) reports whether the site **is** currently attached to the hub. `active` governs whether it **may** be. A deactivated site missing from that list is the expected outcome, not a fault to chase — and an *active* site missing from it is the one worth investigating.
+::: warning `active` and an attached leaf answer different questions
+A CONNZ reply (§7) reports whether the site **is** currently attached to the hub. `active` governs whether it **may** be. A deactivated site missing from that list is the expected outcome, not a fault to chase — and an *active* site missing from it is the one worth investigating.
+:::
 
 ---
 

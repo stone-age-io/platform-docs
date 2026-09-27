@@ -1,3 +1,7 @@
+---
+path: platform/decisions/0002-organization-code-namespace
+nav_order: 20
+---
 # ADR 0002: Root the Public Namespace at the Organization Code
 
 **Status:** Accepted — implemented

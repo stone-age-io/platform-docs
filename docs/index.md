@@ -1,3 +1,8 @@
+---
+path: platform
+nav_order: 10
+access: public
+---
 # Stone-Age.io Docs
 
 **Every site you manage, on one screen.**

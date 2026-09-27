@@ -1,3 +1,7 @@
+---
+path: platform/decisions/0003-human-friendly-codes-and-default-subject
+nav_order: 30
+---
 # ADR 0003: Human-Friendly Codes, Type Prefixes, and a Location-Free Default Subject
 
 **Status:** Accepted — implemented. Step 6's move of the demo to bare application identifiers was dropped.

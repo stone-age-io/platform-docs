@@ -1,3 +1,7 @@
+---
+path: platform/api-reference
+nav_order: 90
+---
 # API Reference
 
 Almost everything in Stone-Age.io is stock PocketBase REST against a collection —
@@ -98,10 +102,11 @@ hub versus a specific leaf — which is a property of the box the browser runs o
 so it is a device-level override in `localStorage` rather than anything the server
 knows. See [Configuration §`nats`](./configuration.md#2-section-reference).
 
-!!! note "Why it requires auth when the value is not a secret"
-    Nothing needs it before login — the console will not dial the bus without a
-    session and a linked NATS identity anyway. Since there is no pre-login need,
-    there is no reason to hand an unauthenticated scanner the address of the bus.
+::: note Why it requires auth when the value is not a secret
+Nothing needs it before login — the console will not dial the bus without a
+session and a linked NATS identity anyway. Since there is no pre-login need,
+there is no reason to hand an unauthenticated scanner the address of the bus.
+:::
 
 ### `GET /api/me/leaf-config`
 
@@ -142,10 +147,11 @@ secret-bearing collections with its own privileges and returns ten named fields,
 never whole records — so the blast radius of a leaked edge credential is those ten
 values regardless of how those collections' rules later evolve.
 
-!!! warning "Do not add a device read branch to `nats_*` or `nebula_*`"
-    Extend this route instead. The point of it is that the edge's blast radius is
-    a fixed list of named fields rather than a consequence of rules that change
-    for unrelated reasons. See [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config).
+::: warning Do not add a device read branch to `nats_*` or `nebula_*`
+Extend this route instead. The point of it is that the edge's blast radius is
+a fixed list of named fields rather than a consequence of rules that change
+for unrelated reasons. See [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config).
+:::
 
 The field names are a **cross-repo contract** — the agent decodes them by name, in
 a different module — so a rename here is a breaking change for every deployed
@@ -183,16 +189,17 @@ re-point it, because the credential read follows the link. See
 | `403` | The linked identity is **suspended** (`active = false`) |
 | `404` | No membership in the active organization, or no identity linked |
 
-!!! note "A suspended identity cannot rotate itself back to life"
-    pb-nats treats `active = false` as "revoked, reissue nothing". But a
-    regenerate mints a JWT issued *after* the account's revocation cutoff, which
-    NATS accepts — so without the `403` this route would be a self-service
-    un-suspend. Suspending and reactivating stay owner/admin actions through the
-    normal update rule on `nats_users`, or a consequence of
-    [deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
-    that holds the identity. Rotation is also not how you retire a **leaked**
-    file: `regenerate` re-signs for the same seed, so the leaked `.creds` keeps
-    working. That is `revoke`, which moves to a new key pair (owner/admin).
+::: note A suspended identity cannot rotate itself back to life
+pb-nats treats `active = false` as "revoked, reissue nothing". But a
+regenerate mints a JWT issued *after* the account's revocation cutoff, which
+NATS accepts — so without the `403` this route would be a self-service
+un-suspend. Suspending and reactivating stay owner/admin actions through the
+normal update rule on `nats_users`, or a consequence of
+[deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
+that holds the identity. Rotation is also not how you retire a **leaked**
+file: `regenerate` re-signs for the same seed, so the leaked `.creds` keeps
+working. That is `revoke`, which moves to a new key pair (owner/admin).
+:::
 
 ---
 
@@ -225,12 +232,13 @@ deleting the invitation all happen in one transaction. `current_organization` is
 set **only when blank** — accepting an invitation to a second organization should
 not move you out of the one you are working in.
 
-!!! warning "Renamed in 0.6.0"
-    This was `POST /api/tenancy/accept-invite` until pb-tenancy was absorbed into
-    the platform. The old path named a library that no longer exists. Invitation
-    **links** already in delivered mail are unaffected — they point at the console
-    route `/accept-invite`, which posts here, not at the API directly. Anything
-    driving invitations outside the console needs updating.
+::: warning Renamed in 0.6.0
+This was `POST /api/tenancy/accept-invite` until pb-tenancy was absorbed into
+the platform. The old path named a library that no longer exists. Invitation
+**links** already in delivered mail are unaffected — they point at the console
+route `/accept-invite`, which posts here, not at the API directly. Anything
+driving invitations outside the console needs updating.
+:::
 
 From the CLI this is `stone invite accept <token>`, where the token is the
 `?token=` value from the invitation link and **not** the invite record's id.
@@ -303,14 +311,15 @@ branch, but a *provisioning* endpoint that mints those records cannot be express
 as a create rule at all. Here it is a role check per section: a `member` calling
 with anything other than `none` on both blocks gets `403`.
 
-!!! note "Why one transaction, and why the atomicity is real"
-    This replaced three unguarded client calls whose partial failure orphaned a
-    signed NATS credential and an allocated overlay IP, and which never sent
-    `active`, so every Thing the console created was locked out by
-    `things.authRule`. PocketBase defers `*AfterCreateSuccess` hooks to commit, and
-    pb-nats mints and publishes on that hook — so a rollback means pb-nats never
-    signed anything and never published. The failure mode is "nothing happened",
-    not "NATS knows about a user PocketBase forgot".
+::: note Why one transaction, and why the atomicity is real
+This replaced three unguarded client calls whose partial failure orphaned a
+signed NATS credential and an allocated overlay IP, and which never sent
+`active`, so every Thing the console created was locked out by
+`things.authRule`. PocketBase defers `*AfterCreateSuccess` hooks to commit, and
+pb-nats mints and publishes on that hook — so a rollback means pb-nats never
+signed anything and never published. The failure mode is "nothing happened",
+not "NATS knows about a user PocketBase forgot".
+:::
 
 ### `POST /api/org/nats-account/keys`
 
@@ -393,16 +402,17 @@ renders, handshakes — and moves no packet. Nothing errors anywhere.
 **A route because answering it means parsing a Nebula certificate**, which no
 browser can do.
 
-!!! warning "Read-only, and nothing is re-signed automatically"
-    Re-signing moves a certificate's fingerprint, and a fingerprint is what
-    `pki.blocklist` revokes — so a sweep would rewrite every peer config in the
-    mesh on the strength of a dependency bump. The audit names the hosts; the fix
-    is `renew` on one host at a time, then redeploy that host's config.
+::: warning Read-only, and nothing is re-signed automatically
+Re-signing moves a certificate's fingerprint, and a fingerprint is what
+`pki.blocklist` revokes — so a sweep would rewrite every peer config in the
+mesh on the strength of a dependency bump. The audit names the hosts; the fix
+is `renew` on one host at a time, then redeploy that host's config.
 
-    **Inactive hosts are excluded**, and not as an optimization: an inactive host
-    is revoked, so re-signing it would publish a new fingerprint while the old
-    certificate stayed valid and un-blocklisted — silently un-revoking it. A host
-    whose certificate or network cannot be read is omitted rather than reported.
+**Inactive hosts are excluded**, and not as an optimization: an inactive host
+is revoked, so re-signing it would publish a new fingerprint while the old
+certificate stayed valid and un-blocklisted — silently un-revoking it. A host
+whose certificate or network cannot be read is omitted rather than reported.
+:::
 
 ---
 

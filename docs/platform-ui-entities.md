@@ -1,3 +1,7 @@
+---
+path: platform/platform-ui-entities
+nav_order: 60
+---
 # Platform Entities & UI
 
 The Stone Age Console provides a unified interface for managing the logical and physical structures of your IoT environment or Event-Driven Architecture. This document explains the primary entities used to organize your data and how they interact with the user interface.
@@ -205,8 +209,9 @@ Things and Locations each carry one **photo** — the install context that other
 
 A Thing's photo is **edit-only**: creation goes through `POST /api/org/things`, a JSON provisioning route that cannot carry a multipart body. Create the Thing, then add the photo. On edit it is sent as its own request, separate from the rest of the form, because the ordinary Thing update is JSON on purpose: the member branch of `things.updateRule` requires `nats_user` and `nebula_host` to be unchanged, and a field left *out* of a JSON body counts as unchanged. A multipart body has no way to leave a field out — every value is a string and an empty one clears it — so sending the whole edit as a form would turn a member's ordinary inventory edit into a refusal. A Location's photo works on create too, since locations use the plain record API.
 
-!!! warning "Every file field is now protected — an unauthenticated URL will not work"
-    `photo`, a Location's `floorplan`, an Organization's `logo` and a user's `avatar` are all **protected** file fields. An unprotected PocketBase file URL is served to *anyone* with no auth and no expiry — the only obstacle is the random suffix on the stored filename, which makes the URL a non-revocable bearer credential that leaks through `Referer` headers, screenshots, proxy logs and support tickets for the life of the record. Protected, each request resolves a short-lived file token to an auth record and runs the collection's view rule. **The auth token is not a file token**; a URL built with one silently "worked" only while the field was unprotected. Anything you have integrated against a bare file URL needs to request a file token instead.
+::: warning Every file field is now protected — an unauthenticated URL will not work
+`photo`, a Location's `floorplan`, an Organization's `logo` and a user's `avatar` are all **protected** file fields. An unprotected PocketBase file URL is served to *anyone* with no auth and no expiry — the only obstacle is the random suffix on the stored filename, which makes the URL a non-revocable bearer credential that leaks through `Referer` headers, screenshots, proxy logs and support tickets for the life of the record. Protected, each request resolves a short-lived file token to an auth record and runs the collection's view rule. **The auth token is not a file token**; a URL built with one silently "worked" only while the field was unprotected. Anything you have integrated against a bare file URL needs to request a file token instead.
+:::
 
 ### CRUD & Management
 
