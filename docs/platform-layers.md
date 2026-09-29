@@ -4,33 +4,47 @@ nav_order: 30
 ---
 # Platform Layers
 
-Stone-Age.io is not a single application with bundled features. It's a **layered platform** where each tier does one thing well, uses a shared substrate (NATS), and composes cleanly with the others.
-
-Understanding the layers is the most useful mental model for working with the platform. It tells you where to solve each problem, when to reach for a different tool, and why the boundaries between components are principled rather than arbitrary.
+Stone-Age.io is a set of layers around one shared bus, NATS. Each layer does one
+job. This page tells you which layer should solve a given problem.
 
 ---
 
 ## 1. Planes and Layers
 
-Before introducing the layers, a quick clarification — the docs use two architectural framings that are often confused, but they describe different things and both are useful.
-
 > **Planes describe *what the platform does*. Layers describe *how the runtime is composed*.**
 
-- **The Control Plane** (PocketBase) is the management surface: identity, inventory, provisioning, the embedded UI. It's the source of truth for static and relational data — organizations, users, things, locations, credentials.
-- **The Data Plane** (NATS, JetStream, KV, Nebula) is the runtime: every byte of telemetry, every command, every live state update flows through it.
-- **The Data Plane is composed of four layers** (0–3). Layer 0 is the always-on substrate; Layers 1–3 are tiers you add as needed.
-- **The Control Plane sits alongside the Data Plane**, not inside any layer. It provisions the identities and credentials that the Data Plane uses at runtime. PocketBase is itself a narrow NATS client on the System Account — it publishes credential updates on admin subjects like `$SYS.REQ.CLAIMS.UPDATE` so cluster state stays in sync with the Control Plane in real-time — but it does not participate in tenant-level event flow (telemetry, rule traffic, device commands).
-- **The Control Plane's own access control is role-scoped and rule-based.** Who may read or change a record is decided entirely by the PocketBase API rules on each collection, evaluated against five per-organization roles plus a Platform Operator flag. (One hook sits beside the rules, enforcing an invariant rather than a permission: no relation may point into another Organization's records.) That is the Control Plane's boundary; the Data Plane's is cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
+- **The Control Plane** (PocketBase) is the management side: identity,
+  inventory, provisioning and the embedded UI. It is the source of truth for
+  organizations, users, things, locations and credentials.
+- **The Data Plane** (NATS, JetStream, KV, Nebula) is the runtime. All
+  telemetry, commands and live state go through it.
+- **The Data Plane has four layers** (0 to 3). Layer 0 is always on. You add
+  Layers 1 to 3 when you need them.
+- **The Control Plane sits beside the Data Plane**, not in a layer. It
+  provisions the identities the Data Plane uses. It is also a narrow NATS client
+  on the System Account: it publishes credential updates on subjects such as
+  `$SYS.REQ.CLAIMS.UPDATE`. It does not carry tenant traffic such as telemetry,
+  rule traffic or device commands.
+- **The Control Plane's access control is rule-based.** PocketBase API rules on
+  each collection decide who can read or change a record, from five roles per
+  organization and a Platform Operator flag. One hook also refuses any relation
+  into another Organization's records. The Data Plane's boundary is
+  cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
 
-This distinction matters. When something goes wrong with a PocketBase upgrade, the Data Plane keeps running and your devices keep talking — provided NATS runs as its own process. In the one-process deployment (`serve --nats`, [ADR 0001](./decisions/0001-embedded-nats-server.md)) the bus lives inside the Control Plane binary, so restarting it is a brief total bus outage; moving NATS out is how you buy this separation back. When a Layer 3 TSDB goes offline, the Control Plane and the rest of the Data Plane are unaffected. The planes separate management concerns from runtime concerns; the layers separate runtime concerns into composable tiers.
+If NATS runs as its own process, a PocketBase upgrade does not stop the Data
+Plane, and devices keep talking. In the one-process deployment (`serve --nats`,
+[ADR 0001](./decisions/0001-embedded-nats-server.md)) NATS runs inside the
+Control Plane binary. A restart of that binary is then a short outage of the
+whole bus. Run NATS separately to avoid this. If a Layer 3 TSDB goes offline,
+the Control Plane and the rest of the Data Plane are not affected.
 
-For the Control Plane ↔ Data Plane split in detail, see [Architecture](./architecture.md). The rest of this doc focuses on the four Data Plane layers.
+See [Architecture](./architecture.md) for the Control Plane and Data Plane in
+detail.
 
 ---
 
 ## 2. The Four Layers
 
-<center>
 ```mermaid
 graph TB
     subgraph CP["Control Plane"]
@@ -65,178 +79,215 @@ graph TB
 
     CP -.->|"provisions credentials"| DP
 ```
-</center>
-
-A concise way to remember the layers:
 
 > **NATS is the bus. The rule engine is the reflexes. Stream processors are the thinking. Telegraf + TSDB is the memory.**
 
-Each layer has a distinct job. Each is optional — you can run just Layer 0 for pure messaging, or Layers 0+1 for the vast majority of event-driven applications, or all four for full observability. None of the higher layers invalidate the lower ones; they compose.
+Every layer above 0 is optional. Layer 0 alone gives you messaging. Layers 0
+and 1 cover most event-driven applications. All four give you full
+observability. A higher layer does not change the layers below it.
 
 ---
 
-## 3. Layer 0 — Substrate
+## 3. Layer 0: Substrate
 
 **Components:** NATS Core, JetStream, NATS KV, Nebula.
 
-The substrate is the always-on foundation. It handles message transport, durable streams, key-value state, and mesh networking. Every higher layer builds on these primitives.
+Layer 0 carries messages, durable streams, key-value state and the mesh network.
 
-**What lives here:**
+- **Messaging.** Pub/sub, request/reply and MQTT. Every other layer addresses
+  data by NATS subject.
+- **Durable state.** JetStream streams give at-least-once delivery. KV buckets
+  hold live state (the digital twin, see [Architecture](./architecture.md)).
+- **Connectivity.** The Nebula mesh connects edge sites peer to peer with
+  outbound-only traffic.
 
-- **Messaging.** Pub/sub, request/reply, MQTT bridging. Subjects are the universal address space every other layer speaks.
-- **Durable state.** JetStream streams for "at-least-once" delivery, KV buckets for live state (the Digital Twin pattern — see [Architecture](./architecture.md)).
-- **Connectivity.** Nebula mesh for secure, peer-to-peer edge connectivity with outbound-only traffic.
+**The Control Plane generates Layer 0.** When you initialize the Control Plane,
+it generates the NATS Operator JWT, the System Account, the resolver
+configuration and the `nats-server` config. You start NATS with these files.
+Each Organization gets a Nebula CA that issues host certificates. One command
+exports these files, so you can run NATS and Nebula lighthouses on the same
+host, on other hosts, in a cluster or at the edge. See
+[Getting Started](./getting-started.md) for the commands.
 
-**Bootstrapped from the Control Plane.** Layer 0 isn't a component you install and point at PocketBase — it's produced by PocketBase. When you initialize the Control Plane, it generates the NATS Operator JWT, System Account, resolver configuration, and `nats-server` config that you use to start the NATS server or cluster. Similarly, each Organization you create yields a Nebula CA that can issue host certificates. You can export these artifacts with a single command and run NATS (and Nebula Lighthouses) wherever you want — on the same host, on separate hosts, in a cluster, at the edge. See [Architecture](./architecture.md) for the component topology and [Getting Started](./getting-started.md) for the runnable commands.
+**The Control Plane keeps Layer 0 in sync.** PocketBase stays connected to NATS
+on the System Account. It publishes account and credential updates
+(`$SYS.REQ.CLAIMS.UPDATE`), so NATS applies Control Plane changes with no
+restart or reload. Rule engines, stream processors, agents and users see each
+other on the bus. They do not see PocketBase there.
 
-**Provisioned and kept in sync by the Control Plane at runtime.** Once Layer 0 is running, PocketBase stays connected to NATS on the System Account and publishes credential and account updates (`$SYS.REQ.CLAIMS.UPDATE`) so the cluster reflects Control Plane changes in real-time — no restarts, no config reloads. Crucially, PocketBase does *not* participate in tenant-level event flow. No telemetry, no rules, no device commands. Its NATS traffic is narrow and administrative. Rule engines, stream processors, agents, and users see each other on the bus; they do not see PocketBase there.
+Many use cases need only Layer 0. To ingest telemetry and show it on a
+dashboard, you need pub/sub, KV and the console reading NATS over WebSocket.
 
-**Key property:** A surprising number of use cases live entirely at Layer 0. If your need is "ingest telemetry from devices and display it in a dashboard," you're done after Layer 0. Pub/sub plus KV plus the Stone Age Console UI reading NATS over WebSockets covers it.
+**You are at this layer when you:**
 
-**You're at this layer when:**
-
-- You're wiring up devices, services, or users to the NATS bus.
-- You're configuring Nebula groups and firewall rules.
-- You're writing widgets that subscribe to NATS subjects for live UI updates.
-- You're setting up JetStream streams and KV buckets for persistence.
-
----
-
-## 4. Layer 1 — Reflexes (Declarative Event Logic)
-
-**Component:** The rule engine (`rule-router`) — a separate single-binary component with router, gateway, and scheduler features. Runs as its own process alongside NATS, independent of the Control Plane binary.
-
-Layer 1 is where you express *rules* — declarative, stateless-per-message event transformations with conditions and actions. This is the layer that distinguishes a messaging bus from a platform.
-
-**What the rule engine does well:**
-
-- **Trigger-Condition-Action logic.** "When a message arrives on subject X matching condition Y, publish to subject Z (or call a webhook)."
-- **Multiple trigger types.** NATS subjects (router feature), HTTP requests (gateway feature), and cron schedules (scheduler feature) all use the same YAML rule syntax.
-- **Stateless routing and filtering.** Route a subset of events to a specialized subject; reject malformed messages; add metadata.
-- **Enrichment via KV lookups.** Hydrate a sparse event with context from a KV bucket. Sub-microsecond cached lookups mean you can chain several without noticing.
-- **Stateful patterns using KV as state.** Alarm deduplication and presence tracking via TTL: the *rule* is stateless; the *state* lives in KV. See [Automation](./automation.md) for the canonical patterns.
-- **Rate limiting and debounce, built in.** A per-rule `throttle` block (leading-edge by default, `mode: trailing` for a true debounce, grouped by a templated `key`). Its windows live in the engine's memory, not in KV — rule templates have no arithmetic, so a KV counter is not something a rule can maintain — which means each instance keeps its own windows and a restart forgets them.
-- **HTTP ingress and egress.** The gateway feature translates webhooks into NATS messages (inbound) and calls external APIs in response to NATS events (outbound, with retry).
-- **Cron-based publishing.** The scheduler feature fires on a cron expression and publishes to NATS or HTTP.
-
-**What the rule engine is not for:**
-
-This is the most important paragraph in this doc. Be upfront about what doesn't fit at Layer 1:
-
-- **Windowed aggregations.** "Average temperature per sensor over the last 5 minutes." You could force this into the rule engine with KV-based accumulator keys, but you'd be fighting the tool.
-- **Stream-to-stream joins.** Correlating two different event streams by a common key and time window.
-- **Retractable computation.** Aggregations whose intermediate results can change as late data arrives.
-- **Complex multi-step workflows with branching state.** Orchestration of a sequence of decisions and external calls where each step's outcome affects what happens next.
-- **Transactional database operations.** The rule engine publishes; it doesn't coordinate two-phase commits.
-
-When you find yourself trying to do one of these, that's a signal to reach for Layer 2. The graduation path is clean: the stream processor consumes from and publishes back to the same NATS subjects your rules watch, and the two coexist peacefully.
-
-**You're at this layer when:**
-
-- You're writing a YAML rule that says "when X happens, do Y."
-- You're using KV to track state that rules read and write.
-- You're integrating an external service via webhook (inbound or outbound).
-- You're scheduling cron-based publishes (reports, batch commands, periodic syncs).
+- Connect devices, services or users to the NATS bus.
+- Configure Nebula groups and firewall rules.
+- Write widgets that subscribe to NATS subjects.
+- Set up JetStream streams and KV buckets.
 
 ---
 
-## 5. Layer 2 — Thinking (Stateful Stream Processing)
+## 4. Layer 1: Reflexes (Declarative Event Logic)
 
-**Components:** eKuiper, Benthos / RedPanda Connect, Wombat, or any stream processor that can consume from and publish to NATS.
+**Component:** the rule engine (`rule-router`), a separate binary with router,
+gateway and scheduler features. It runs as its own process beside NATS.
 
-Layer 2 is where genuinely stateful computation happens — the kind that needs to maintain sliding windows, aggregate across events, join streams, and handle retraction of intermediate results.
+Layer 1 holds rules: conditions and actions that run on each message, with no
+state between messages.
 
-**What stream processors do well:**
+**The rule engine handles:**
 
-- **Time-window aggregations.** Tumbling, sliding, and session windows over streams of events.
-- **Joins.** Correlating two streams by key within a time window.
-- **Continuous queries.** SQL-like expressions that continuously evaluate over streams rather than finite tables.
-- **Built-in windowing and retraction semantics.** Proper handling of late-arriving events and intermediate result updates.
-- **Rich libraries of stream operators.** Filters, projections, enrichments, and CEP (complex event processing) operators that would be tedious to express declaratively.
+- **Trigger, condition, action.** "When a message on subject X matches
+  condition Y, publish to subject Z or call a webhook."
+- **Three trigger types.** NATS subjects (router), HTTP requests (gateway) and
+  cron schedules (scheduler) use the same YAML syntax.
+- **Routing and filtering.** Send a subset of events to another subject, reject
+  bad messages, add metadata.
+- **KV lookups.** Add context to an event from a KV bucket. Lookups are cached
+  and take under a microsecond, so you can chain several.
+- **State in KV.** Alarm deduplication and presence tracking with a TTL. The
+  rule has no state. The state is in KV. See [Automation](./automation.md).
+- **Rate limiting and debounce.** A per-rule `throttle` block, leading-edge by
+  default, `mode: trailing` for debounce, grouped by a templated `key`. The
+  windows are in the engine's memory, not in KV, because rule templates have no
+  arithmetic. Each instance keeps its own windows, and a restart clears them.
+- **HTTP in and out.** The gateway turns webhooks into NATS messages. It also
+  calls external APIs in response to NATS events, with retry.
+- **Scheduled publishes.** The scheduler publishes to NATS or HTTP on a cron
+  expression.
 
-**The handoff from Layer 1 to Layer 2:**
+**Do not use the rule engine for:**
 
-The key insight is that Layer 2 doesn't replace Layer 1 — it *extends* it. A typical pattern looks like this:
+- **Windowed aggregations**, such as "average temperature per sensor over the
+  last 5 minutes".
+- **Stream-to-stream joins**, which match two event streams by key and time
+  window.
+- **Retractable computation**, where late data changes earlier results.
+- **Multi-step workflows** where each step's result decides the next step.
+- **Transactions.** The rule engine publishes. It does not coordinate
+  two-phase commits.
 
-1. Layer 1 rules watch raw incoming events and do stateless filtering, enrichment, and routing.
-2. Filtered/enriched events land on a dedicated NATS subject.
-3. A Layer 2 pipeline (e.g., eKuiper) subscribes to that subject, does windowed aggregation, and publishes results to another subject.
-4. Layer 1 rules react to those aggregated results — firing alerts, updating KV state, calling webhooks.
+For these, use Layer 2. A stream processor reads from and publishes to the same
+NATS subjects your rules use, so the two run side by side.
 
-Neither layer has to know about the other's implementation. They speak the same language: NATS subjects.
+**You are at this layer when you:**
 
-**You're at this layer when:**
-
-- The problem description contains the phrase "over the last N minutes" or "in a sliding window."
-- You're joining two streams by a common key.
-- You've tried to express the logic in the rule engine and it's gotten awkward.
-- You need SQL-like query semantics over event streams.
-
-**Which stream processor should I use?**
-
-Stone-Age.io has no opinion here. They all consume from and publish to NATS cleanly:
-
-- **eKuiper** — lightweight, SQL-based, runs at the edge. Good fit for IoT-shaped problems.
-- **Benthos / RedPanda Connect / Wombat** — declarative YAML pipelines, huge connector library, good for data plumbing between systems.
-- **Custom processors** — if your domain has specialized needs, writing a small Go service that consumes from NATS and publishes results is completely idiomatic.
-
-Pick the one whose configuration style matches your team's preferences. The substrate doesn't care.
-
----
-
-## 6. Layer 3 — Memory (Long-Term Storage & Analysis)
-
-**Components:** Telegraf (or equivalent), VictoriaMetrics / Prometheus / InfluxDB, Grafana / Perses.
-
-Layer 3 answers questions about the past. It's the historical record, the trend analysis, the "what happened last Tuesday" layer.
-
-**What Layer 3 does well:**
-
-- **Long-term retention.** Months to years of historical telemetry at sustainable storage cost.
-- **Trend queries.** "Show me the 30-day moving average of CPU usage across the warehouse sensors."
-- **Historical alerting.** "Alert if this week's average is 10% higher than last week's."
-- **Rich visualization.** Grafana and Perses provide a visualization ecosystem that's hard to match in a custom UI.
-
-**The handoff from lower layers:**
-
-Layer 3 is a pure consumer of NATS subjects. Telegraf subscribes to telemetry streams (using a durable JetStream consumer so nothing is lost during maintenance) and writes to a TSDB. The TSDB is queried by Grafana or Perses.
-
-Critically, Layer 3 failures never affect Layers 0–2. If VictoriaMetrics is down for maintenance, data continues flowing on NATS; JetStream retains it; Telegraf catches up when the TSDB returns. Your dashboards lose recency, but your operational pipeline does not.
-
-**You're at this layer when:**
-
-- The question starts with "what happened..." rather than "what's happening..."
-- You're building reports, dashboards, or alerts that span days, weeks, or months.
-- You need SQL or PromQL-like expressiveness for historical analysis.
-- You're handing data to analysts, auditors, or compliance tooling.
-
-**BYO philosophy:**
-
-The platform's [Observability](./observability.md) doc goes deeper on this, but the short version: Stone-Age.io deliberately does not bundle a time-series database. We provide the substrate and the patterns; you pick the TSDB that matches your operational and financial constraints. The subject contracts stay stable — you can swap VictoriaMetrics for InfluxDB, Postgres, or Snowflake without changing anything at Layers 0–2.
+- Write a YAML rule that says "when X happens, do Y".
+- Use KV for state that rules read and write.
+- Connect an external service by webhook, in either direction.
+- Schedule publishes, such as reports, batch commands or periodic syncs.
 
 ---
 
-## 7. Graduation Criteria — Which Layer Solves My Problem?
+## 5. Layer 2: Thinking (Stateful Stream Processing)
 
-When you have a problem in hand, use this decision tree:
+**Components:** eKuiper, Benthos / RedPanda Connect, Wombat, or any stream
+processor that reads from and publishes to NATS.
 
-1. **Is it about moving bytes from A to B, or managing identity/inventory?** → Layer 0 (Data Plane) or Control Plane.
-2. **Can I describe the logic as "when X, check Y, do Z"?** → Layer 1.
-3. **Does the logic need state that persists only briefly, and can I express it with KV?** → Still Layer 1. The stateful alarm pattern and presence tracking with TTL fit here, and debounce and rate limiting are the rule engine's built-in `throttle`.
-4. **Does the logic need windowing, stream joins, or aggregation over time?** → Layer 2.
-5. **Is the question about the past, not the present?** → Layer 3.
+Layer 2 does computation that needs state across events: sliding windows,
+aggregations, joins and retraction of earlier results.
 
-Most applications end up spanning three layers naturally: substrate (0), event logic (1), and long-term history (3). Layer 2 enters when the application has genuinely analytical behavior — anomaly detection, cross-stream correlation, windowed alerting.
+**Stream processors handle:**
 
-**A rule of thumb:** resist the temptation to push problems *up* the stack prematurely (using a stream processor for something the rule engine handles), and resist the temptation to push them *down* (forcing windowed logic into declarative rules). The layers are sized right for their jobs.
+- Tumbling, sliding and session windows.
+- Joins of two streams by key within a time window.
+- Continuous SQL-like queries over streams.
+- Late-arriving events and updates to earlier results.
+- Filter, projection, enrichment and complex event processing (CEP) operators.
+
+**How Layer 1 and Layer 2 work together:**
+
+1. Layer 1 rules filter, enrich and route raw events.
+2. The results go to a dedicated NATS subject.
+3. A Layer 2 pipeline (for example eKuiper) subscribes to that subject,
+   aggregates over a window, and publishes the result to another subject.
+4. Layer 1 rules react to the result: they raise alerts, update KV or call
+   webhooks.
+
+Neither layer knows how the other works. They share only NATS subjects.
+
+**You are at this layer when:**
+
+- The problem says "over the last N minutes" or "in a sliding window".
+- You join two streams by a common key.
+- The logic became awkward in the rule engine.
+- You need SQL-like queries over event streams.
+
+**Which stream processor?** Any of them works with NATS:
+
+- **eKuiper**: small, SQL-based, runs at the edge. Suits IoT problems.
+- **Benthos / RedPanda Connect / Wombat**: YAML pipelines with many connectors.
+  Suits data movement between systems.
+- **Your own service**: a small Go service that reads from NATS and publishes
+  results.
+
+Pick the one whose configuration style suits your team.
+
+---
+
+## 6. Layer 3: Memory (Long-Term Storage & Analysis)
+
+**Components:** Telegraf or similar, VictoriaMetrics / Prometheus / InfluxDB,
+Grafana / Perses.
+
+Layer 3 answers questions about the past.
+
+**Layer 3 handles:**
+
+- **Long-term retention.** Months to years of telemetry.
+- **Trend queries.** "The 30-day moving average of CPU use across the warehouse
+  sensors."
+- **Historical alerts.** "Alert if this week's average is 10% higher than last
+  week's."
+- **Visualization** in Grafana or Perses.
+
+Layer 3 only reads from NATS. Telegraf subscribes to telemetry through a durable
+JetStream consumer and writes to a TSDB. Grafana or Perses queries the TSDB.
+
+A Layer 3 failure does not affect Layers 0 to 2. If VictoriaMetrics is down,
+data still moves on NATS, JetStream keeps it, and Telegraf catches up when the
+TSDB returns. Your history dashboards fall behind, but live operation continues.
+
+**You are at this layer when:**
+
+- The question starts with "what happened", not "what is happening".
+- You build reports, dashboards or alerts over days, weeks or months.
+- You need SQL or PromQL for historical analysis.
+- You hand data to analysts, auditors or compliance tools.
+
+Stone-Age.io does not bundle a TSDB. You pick the one that suits your operations
+and budget. The subjects stay the same, so you can change from VictoriaMetrics
+to InfluxDB, Postgres or Snowflake with no change to Layers 0 to 2. See
+[Observability](./observability.md).
+
+---
+
+## 7. Which Layer Solves My Problem?
+
+1. Moving bytes from A to B, or managing identity and inventory: Layer 0 or the
+   Control Plane.
+2. Logic you can say as "when X, check Y, do Z": Layer 1.
+3. Short-lived state you can keep in KV: still Layer 1. Stateful alarms and
+   presence tracking with a TTL fit here. Debounce and rate limiting use the
+   rule engine's `throttle`.
+4. Windows, stream joins or aggregation over time: Layer 2.
+5. A question about the past: Layer 3.
+
+Most applications use Layers 0, 1 and 3. Layer 2 comes in for analytical
+behavior such as anomaly detection, cross-stream correlation and windowed
+alerts.
+
+Do not move a problem up a layer too early, for example a stream processor for
+work the rule engine can do. Do not force it down either, for example windowed
+logic in rules.
 
 ---
 
 ## 8. Reference Architecture — All Four Layers
 
-Here's a concrete example where all four layers participate. The domain is physical access control for a multi-site organization, but the pattern generalizes.
+This example uses all four layers. The domain is physical access control for an
+organization with several sites.
 
-<center>
 ```mermaid
 flowchart LR
     subgraph Device["Edge Device"]
@@ -276,27 +327,35 @@ flowchart LR
     TG --> VM
     VM --> GR
 ```
-</center>
 
-**Layer 0** carries every message. The KV bucket holds credentials, users, roles, schedules, and a materialized permissions view.
+**Layer 0** carries every message. The KV bucket holds credentials, users,
+roles, schedules and a precomputed permissions view.
 
-**Layer 1** handles the hot path: a rule consumes `access.request.{door_id}.{direction}`, does the KV lookups to verify credential → user → role → door → schedule, and publishes an `access.decision.granted.*` or `access.decision.denied.*` event. A second rule turns granted decisions into hardware unlock commands.
+**Layer 1** handles the fast path. A rule reads
+`access.request.{door_id}.{direction}` and looks up credential, user, role, door
+and schedule in KV. It then publishes `access.decision.granted.*` or
+`access.decision.denied.*`. A second rule turns granted decisions into unlock
+commands.
 
-**Layer 2** (optional, added later) runs an eKuiper pipeline that watches all access decisions, maintains per-user behavioral baselines, and publishes an `access.anomaly.*` event when someone accesses a door they rarely use, at an unusual hour, or in an atypical sequence. This kind of behavioral baselining is awkward in Layer 1 but natural in a stream processor.
+**Layer 2** is optional and can come later. An eKuiper pipeline watches all
+access decisions and keeps a baseline for each user. It publishes
+`access.anomaly.*` when someone uses a door they rarely use, at an unusual hour
+or in an unusual order.
 
-**Layer 3** runs Telegraf subscribed to `access.decision.>` and `access.anomaly.>`, writing to VictoriaMetrics. Grafana dashboards show access volumes over time, deny-reason distributions, per-door utilization, and anomaly trends. Vmalert can fire alerts when, say, the denied-access rate for a given door jumps sharply.
+**Layer 3** runs Telegraf on `access.decision.>` and `access.anomaly.>`, writing
+to VictoriaMetrics. Grafana shows access volume, deny reasons, use per door and
+anomaly trends. vmalert can alert when the deny rate for a door rises sharply.
 
-None of these layers know about each other's implementation. They all speak NATS. Any one of them can be redeployed, scaled, or replaced without touching the others.
-
-This is what the platform actually is: **a set of principled seams around a shared substrate, with clear graduation paths at each boundary.**
+The layers share only NATS subjects. You can redeploy, scale or replace any one
+of them without changes to the others.
 
 ---
 
 ## 9. Where to Go Next
 
-- **Control Plane and Data Plane in detail:** [Architecture](./architecture.md).
-- **Layer 0 details:** [Connectivity](./connectivity.md), [Platform UI & Entities](./platform-ui-entities.md).
-- **Layer 1 details:** [Automation](./automation.md).
-- **Layer 2 details:** [Stream Processing](./stream-processing.md).
-- **Layer 3 details:** [Observability](./observability.md).
-- **Edge integration (all layers):** [The Agent](./agent.md).
+- Control Plane and Data Plane: [Architecture](./architecture.md)
+- Layer 0: [Connectivity](./connectivity.md), [Platform UI & Entities](./platform-ui-entities.md)
+- Layer 1: [Automation](./automation.md)
+- Layer 2: [Stream Processing](./stream-processing.md)
+- Layer 3: [Observability](./observability.md)
+- The edge, all layers: [The Agent](./agent.md)

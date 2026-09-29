@@ -6,8 +6,8 @@ nav_order: 50
 
 ## The short version
 
-One container. It seeds itself on first boot and runs the message bus in the same
-process:
+Run one container. It seeds itself on first boot and runs the message bus in
+the same process:
 
 ```bash
 docker run -d --name stone-age \
@@ -18,10 +18,10 @@ docker run -d --name stone-age \
   ghcr.io/stone-age-io/platform:latest
 ```
 
-Console at `http://localhost:8090`, sign in as `admin@example.com` with that
-password. Admin panel at `/_/`.
+Open the console at `http://localhost:8090` and sign in as `admin@example.com`
+with that password. The admin panel is at `/_/`.
 
-Or from a binary, which is the same five commands the container runs for you:
+From a binary, run the same five commands the container runs:
 
 ```bash
 ./stone-age superuser upsert admin@example.com 'change-me-8-chars-min'
@@ -31,36 +31,30 @@ Or from a binary, which is the same five commands the container runs for you:
 ./stone-age serve --nats
 ```
 
-**The order is load-bearing** — `bootstrap` writes fields that `migrate up`
-creates, and `nats export` needs what `bootstrap` seeds. §2 explains why, and
-what each command actually does.
-
-That is the whole install. Everything below is the same path with the reasoning
-attached, plus what to do next.
+**Run them in this order.** `bootstrap` writes fields that `migrate up`
+creates, and `nats export` needs the data that `bootstrap` seeds. §2 explains
+each command.
 
 ---
 
 ## What this guide covers
 
-The rest of it is in two halves, lining up with the first two
-[depths](./index.md#start-where-you-need-to):
-
 | Sections | What you get |
 | :--- | :--- |
-| **§1–§2** | **Depth 1** — a multi-tenant inventory of Things and Locations, over the REST API with a console on top |
-| **§3–§5** | **Depth 2** — the messaging fabric those records get their identities on |
+| **§1 to §2** | **[Depth 1](./index.md#start-where-you-need-to)**: a multi-tenant inventory of Things and Locations, over the REST API, with the console |
+| **§3 to §5** | **Depth 2**: the messaging fabric where those records get their identities |
 
-The order is deliberate: the Control Plane's database has to be seeded before it can emit the NATS server config, so §2 necessarily precedes §3. A consequence is that **§2 is exercisable on its own**, and §2 ends with a checkpoint that does exactly that.
+The Control Plane database must be seeded before it can generate the NATS
+server config, so §2 comes before §3. You can use §2 on its own, and it ends
+with a checkpoint.
 
-**You can also stop after §2** — that's a real deployment for anyone whose problem is "keep an accurate, permissioned record of what we own and where it is," not a crippled trial. Just note that stopping means stopping at *modeling* depth, not trimming the stack: you'd still run a NATS server in a normal deployment — as a separate process, or inside the Control Plane with `serve --nats` — it would simply have nothing on it and no device holding a credential to reach it.
-
-Sections §3 onward add the **Data Plane** (NATS), which is what the rest of the platform — rules, stream processing, long-term storage — builds on. See [Platform Layers](./platform-layers.md) for that model.
+You can stop after §2 if you only need a permissioned record of what you own
+and where it is. A normal deployment still runs a NATS server, separately or
+with `serve --nats`. It simply has nothing on it yet.
 
 ---
 
 ## 1. Installation
-
-Three ways in, in increasing order of effort.
 
 ### Container
 
@@ -73,42 +67,39 @@ docker run -d --name stone-age \
   ghcr.io/stone-age-io/platform:latest
 ```
 
-The entrypoint runs §2's commands on first boot and then `serve --nats`, so this
-covers §1 through §4 in one line. Everything lives on the `/data` volume: the
-database, the generated NATS config, the account JWTs and the JetStream store.
+On first boot, the entrypoint runs the §2 commands and then `serve --nats`, so
+this one command covers §1 to §4. All data is on the `/data` volume: the
+database, the NATS config, the account JWTs and the JetStream store.
 
-`STONE_AGE_NATS_WEBSOCKET_URLS` is the address a **browser** dials, which the
-container cannot work out for itself — use the host's real name rather than
-`localhost` if anyone else will use it.
-
-The entrypoint reads a few more variables, all optional except the password:
+`STONE_AGE_NATS_WEBSOCKET_URLS` is the address a **browser** connects to. The
+container cannot find it for itself. If other people will use the console,
+give the host's real name, not `localhost`.
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `STONE_AGE_BOOTSTRAP_PASSWORD` | — (**required on first boot**) | Password for both the SuperUser and the Platform Operator user. The container exits with an explanation if it is missing. |
-| `STONE_AGE_BOOTSTRAP_EMAIL` | `admin@example.com` | Email for both of those accounts. |
+| `STONE_AGE_BOOTSTRAP_PASSWORD` | none (**required on first boot**) | Password for the SuperUser and the Platform Operator user. If it is missing, the container stops and says why. |
+| `STONE_AGE_BOOTSTRAP_EMAIL` | `admin@example.com` | Email for both accounts. |
 | `STONE_AGE_BOOTSTRAP_ORG` | `System` | Name of the `$SYS` organization. |
-| `STONE_AGE_BOOTSTRAP_OPERATOR_ORG` | `Operator` | Name of your own organization — the one whose NATS account is the hub for shared services. |
-| `STONE_AGE_DATA_DIR` | `/data` | Where the database and NATS config live inside the container. |
+| `STONE_AGE_BOOTSTRAP_OPERATOR_ORG` | `Operator` | Name of your own organization. Its NATS account is the hub for shared services. |
+| `STONE_AGE_DATA_DIR` | `/data` | Where the database and NATS config are inside the container. |
 | `STONE_AGE_HTTP_PORT` | `8090` | The HTTP listen port. |
 
-Seeding happens only while `nats-config/nats.conf` is missing from the data
-directory, so a restart never re-seeds, and edits you make to the generated
-`nats.conf` survive restarts. Any other `STONE_AGE_*` setting from
-[Configuration](./configuration.md) works as usual. The image also carries a
-Docker `HEALTHCHECK` against `GET /api/ready` ([Health & Metrics](./health-metrics.md)).
+The container seeds only when `nats-config/nats.conf` is missing from the data
+directory. A restart never seeds again, and your edits to `nats.conf` stay. All
+other `STONE_AGE_*` settings from [Configuration](./configuration.md) also work.
+The image has a Docker `HEALTHCHECK` on `GET /api/ready`
+([Health & Metrics](./health-metrics.md)).
 
 ### Pre-compiled binary
 
-Download for your architecture from the
-[Releases page](https://github.com/stone-age-io/platform/releases). One binary
-per platform: `stone-age`, the Control Plane. The
-[Agent](./agent.md) that belongs on edge hardware releases from
-[its own repository](https://github.com/stone-age-io/agent) on its own tags.
+Download `stone-age`, the Control Plane, for your architecture from the
+[Releases page](https://github.com/stone-age-io/platform/releases). The
+[Agent](./agent.md) for edge hardware has
+[its own repository](https://github.com/stone-age-io/agent) and releases.
 
 ### From source
 
-Needs Go 1.26+ and Node.js 20.19+ (or 22.12+ — that is Vite's floor, not ours).
+You need Go 1.26+ and Node.js 20.19+ or 22.12+ (Vite's minimum).
 
 ```bash
 git clone https://github.com/stone-age-io/platform.git
@@ -117,21 +108,22 @@ cd platform
 # The console. This writes into pb_public/, which the Go build embeds.
 cd ui && npm install && npm run build && cd ..
 
-# The binary. Note the `.` — the package, not just main.go, which would
+# The binary. Build the package (`.`), not main.go alone, which would
 # leave out bootstrap.go and fail to compile.
 go build -o stone-age .
 ```
-
-About two minutes end to end on a developer laptop, most of it `npm install` and
-the Vite build.
 
 ---
 
 ## 2. Initialize the Control Plane
 
-The Stone-Age.io Platform looks for an optional `config.yaml` in the current directory, or can be configured using environment variables. These configuration options drive the underlying PocketBase libraries. By default, the binary looks for NATS at `nats://localhost:4222` — but nothing in this section requires NATS to be running, and neither does §2's checkpoint.
+The binary reads an optional `config.yaml` from the current directory, and
+environment variables. By default it looks for NATS at `nats://localhost:4222`,
+but nothing in this section needs NATS.
 
-This step initializes the database, seeds the NATS Operator/System Account/System User, and creates your first human administrator. It is **three commands, and the order is load-bearing** — see the note at the end of this section. None of them need the server to be running — they open the embedded database directly.
+This step creates the database, seeds the NATS Operator, System Account and
+System User, and creates your first administrator. It takes three commands, in
+order. None of them needs the server to run. They open the database directly.
 
 ### Step 1: Create the SuperUser (and seed initial data)
 
@@ -139,7 +131,9 @@ This step initializes the database, seeds the NATS Operator/System Account/Syste
 ./stone-age superuser upsert EMAIL PASS
 ```
 
-This is the first command you run on a fresh install. It creates a **SuperUser** — a backend service account with full database access regardless of API rules. As a side effect, the binary runs the support libraries' first-time setup (which seeds the NATS Operator, System Account, and System User) and starts audit logging.
+This creates a **SuperUser**, a service account with full database access that
+ignores API rules. The first run also seeds the NATS Operator, System Account
+and System User, and starts audit logging.
 
 ### Step 2: Import the schema
 
@@ -147,7 +141,10 @@ This is the first command you run on a fresh install. It creates a **SuperUser**
 ./stone-age migrate up
 ```
 
-This applies the embedded migrations, which import `schema.json` — the collections **and the API rules that are the platform's authorization layer** ([Authorization](./authorization.md)). Skipping this step is the classic first-install mistake; the next step depends on the fields it creates.
+This applies the embedded migrations, which import `schema.json`: the
+collections and **the API rules that make up the platform's authorization**
+([Authorization](./authorization.md)). Step 3 needs the fields this step
+creates.
 
 ### Step 3: Bootstrap the first Organization and Platform Operator user
 
@@ -155,17 +152,35 @@ This applies the embedded migrations, which import `schema.json` — the collect
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "Acme MSP"
 ```
 
-The `bootstrap` command creates your first **Platform Operator** user (a regular user with `is_operator = true`), creates the `System` Organization, links the pre-existing NATS System Account/User/Role to it, and — via `--operator-org` — creates the provider's *own* organization, whose NATS account is the hub for shared provider services. `--org` defaults to `System`. Omit `--email` or `--operator-org` and it prompts; omit `--password` and it reads `STONE_AGE_BOOTSTRAP_PASSWORD`, prompting only if that is unset too. Prefer either of those to `--password`, which lands in shell history and the process list.
+`bootstrap` does four things:
 
-Together with the embedded admin panel, `bootstrap` is the **only** way to grant Platform Operator status. No API rule permits writing `is_operator` — not on update, and not on create — so a Platform Operator cannot be minted over REST, not by an Owner and not by another Platform Operator.
+1. Creates your first **Platform Operator** user (a user with
+   `is_operator = true`).
+2. Creates the `System` Organization. `--org` defaults to `System`.
+3. Links the seeded NATS System Account, User and Role to it.
+4. Creates the provider's own organization (`--operator-org`). Its NATS account
+   is the hub for shared provider services.
 
-`bootstrap` leaves the new user's active organization set to the operator organization, which is where day-to-day work happens; the System organization exists for cluster-level NATS operations.
+If you omit `--email` or `--operator-org`, the command prompts. If you omit
+`--password`, it reads `STONE_AGE_BOOTSTRAP_PASSWORD` and prompts only if that
+is also unset. Do not use `--password`, because it goes into your shell history
+and the process list.
 
-From here forward, use the **Platform Operator** user to administer the platform from the UI. The SuperUser is best reserved for infrastructure-level management (schema imports, NATS Operator key custody, troubleshooting via the embedded admin UI at `/_/`).
+`bootstrap` and the admin panel are the **only** ways to make a Platform
+Operator. No API rule allows a write to `is_operator`, on create or update, so
+no REST caller can grant it.
 
-> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org`, and `is_operator_org` — fields that don't exist until Step 2 has imported the schema. PocketBase **silently drops** writes to fields that don't exist, so running `bootstrap` before `migrate up` used to "succeed" while producing a platform with no Platform Operator and no error anywhere. The command now refuses to run before the migrations, but the order is still the thing to remember.
+After `bootstrap`, the new user's active organization is the operator
+organization. Do your daily work there. The System organization is for
+cluster-level NATS operations.
 
-### Checkpoint — you have a working inventory
+From now on, administer the platform as the **Platform Operator** user. Keep the
+SuperUser for infrastructure work: schema imports, NATS Operator key custody,
+and troubleshooting in the admin UI at `/_/`.
+
+> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org` and `is_operator_org`. These fields exist only after Step 2. PocketBase silently drops writes to fields that do not exist, so `bootstrap` refuses to run before the migrations.
+
+### Checkpoint: a working inventory
 
 Start the server:
 
@@ -173,15 +188,16 @@ Start the server:
 ./stone-age serve
 ```
 
-Sign in at `http://localhost:8090` as your Platform Operator user. NATS isn't up yet — §3 handles that — and everything below works regardless:
+Sign in at `http://localhost:8090` as your Platform Operator user. NATS is not
+running yet, and all of these work without it:
 
-- Create Organizations, and invite users into them with roles.
-- Create Locations, Location Types, and Thing Types.
-- Create Things, and edit them from desktop or mobile.
+- Create Organizations and invite users into them with roles.
+- Create Locations, Location Types and Thing Types.
+- Create and edit Things from desktop or mobile.
 - Place Things on a floor plan or a map.
-- Drive all of the above over the REST API or the [`stone` CLI](./stone-cli.md).
+- Do all of this over the REST API or the [`stone` CLI](./stone-cli.md).
 
-Create a Location and a Thing over the API to prove it:
+Create a Location and a Thing over the API:
 
 ```bash
 curl -s -X POST http://localhost:8090/api/collections/locations/records \
@@ -196,162 +212,190 @@ curl -s -X POST http://localhost:8090/api/org/things \
        "nats":{"mode":"none"},"nebula":{"mode":"none"}}'
 ```
 
-`"mode":"none"` on both halves is what makes this depth 1: the Thing is created as a pure inventory record with no messaging identity and no mesh certificate. The console's create form offers the same three choices per identity (`auto`, `link`, `none`). You can attach identities later without recreating the record — see [Inventory-as-Identity](./architecture.md#31-inventory-as-identity).
+With `"mode":"none"` on both identities, the Thing is an inventory record with
+no messaging identity and no mesh certificate. The console's create form has
+the same three choices (`auto`, `link`, `none`). You can attach identities later
+to the same record. See [Inventory-as-Identity](./architecture.md#31-inventory-as-identity).
 
-> **The NATS warning in the log is expected here, and it is not an error.**
+> **The NATS warning in the log is expected.**
 >
-> On startup the Control Plane tries to reach NATS. It can't yet, so it logs *"Publisher will continue operating - connection will be established when NATS becomes available"* and enters **bootstrap mode**: a retry ticker plus a durable work queue.
+> At startup the Control Plane cannot reach NATS. It logs *"Publisher will continue operating - connection will be established when NATS becomes available"* and enters **bootstrap mode**, with a retry timer and a durable work queue.
 >
-> This exists to break a chicken-and-egg problem, not to make NATS optional. The database must be seeded before `stone-age nats export` can emit a server config, and NATS can't be reached before it's running — so credential work performed in the meantime is written to the `nats_publish_queue` collection instead of being published, and drains on the first run that connects. That's why `bootstrap` in §2 can create Organizations before a server exists: their account claims are queued on disk and land on the cluster the first time the Control Plane reaches NATS.
+> The database must be seeded before `stone-age nats export` can create a server config, and NATS is not reachable before it runs. Until then, credential work goes into the `nats_publish_queue` collection. The queue drains on the first run that connects. This is how `bootstrap` can create Organizations before a server exists.
 >
-> **Don't read this as a steady state.** Running indefinitely without NATS just grows the queue while the cluster's claims sit stale relative to the database. Harmless while nothing is connected, but it isn't a topology to design around — bring NATS up in §3.
+> Do not run like this for long. The queue grows, and the cluster's claims fall behind the database. Start NATS in §3.
 
-### Or seed a whole demo estate in one command
+### Or seed a demo estate in one command
 
-Everything above builds one Location and one Thing by hand, which is the right
-way to understand what a record is. If what you want is a populated platform to
-look at — three tenants, a type taxonomy, locations on a real map, things
-spanning devices, gateways, applications and unattended screens, NATS roles and
-signed identities, a Nebula network with a lighthouse, and edge sites — there is
-a command for that:
+To get a populated platform to look at, run:
 
 ```bash
 ./stone-age demo-seed --confirm
 ```
 
-It runs **in-process, through the same provisioning hooks** the console and the
-API use, so a seeded organization is indistinguishable from one you built by
-hand: creating it mints its NATS account and Nebula CA, and creating an edge
-site mints that leaf node's NATS user. It needs no running NATS server —
-account claims queue in `nats_publish_queue` and drain when one appears.
+It creates three tenants, a type taxonomy, locations on a real map, things
+(devices, gateways, applications and unattended screens), NATS roles and signed
+identities, a Nebula network with a lighthouse, and edge sites.
 
-Seeding is **idempotent**: everything is found-or-created by its per-organization
-`code`, so re-running converges rather than duplicating, and `--things` raises
-the fleet size on a later run without colliding.
+It runs **in-process, through the same provisioning hooks** as the console and
+the API, so the result is the same as records you create by hand. Creating an
+organization mints its NATS account and Nebula CA. Creating an edge site mints
+the leaf node's NATS user. It needs no running NATS server, because account
+claims wait in `nats_publish_queue`.
 
-`--confirm` is required, and it is the whole safety mechanism — this ships in
-the binary you run in production and the command writes real signed
-credentials. Point it at a throwaway database, not a live one.
+You can run it again safely. It finds or creates every record by its
+per-organization `code`, so it does not duplicate anything. `--things` raises
+the fleet size on a later run.
 
-It also seeds the same three sites, by the same codes, that the sibling
-access-control app seeds. Run both and a door in one and a Thing in the other
-are the same door, which is what a globally unique organization code and a
-per-organization code namespace are *for* — see
+`--confirm` is required and is the only safety check. The command is in the
+production binary and writes real signed credentials. Use a throwaway database.
+
+It seeds the same three sites, with the same codes, as the access-control app.
+If you run both, a door in one and a Thing in the other are the same door. See
 [ADR 0002](./decisions/0002-organization-code-namespace.md).
 
-**If an inventory is what you needed, you're done for now.** Skip to [§6 Next Steps](#6-next-steps). Otherwise continue to §3 and give those records identities on the fabric.
+**If you only need an inventory, stop here** and go to [§6 Next Steps](#6-next-steps).
 
 ---
 
 ## 3. Start the NATS Server
 
-Everything above this line is depth 1 — inventory, no messaging. This section starts depth 2: starting the fabric so the inventory records you just created can hold identities and talk. It also drains anything §2 left queued.
+This section starts depth 2. It gives your inventory records identities on the
+bus, and it drains anything §2 queued.
 
-Now that the Control Plane database has been seeded with the NATS Operator and System Account, export the matching server-side config:
+Export the server config that matches the seeded NATS Operator and System
+Account:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
 ```
 
-The exported directory contains the NATS Operator JWT, the NATS Operator config, and a ready-to-use `nats.conf`. Paths inside it are absolute, so it works from any working directory, and the JWT and JetStream directories are created on first run.
+The directory holds the NATS Operator JWT, the operator config and a
+`nats.conf`. Its paths are absolute, so it works from any directory. The JWT
+and JetStream directories are created on first run.
 
-Now run a server against it. There are two ways, and they use the same config file.
+Run a server with it in one of two ways. Both use the same config file.
 
-### Option A — inside the Control Plane
+### Option A: inside the Control Plane
 
 ```bash
 ./stone-age serve --nats
 ```
 
-One process. The Control Plane starts a NATS server from `./nats-config/nats.conf` (override with `--nats-config`) and shuts it down with itself. This is the shortest path to a working bus and it is a legitimate way to run a small deployment — see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) for what you are trading away.
+One process. The Control Plane starts a NATS server from
+`./nats-config/nats.conf` (change it with `--nats-config`) and stops it on
+shutdown. Restarting `stone-age` also restarts the bus. See
+[Operations §2.1](./operations.md#21-where-the-nats-server-runs) for the
+trade-offs.
 
-Skip §4's `serve` command if you use this; the server is already running.
+If you use this option, skip the `serve` command in §4.
 
-### Option B — as its own process
+### Option B: as its own process
 
 ```bash
 nats-server -c ./nats-config/nats.conf
 ```
 
-The classic split: the bus keeps running while the Control Plane restarts, which is the independence the [plane split](./platform-layers.md) promises. Option A gives that up for one process — restarting `stone-age` restarts the bus. The two are not exclusive: the embedded server can be clustered with an external `nats-server`, which buys back independence for planned upgrades, and full high availability means three or more external nodes. [Operations §2.1](./operations.md#21-where-the-nats-server-runs) lays out the three rungs and moving between them. Option A is the opt-in; `serve` without `--nats` expects a server like this one.
+The bus keeps running while the Control Plane restarts. `serve` without
+`--nats` expects a server like this. You can also cluster the embedded server
+with an external `nats-server` for planned upgrades. Full high availability
+needs three or more external nodes. [Operations §2.1](./operations.md#21-where-the-nats-server-runs)
+describes the three options and how to move between them.
 
-Either way the running server is identical, because the config is. We won't go deep on running NATS here — their [documentation](https://docs.nats.io) covers production topologies, leaf nodes, clustering, and TLS in depth.
+For production topologies, leaf nodes, clustering and TLS, see the
+[NATS documentation](https://docs.nats.io).
 
-> **WebSockets are required** for the browser UI to connect — browsers cannot speak the NATS TCP protocol. The exported `nats.conf` enables a WebSocket listener on port `9222`; adjust the `websocket { ... }` block for TLS (`wss://`), or pass `--websocket-port` to the export.
+> **The browser needs WebSockets**, because it cannot use the NATS TCP protocol. The exported `nats.conf` enables a WebSocket listener on port `9222`. For TLS (`wss://`), edit the `websocket { ... }` block, or pass `--websocket-port` to the export.
 
 ---
 
 ## 4. Connect the Browser to NATS
 
-If you used **Option A**, the platform is already running and you can skip straight to the UI. Otherwise start it:
+If you used **Option A**, the platform is already running. If not, start it:
 
 ```bash
 ./stone-age serve
 ```
 
-The UI is available at `http://localhost:8090` (sign in with your Platform Operator user). The embedded admin UI is at `http://localhost:8090/_/` (sign in with your SuperUser).
+The console is at `http://localhost:8090` (sign in as the Platform Operator).
+The admin UI is at `http://localhost:8090/_/` (sign in as the SuperUser).
 
-With NATS now running, the console can hold a live connection to the bus — this is what turns the static inventory from §2 into a live view. The browser connects **as the NATS identity linked to your membership in the active organization**, so it needs two things: an address and an identity.
+The browser connects **as the NATS identity linked to your membership in the
+active organization**. It needs an address and an identity.
 
-1. **The address.** Navigate to **Settings** in the sidebar. Under **NATS Connection**, the **Server URLs** list already shows the deployment's addresses — `nats.websocket_urls` if it is set, otherwise the built-in `ws://localhost:9222` that `nats export` configures. For a local install there is nothing to add. Adding a URL here does not extend that list; it **replaces** it on this browser only, which is for pointing one device at a local leaf node ([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
-2. **The identity.** `bootstrap` left you in your operator organization, which has a NATS account but no identity in it yet. Under **NATS** in the sidebar, create a **Role** (the permission template), then a **User** holding that role. Back in **Settings**, choose that user as the **Operational Identity**.
-3. Optionally enable **Auto-connect on login**, then click **Connect**.
+1. **The address.** Go to **Settings**. Under **NATS Connection**, the
+   **Server URLs** list shows the deployment's addresses: `nats.websocket_urls`
+   if set, or the default `ws://localhost:9222`. For a local install, add
+   nothing. A URL you add here **replaces** the list, on this browser only. Use
+   it to point one device at a local leaf node
+   ([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
+2. **The identity.** Your operator organization has a NATS account but no
+   identity in it yet. Under **NATS**, create a **Role** (the permission
+   template), then a **User** with that role. In **Settings**, choose that user
+   as the **Operational Identity**.
+3. Optionally, turn on **Auto-connect on login**. Click **Connect**.
 
-You should see a green **Status: Connected** indicator.
+The status shows a green **Status: Connected**.
 
-> **Use your own organization for real work, not the System account.** `bootstrap` links the seeded NATS **System User** to the System organization, and switching into it and choosing that user is a quick way to prove the connection — but the System Account is reserved for NATS cluster-management traffic and is not JetStream-enabled, which makes it a poor fit for day-to-day data. New tenants get their own organizations. Note that **creating an Organization requires a Platform Operator** — `organizations.createRule` admits nothing else, so do this while signed in as the Platform Operator user from Step 3 ([Authorization §3](./authorization.md#3-cross-organization-identities)).
+> **Use your own organization for real work, not the System account.** `bootstrap` links the NATS **System User** to the System organization. You can use it to test the connection, but the System Account is for NATS cluster management and has no JetStream. Give each new tenant its own organization. Only a Platform Operator can create an Organization ([Authorization §3](./authorization.md#3-cross-organization-identities)).
 >
-> Choosing *which* identity a membership uses is an owner/admin action. Other roles can keep or clear their own link but not re-point it — the identity a membership names is the one whose credential that browser reads, so a free choice would be a credential read ([Authorization](./authorization.md)).
+> Only an owner or admin can choose which identity a membership uses. Other roles can keep or clear their own link, but cannot point it at another identity. The browser reads that identity's credential, so a free choice would let a user read any credential ([Authorization](./authorization.md)).
 
 ---
 
 ## 5. The "Hello World" Event
 
-Let's verify the entire pipeline is working by sending a message and watching it appear in real-time.
+Send a message and watch it arrive.
 
-### Step A: Open the Live Stream
-On the dashboard, add a new Widget and use the Console widget. This is a raw view of all messages the browser is currently seeing on the bus.
+1. On the dashboard, add a **Console** widget. It shows every message the
+   browser receives on the bus.
+2. Publish a test message with the `nats` CLI, or with a **Publisher** widget:
 
-### Step B: Publish a Test Message
-You can use the `nats` CLI tool or add another widget and use the built-in **Publisher** widget in the Dashboard:
+   ```bash
+   nats pub test.hello '{"msg": "Hello Stone Age", "val": 42}'
+   ```
 
-#### Using the NATS CLI
-```bash
-nats pub test.hello '{"msg": "Hello Stone Age", "val": 42}'
-```
+3. The message appears in the Console widget.
 
-Once you've defined Thing Types and their operations, the Publisher widget can also bind to a `Thing + Operation` pair — the subject resolves automatically from the Thing's context, and the payload stays free text. See [Thing Types](./thing-types.md).
-
-### Step C: The Result
-You should see the message appear instantly in the live stream. 
+When you have Thing Types with operations, the Publisher widget can bind to a
+Thing and an operation. The subject then comes from the Thing, and the payload
+is free text. See [Thing Types](./thing-types.md).
 
 ---
 
 ## 6. Next Steps
 
-Where you go next depends on where you stopped.
+### At any depth
 
-### Useful at any depth
-
-*   **Invite your team:** Before handing out roles, read [Authorization & Roles](./authorization.md) — `admin` carries full tenant authority, identical to `owner`.
-*   **Put your config in git:** `stone pull` writes every tenant record to YAML you can diff and review. See [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply).
-*   **Understand the whole architecture:** Read [Platform Layers](./platform-layers.md) for the full model, and [Overview](./overview.md#what-we-call-things) for what the names mean.
+- Read [Authorization & Roles](./authorization.md) before you invite your team.
+  `admin` has full tenant authority, the same as `owner`.
+- Put your config in git. `stone pull` writes every tenant record to YAML that
+  you can diff and review. See [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply).
+- Read [Platform Layers](./platform-layers.md) for the full model, and
+  [What We Call Things](./overview.md#what-we-call-things) for the names.
 
 ### If you stopped at §2 (inventory)
 
-You have a Control Plane and nothing on the fabric, which is a supported place to be. Consider still running a NATS server alongside it — the queued account claims land as soon as one is reachable, and you avoid a stale cluster the day you do add a device. `nats export` followed by `serve --nats` makes that two commands and no extra process. The natural next moves are inventory-shaped:
+Consider running a NATS server anyway. The queued account claims apply as soon
+as it is reachable, and the cluster is current on the day you add a device.
+`nats export` and then `serve --nats` is two commands and no extra process.
 
-*   **Model your sites:** Build out Location Types and the location tree, then place Things on floor plans. See [Platform Entities & UI](./platform-ui-entities.md).
-*   **Bulk-load what you own:** Script the REST API or use `stone` to import an existing asset register.
-*   **Come back to §3 when you need messaging.** Nothing you built here gets rewritten — the records you created simply gain identities.
+- Build Location Types and the location tree, then place Things on floor plans.
+  See [Platform Entities & UI](./platform-ui-entities.md).
+- Import an existing asset register with the REST API or `stone`.
+- Go to §3 when you need messaging. Your records stay the same and gain
+  identities.
 
-### If you completed §5 (inventory + fabric)
+### If you completed §5 (inventory and fabric)
 
-You have a Control Plane and Data Plane running. Each addition below is **its own single-binary component** that connects to the same NATS bus — no architectural rework, just another process to run.
+Each addition is a separate binary on the same NATS bus.
 
-*   **Declare contracts:** Define [Thing Types](./thing-types.md) so every participant on your fabric has a declarative contract for its subjects and message shapes.
-*   **Deploy an Agent:** Install the [Agent](./agent.md) on a Linux or Windows machine to start collecting telemetry from real infrastructure.
-*   **Build a Dashboard:** Click **Dashboard** in the sidebar (the Visualizer view) — unlock the grid and add a **Gauge** or **Chart** widget pointing to your NATS subjects.
-*   **Define rules (Layer 1):** Deploy the rule engine — router for NATS-to-NATS logic, gateway for webhooks, scheduler for cron-based publishing. See [Automation](./automation.md).
-*   **Add stream processing (Layer 2):** When you need windowed aggregations or stream joins, see [Stream Processing](./stream-processing.md).
-*   **Archive history (Layer 3):** Hook up Telegraf and a TSDB for long-term storage. See [Observability](./observability.md).
+- Define [Thing Types](./thing-types.md) to declare each participant's subjects.
+- Install the [Agent](./agent.md) on a Linux or Windows machine to collect
+  telemetry.
+- Open **Dashboard**, unlock the grid, and add a **Gauge** or **Chart** widget
+  on your NATS subjects.
+- Deploy the rule engine: router for NATS-to-NATS logic, gateway for webhooks,
+  scheduler for cron publishes. See [Automation](./automation.md).
+- For windowed aggregations or stream joins, see [Stream Processing](./stream-processing.md).
+- For long-term storage, add Telegraf and a TSDB. See [Observability](./observability.md).

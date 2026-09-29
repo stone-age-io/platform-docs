@@ -4,215 +4,324 @@ nav_order: 120
 ---
 # Connectivity
 
-Connectivity is the backbone of the Stone-Age.io Platform — **Layer 0** of the Data Plane. We rely on two industry-leading technologies to provide a secure, resilient, and low-latency substrate: **NATS.io** for messaging and **Nebula** for overlay networking.
-
-This document details how these technologies work together to create a secure "Radio Network" that handles communication from the cloud to the extreme edge. For the broader architectural picture of how Layer 0 composes with higher tiers (declarative event logic, stream processing, long-term storage), see [Platform Layers](./platform-layers.md).
+Connectivity is **Layer 0** of the Data Plane. It uses **NATS.io** for
+messaging and **Nebula** for overlay networking. This page describes how the
+two carry traffic from the central site to the edge. For how Layer 0 fits with
+the higher layers, see [Platform Layers](./platform-layers.md).
 
 ---
 
 ## 1. NATS
 
-NATS provides the messaging fabric for the platform. It is designed to be always on and handles everything from simple telemetry to durable data streams. This is just a quick overview of the features — we definitely suggest reading the NATS.io documentation for more information.
+NATS carries all platform messaging, from simple telemetry to durable streams.
+This is a short overview. See the [NATS documentation](https://docs.nats.io)
+for detail.
 
 ### Core Pub/Sub & Subject Namespacing
 
-In NATS, messages are sent to **Subjects**. Subject namespaces are isolated by NATS account, so you can have the same subject in two Accounts without data overlapping. Stone-Age.io's default namespacing pattern is **family-first** and Thing-Type-aware:
+NATS sends messages to **subjects**. Each NATS account has its own subject
+namespace, so two accounts can use the same subject without sharing data. The
+default Stone-Age.io pattern puts the Thing Type first:
 
 ```
 {thing_type_code}.{thing}.{operation_suffix}
 ```
 
-- **Examples:** `temp_sensor.TP-4KD-7PX.reading`, `camera.CA-9KD-4PX.motion`, `door.DOOR-1.opened`.
-- **No location, by default.** Things move, and a subject built from a Thing's current location would move with it, splitting its history across two sites and leaving its NATS permissions aimed at the old one. A Thing code is already unique within the organization, which is the NATS account. Where location is carried instead is covered in [Thing Types](./thing-types.md#two-constraints-worth-knowing-before-you-design-a-prefix) and [ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md).
-- **The Agent follows the same shape.** It is a management daemon rather than a device publishing against a Thing Type contract, and its subjects are `{subject_prefix}.{code}.…` — a gateway's heartbeat is `agents.gw-99.heartbeat`. See [The Agent §3](./agent.md#3-capabilities).
-- **Where the segments come from:** `{thing}` is the code on the Thing record, and `{thing_type_code}` (or a custom prefix) and the operation suffix come from the Thing Type contract. See [Thing Types](./thing-types.md) for the full subject template model.
-- **Wildcards:** Wildcards match subject tokens. Subscribe to `camera.>` to see every camera event, or `camera.*.motion` to see every camera's motion events. Family-first is deliberate: it lets a single JetStream stream capture one kind of Thing (`camera.>`) without wildcards mid-filter, which keeps stream design clean as your deployment grows.
-- **This is a starting point, not a rule.** The platform enforces only what an empty prefix resolves to and which characters a code may contain. A Thing Type can opt into `{location}` (`freezer.{location}.{thing}` for equipment that never moves), and an application can own its own tree, such as `acc.>` or `kiosk.>` in the demo. The account owner decides the rest.
+- **Examples:** `temp_sensor.TP-4KD-7PX.reading`, `camera.CA-9KD-4PX.motion`,
+  `door.DOOR-1.opened`.
+- **No location by default.** Things move. A subject built from the current
+  location would move with the Thing, split its history across two sites, and
+  leave its NATS permissions on the old site. A Thing code is already unique in
+  the organization, which is the NATS account. See
+  [Thing Types](./thing-types.md#two-constraints-worth-knowing-before-you-design-a-prefix)
+  and [ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md).
+- **The Agent uses the same shape.** It is a management daemon, not a device
+  with a Thing Type contract. Its subjects are `{subject_prefix}.{code}.…`, so a
+  gateway's heartbeat is `agents.gw-99.heartbeat`. See
+  [The Agent §3](./agent.md#3-capabilities).
+- **Where the tokens come from:** `{thing}` is the Thing's code.
+  `{thing_type_code}` (or a custom prefix) and the operation suffix come from the
+  Thing Type. See [Thing Types](./thing-types.md).
+- **Wildcards** match subject tokens. Subscribe to `camera.>` for every camera
+  event, or `camera.*.motion` for every camera's motion events. With the type
+  first, one JetStream stream can capture one kind of Thing (`camera.>`) with no
+  wildcard in the middle of the filter.
+- **You can change the layout.** The platform enforces only what an empty
+  prefix resolves to and which characters a code can contain. A Thing Type can
+  add `{location}` (`freezer.{location}.{thing}` for equipment that never
+  moves), and an application can own its own tree, such as `acc.>` or `kiosk.>`
+  in the demo. The account owner decides the rest.
 
-**Subject discipline is the contract between layers.** Rules, stream processors, and observability consumers all identify their inputs and outputs by subject. Thing Types make this contract declarative — picking a clean prefix once on a Thing Type means every instance of that kind follows the same shape.
+**Subjects are the contract between layers.** Rules, stream processors and
+observability consumers name their inputs and outputs by subject. Set a clean
+prefix on a Thing Type once, and every Thing of that type follows it.
 
-Note: subject permissions are attached to the NATS user, usually through a reusable **NATS Role** (`nats_roles`) with optional per-user overrides. Permissions are expressed as publish/subscribe allow/deny patterns; deny rules are evaluated after allow, so combining them with wildcards can express fairly complex scenarios.
+Subject permissions belong to the NATS user, usually through a reusable **NATS
+Role** (`nats_roles`) with optional per-user overrides. Permissions are publish
+and subscribe allow and deny patterns. Deny is evaluated after allow, so with
+wildcards you can express complex cases.
 
-> **A "NATS role" is not a membership role.** `nats_roles` records are data-plane permission sets applied to NATS users; the five **membership** roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) govern who may read or write platform records. Authoring `nats_roles` is Owner/Admin only — for **reads** as well as writes — because a role's publish and subscribe permission fields are copied **verbatim** into the user JWT the platform signs. Write access to them is therefore equivalent to granting NATS permissions. See [Authorization](./authorization.md).
+> **A NATS role is not a membership role.** `nats_roles` records are Data Plane permission sets for NATS users. The five **membership** roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) control who can read or write platform records. Only Owners and Admins can read or write `nats_roles`, because the platform copies a role's permission fields **exactly** into the user JWT it signs. See [Authorization](./authorization.md).
 
 ### JetStream
 
-Core NATS is "fire and forget." To handle historical data or "at-least-once" delivery, we use **JetStream**.
+Core NATS does not store messages. For history and at-least-once delivery, use
+**JetStream**.
 
-- **Streams:** Capture and store messages published to specific subjects.
-- **Consumers:** Allow the platform (or your apps) to read back history. This is how the UI populates charts with historical data when you first open a dashboard.
+- **Streams** store messages published to given subjects.
+- **Consumers** read back history. Dashboards use them to fill charts when you
+  open them.
 
-JetStream is also what makes the platform resilient to Layer 3 outages — telemetry retained in a JetStream stream catches up to the TSDB when Telegraf reconnects, with no data loss, **provided Telegraf reads it through a JetStream consumer that remembers its position**. A plain subject subscription, queue group or not, is core NATS: whatever was published while Telegraf was down is simply gone for it.
+JetStream also protects you from Layer 3 outages. Telemetry kept in a stream
+reaches the TSDB when Telegraf reconnects, with no data loss, **if Telegraf
+reads it through a JetStream consumer that keeps its position**. A plain
+subject subscription, with or without a queue group, is core NATS: Telegraf
+never sees what was published while it was down.
 
 ### Key-Value Buckets (Live State)
 
-JetStream offers specialized streams called Key-Value (KV) buckets that are optimized for high-frequency updates. They're the substrate primitive behind two distinct platform concerns:
+KV buckets are JetStream streams built for frequent updates. The platform uses
+them for two things:
 
-- **The Digital Twin** — per-entity live state (current temperature, online status, set points) that the UI reads/writes over WebSocket. The static side of the same entity (name, serial, location) lives in PocketBase. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the canonical model.
-- **Layer 1 rule state** — alarm status, presence keys, last-known values. Rules stay stateless per message; KV holds the durable state. See [Automation §5](./automation.md#5-stateful-patterns-via-kv). Debounce and rate limiting are *not* KV patterns: the rule engine has a per-rule `throttle` for them (leading-edge by default, `mode: trailing` for a true debounce), and its windows live in each instance's memory — per instance, and lost on a restart. See [Automation — Throttle and debounce are built in](./automation.md#throttle-and-debounce-are-built-in).
+- **The digital twin:** live state per entity (temperature, online status,
+  setpoints) that the console reads and writes over WebSocket. PocketBase holds
+  the static data (name, serial, location). See
+  [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
+- **Layer 1 rule state:** alarm status, presence keys, last-known values. Rules
+  keep no state between messages, and KV holds the state. See
+  [Automation §5](./automation.md#5-stateful-patterns-via-kv). Debounce and rate
+  limiting do not use KV. The rule engine has a per-rule `throttle`, and its
+  windows are in each instance's memory, lost on restart. See
+  [Automation](./automation.md#throttle-and-debounce-are-built-in).
 
-Both concerns share the same buckets, the same access patterns, and the same isolation boundary (the org's NATS Account).
+Both uses share the same buckets and the same isolation boundary, the org's
+NATS Account.
 
 ### Leaf Nodes
 
-For MSPs managing remote customer sites, **Leaf Nodes** are a game changer. A Leaf Node is a fully functional NATS server or cluster running locally at a customer site that connects back to a central cluster using one-way, outbound communication. They can be deployed on small devices like cellular routers/gateways from Cradlepoint or Peplink for small installations, or can be an entirely separate cluster deployed at the edge for low latency and redundancy.
+A **leaf node** is a NATS server or cluster at a customer site that connects to
+a central cluster with an outbound connection only. For a small site, it can run
+on a cellular router or gateway such as Cradlepoint or Peplink. For a large
+site, it can be a separate cluster for low latency and redundancy.
 
-- **Local Autonomy:** If the internet goes down, the local devices can still talk to each other, and anything with a local JetStream stream or KV bucket keeps storing data.
-- **Transparent Bridging:** When the connection is restored, subject interest re-propagates and traffic flows to and from the central cluster again. What was published *during* the outage crosses only if something stored it — a stream at the leaf that the hub sources from, or a KV bucket kept in sync across the link. Plain core NATS messages from the outage are not replayed.
+- **Local autonomy:** if the internet connection fails, local devices still
+  talk to each other, and local JetStream streams and KV buckets keep storing
+  data.
+- **Reconnection:** when the link returns, subject interest propagates again and
+  traffic flows to and from the central cluster. Messages published *during*
+  the outage cross only if something stored them: a stream at the leaf that the
+  hub sources from, or a KV bucket synced across the link. Plain core NATS
+  messages from the outage are not replayed.
 
-Leaf nodes enable **edge deployment of higher layers** too. A rule engine instance running alongside a leaf node continues to evaluate rules against locally-mirrored KV state during a WAN outage. A stream processor at the edge keeps producing aggregates. The whole layered architecture works offline at each site, and the KV buckets a site declares for sync catch up in their own direction — hub → edge by mirror, edge → hub by relay — when connectivity returns.
+Higher layers can also run at the edge. A rule engine next to a leaf node keeps
+evaluating rules against local KV during a WAN outage. A stream processor at the
+edge keeps producing aggregates. When the link returns, synced KV buckets catch
+up in their own direction: hub to edge by mirror, edge to hub by relay.
 
-How the platform models such a site — as an ordinary **Thing**, whose Agent bootstraps and optionally hosts the leaf server — is covered in [Leaf Nodes](./leaf-nodes.md).
+The platform models a site as an ordinary **Thing**, whose Agent sets up the
+leaf server and can host it. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Cross-Account Subject Sharing (Imports & Exports)
 
-NATS Accounts are isolated by default — subjects in Account A are invisible to Account B. **Imports** and **Exports** are the NATS-native way to punch a controlled hole between two Accounts when you genuinely want shared traffic.
+NATS Accounts are isolated by default. Account B cannot see subjects in
+Account A. **Imports** and **exports** are the NATS way to share chosen traffic
+between two accounts.
 
-**The protocol model:**
+- An **export** is on the *source* account. It offers a subject or stream to
+  other accounts, as one of two types:
+  - **Stream export** (pub/sub): subscribers in importing accounts receive the
+    messages.
+  - **Service export** (request/reply): requesters in importing accounts can
+    call the service and get replies.
+- An **import** is on the *consuming* account. It subscribes to an exported
+  subject from another account. It can remap the subject into the local
+  namespace, for example remote `events.>` to local `partner.events.>`.
+- An export is **public** (any account can import it) or **private** (the
+  importer needs a token signed by the exporting account).
 
-- An **Export** is a declaration on the *source* Account: "I am willing to share this subject (or stream) with other Accounts." Exports come in two flavors:
-    - **Stream export** — pub/sub: subscribers in importing accounts see published messages.
-    - **Service export** — request/reply: requesters in importing accounts can call the service and receive replies.
-- An **Import** is the matching declaration on the *consuming* Account: "I want to subscribe to this exported subject from that Account." The import optionally remaps the subject into the local namespace (e.g., a remote `events.>` becomes local `partner.events.>`).
-- Exports can be **public** (any Account may import) or **private** (importing requires a token signed by the exporting Account).
+The platform stores both sides as collections (`nats_account_exports`,
+`nats_account_imports`), so account wiring is data, not a hand-edited resolver
+file.
 
-The platform manages both sides as first-class collections (`nats_account_exports`, `nats_account_imports`) so the cluster's account-level wiring is configuration data, not a hand-edited resolver file.
+**In the console:**
 
-**The UI surface:**
+- **Exports** (`/nats/exports`): list, create, edit and delete exports for the
+  current org's account. Fields: subject, type (`stream`/`service`), token
+  requirement, response type for services (`Singleton`/`Stream`/`Chunked`),
+  `advertise` and an optional description.
+- **Imports** (`/nats/imports`): list, create, edit and delete imports. Fields:
+  source account public key, remote subject, optional local subject remap,
+  activation token (for private exports), type, share and `allow_trace`.
 
-- **Exports** (`/nats/exports`): list, create, edit, and delete exports for the current org's Account. Form fields cover the subject, type (`stream`/`service`), token requirement, response type for services (`Singleton`/`Stream`/`Chunked`), `advertise`, and an optional description.
-- **Imports** (`/nats/imports`): list, create, edit, and delete imports. Form fields cover the source Account public key, the remote subject, an optional local subject remap, the activation token (for private exports), type, share, and `allow_trace`.
+Only Owners and Admins can use both views, **including the lists**. A member,
+viewer or dashboard holder gets an empty result, not a filtered one.
 
-Both views — **including their lists** — are Owner/Admin only. A member, viewer or dashboard holder querying `nats_account_exports` or `nats_account_imports` receives an empty result, not a filtered one.
-
-**Platform-managed records are read-only.** Flagging an Organization `managed`
-provisions a pair of these records automatically — a `helpdesk-events` export on
-the tenant's Account, and a matching import on the provider's hub Account. Both
+**Platform-managed records are read-only.** When an Organization is flagged
+`managed`, the platform creates a pair of records: a `helpdesk-events` export on
+the tenant's account, and a matching import on the provider's hub account. Both
 show a **Managed** badge and offer **View** instead of Edit or Delete.
 
-That is not a permission — an Owner has write access to the collection — it is
-the console declining to offer an edit that would not last. The platform
-reconciles `subject`, `type`, `description` (and the import's source `account`
-and `local subject`) every time the Organization record is saved, so a change
-made here is overwritten with no error and no warning. Deleting one does not
-retire it either: the next save recreates it. **To remove the pair, clear
-`managed` on the Organization,** which deletes both sides together.
+This is not a permission. An Owner can write to the collection. The console
+hides the edit because it would not last. Every save of the Organization record
+resets `subject`, `type` and `description`, and the import's source `account`
+and `local subject`, with no warning. A deleted record comes back on the next
+save. **To remove the pair, clear `managed` on the Organization**, which
+deletes both.
 
-The two records land on different screens: the export lives on the tenant's own
-Account, so a managed tenant's Owner sees it under their Exports; the import
-lives on the provider's hub Account, so only someone in the provider's own
-Organization (the one created by `--operator-org`) sees it under Imports.
+The export is on the tenant's own account, so a managed tenant's Owner sees it
+under Exports. The import is on the provider's hub account, so only members of
+the provider's organization (created by `--operator-org`) see it under Imports.
 
-**When to reach for it:**
+**Use imports and exports for:**
 
-- A **shared "system events" Account** that publishes to many tenants — each tenant Account adds an import to receive the feed.
-- A **service-bureau pattern** — one Account hosts a request/reply service (geocoding, billing-rate lookups, OCR) and other Accounts import the service subject.
-- **Cross-tenant collaboration** between two specific orgs that need to exchange a narrow set of subjects without merging Accounts.
+- A **shared "system events" account** that publishes to many tenants. Each
+  tenant account imports the feed.
+- A **service bureau**: one account hosts a request/reply service (geocoding,
+  billing-rate lookups, OCR), and other accounts import the service subject.
+- **Cross-tenant work** between two orgs that exchange a few subjects.
 
-Imports/exports are the right tool when you want **cryptographically separated tenants that occasionally share a subject**. If you want full shared traffic, the answer is one Account — not many Accounts wired together with imports and exports.
+Use them for **separate tenants that share some subjects**. If two parties need
+to share all traffic, use one account.
 
 ---
 
 ## 2. Nebula
 
-Nebula is an overlay networking tool. It lets your devices talk to each other as if they were on the same local network, even when they sit on different continents behind restrictive firewalls. Again, this is just a brief overview. Refer to the official Nebula documentation for a more in-depth understanding.
+Nebula is an overlay network. Devices talk as if they were on one local network,
+even on different continents behind strict firewalls. This is a short overview.
+See the [Nebula documentation](https://nebula.defined.net/docs/) for detail.
 
-> **Who can manage this:** `nebula_networks` and `nebula_hosts` are Owner/Admin only, for **reads** as well as writes — a host's `config_yaml` embeds its private key, so every role below admin gets an empty list. The exceptions are row-scoped: a Thing may read the Nebula host assigned to it, and a host may read its own record. The org's `nebula_ca` record is readable by any role but writable only by a Platform Operator. Rolling the CA is not a record edit at all: it is a three-step route, `POST /api/org/nebula-ca/rotate`, and an **Owner/Admin** one — the wait in the middle of a rotation belongs to whoever operates the devices. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
+> **Who can manage Nebula:** only Owners and Admins can read or write `nebula_networks` and `nebula_hosts`, because a host's `config_yaml` contains its private key. Every lower role gets an empty list. A Thing can read the Nebula host assigned to it, and a host can read its own record. Any role can read the org's `nebula_ca` record, and only a Platform Operator can write it. Owners and Admins roll the CA through a three-step route, `POST /api/org/nebula-ca/rotate`. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
 ### Mesh VPN Fundamentals
 
-Nebula creates a **Peer-to-Peer (P2P)** network. Once a connection is established between two devices, traffic flows directly between them. This reduces latency and eliminates the bottleneck of a traditional VPN concentrator.
+Nebula builds a **peer-to-peer** network. After two devices connect, traffic
+goes directly between them, with no VPN concentrator in the path.
 
 ### Lighthouses & Discovery
 
-Because edge devices are often behind NAT (Network Address Translation), they don't have static IPs.
+Edge devices are often behind NAT and have no static IP.
 
--  **The Lighthouse:** A server with a static IP that acts as a directory. 
-- **Discovery:** When *Host A* wants to talk to *Host B*, it asks the Lighthouse for the current real-world IP of *Host B*. The two hosts then "punch a hole" through their respective firewalls to talk directly.
+- **Lighthouse:** a server with a static IP that acts as a directory.
+- **Discovery:** when *Host A* wants to reach *Host B*, it asks the lighthouse
+  for *Host B*'s current public address. The two hosts then punch a hole
+  through their firewalls and talk directly.
 
-Mark one with `is_lighthouse` on its Nebula Host record, and give it a **`public_host_port`** (`1.2.3.4:4242`) — the publicly reachable address peers read from their own static host map.
+To make a host a lighthouse, set `is_lighthouse` on its Nebula Host record and
+give it a **`public_host_port`** (`1.2.3.4:4242`). Peers read that address from
+their static host map.
 
 ### Relays
 
-In some extreme environments (like strictly monitored corporate networks), hole-punching fails.
+On some networks, such as strictly monitored corporate networks, hole punching
+fails. Then Nebula sends the traffic through a host marked `is_relay`.
 
-- **The Relay:** when a direct connection can't be established, Nebula forwards that traffic through a host marked `is_relay`. Connectivity survives network conditions that defeat hole-punching.
+A relay does not appear by itself. You must mark a host `is_relay`.
 
-A relay is **designated, not discovered** — nothing happens until some host in the network carries `is_relay`. Two properties are worth knowing:
+- **A relay needs a `public_host_port` too.** Without one, the host listens on a
+  random port while peers already have it as a path, so the path does not work.
+  The console requires the field when you tick either box.
+- **Relaying is config only.** A relay's certificate is the same as any host's,
+  so you can turn relaying on and off with no re-issue. `unsafe_networks` below
+  is the opposite case.
 
-- **A relay needs a `public_host_port` too.** Without one the host listens on an ephemeral port while every peer has already been handed its overlay IP as a usable path — so the path is advertised and then does not work. The console requires the field as soon as you tick either box, for this reason.
-- **Relaying is config-only.** A relay's certificate is no different from any other host's, so turning it on and off is a config change that needs no re-issue. Contrast `unsafe_networks` below, which is the opposite case.
-
-**Lighthouse and relay are independent**, and a host can be both — the host list badges them separately because they answer different questions: a lighthouse tells peers *where* someone is, a relay carries the packets when they still can't get there.
+**Lighthouse and relay are separate roles**, and one host can be both. A
+lighthouse tells peers *where* a host is. A relay carries packets when peers
+cannot reach each other directly. The host list shows a badge for each.
 
 ### Reaching subnets that are not on the mesh
 
-A Nebula host can act as a **gateway** into the ordinary network behind it — a site's camera VLAN, a building's BMS segment — so mesh members reach those addresses without running Nebula on every device there.
+A Nebula host can be a **gateway** into the normal network behind it, such as a
+site's camera VLAN or a building's BMS segment. Mesh members then reach those
+addresses without Nebula on every device.
 
-This takes two fields, and the thing to internalise is that **they live on different hosts and neither one implies the other:**
+This takes two fields, **on different hosts, and neither sets the other:**
 
 | Field | Set it on | What it means |
 | :--- | :--- | :--- |
-| `unsafe_networks` | the **gateway** — the host with a foot in both networks | "I will route to these subnets." One CIDR per line. |
-| `unsafe_routes` | **every host that wants to reach them** | `{ route, via }` pairs, where `via` is the gateway's *overlay* IP. |
+| `unsafe_networks` | the **gateway**, the host on both networks | "I will route to these subnets." One CIDR per line. |
+| `unsafe_routes` | **every host that must reach them** | `{ route, via }` pairs, where `via` is the gateway's *overlay* IP. |
 
-Configure only the first and the gateway is willing to route while nobody sends it anything. Configure only the second and peers aim traffic at a gateway that refuses it. No peer derives another host's routes, and nothing warns you about the half you skipped.
+With only the first, the gateway will route, but nobody sends it traffic. With
+only the second, peers send traffic to a gateway that refuses it. No peer
+derives another host's routes, and nothing warns you about the missing half.
 
-::: warning `unsafe_networks` is signed into the certificate — editing it is inert until the host picks up a new one
-Nebula authorizes routing on the **certificate**, not on config. A gateway whose certificate omits a prefix silently refuses to route it and **drops the packet before any firewall rule runs** — so the rule you are staring at is not the one failing, and no amount of correcting it helps.
+::: warning `unsafe_networks` is in the certificate, so an edit does nothing until the host has a new one
+Nebula authorizes routing by the **certificate**, not the config. A gateway
+whose certificate lacks a prefix refuses to route it and **drops the packet
+before any firewall rule runs**. The firewall rule you are looking at is not the
+one that fails.
 
-Saving `unsafe_networks` therefore re-issues the gateway's certificate, and the change does nothing until that host has fetched it. `is_relay` is the opposite case: config-only, effective on the next config pull. `unsafe_routes`, on the consumer side, is also plain config.
+So saving `unsafe_networks` reissues the gateway's certificate, and the change
+applies only after that host fetches it. `is_relay` is config only and applies
+on the next config pull. `unsafe_routes`, on the consumer side, is also plain
+config.
 :::
 
 ### Per-host tuning
 
-Three optional overrides. All are config-only, and all inherit a default when left empty:
+Three optional overrides. All are config only, and each has a default:
 
-- **`preferred_ranges`** — **underlay** prefixes this host should favour when a peer advertises several addresses, typically the LAN it sits on, so two machines in one rack talk over private addresses instead of routing out and back. Entries must be in canonical masked form (`172.16.0.0/24`, not `172.16.0.5/24`).
-- **`mtu`** — defaults to 1300. Lower it on a path that fragments.
-- **`tun_device`** — the interface name; defaults to `nebula1`.
+- **`preferred_ranges`:** **underlay** prefixes this host should prefer when a
+  peer has several addresses, usually the host's LAN. Two machines in one rack
+  then talk over private addresses. Use the masked form (`172.16.0.0/24`, not
+  `172.16.0.5/24`).
+- **`mtu`:** default 1300. Lower it on a path that fragments.
+- **`tun_device`:** the interface name, default `nebula1`.
 
 ::: note `preferred_ranges` is the one place IPv6 is accepted
-The platform is IPv4-only, but that is a constraint on the *overlay*. These are underlay prefixes, and Nebula ranks an IPv6 preferred range at the very top of its address priority list — refusing them would rule out the case the feature is best at.
+The platform's overlay is IPv4 only. These are underlay prefixes, and Nebula
+ranks an IPv6 preferred range highest, so the platform accepts them.
 
-It is also validated on write rather than trusted, because Nebula's own failure mode here is silent: it logs a warning, skips the malformed entry, and forms the tunnel anyway over the public path. The only symptom of a typo is traffic quietly taking the slow route, so rejecting it at the point of entry is the only place it is visible.
+The platform validates these entries on save. Nebula would log a warning, skip
+a bad entry, and use the public path. The only sign of a typo would be slow
+traffic.
 :::
 
 ### Host-Based Firewalls
 
-Nebula security is **Identity-Based**, not IP-based. 
+Nebula security is **based on identity**, not IP address.
 
-- Firewall rules are defined in YAML and enforced by the Nebula binary on each host.
-- You can define **Groups** (e.g., `sensors`, `gateways`, `admins`). 
--  **Example Rule:** "Allow the `admins` group to SSH into the `gateways` group, but deny `sensors` from talking to anything except the `gateways`."
+- Each host's Nebula binary enforces firewall rules defined in YAML.
+- You define **groups**, such as `sensors`, `gateways` and `admins`.
+- **Example:** "Allow the `admins` group to SSH into the `gateways` group, and
+  let `sensors` talk only to `gateways`."
 
-::: note Group membership is on the certificate, so changing it costs a re-issue
-Exactly four host fields are signed into the certificate — **`hostname`, `overlay_ip`, `groups` and `unsafe_networks`** — and a change to any of them is inert until the host holds a new one. Moving a host between firewall groups is therefore the same class of edit as changing its routing, not a config tweak: peers keep applying the old group's rules until the new certificate is in place. Everything else about a host, firewall *rules* included, renders into `config_yaml` and takes effect on the next pull.
+::: note Group membership is in the certificate, so a change needs a re-issue
+Four host fields are signed into the certificate: **`hostname`, `overlay_ip`,
+`groups` and `unsafe_networks`**. A change to any of them applies only when the
+host has a new certificate. Peers apply the old group's rules until then.
+Everything else about a host, firewall *rules* included, goes into
+`config_yaml` and applies on the next pull.
 
-You do not have to wait for the expiry cycle: re-issuing is a per-host action (`renew`) that signs the new certificate at once. Like any certificate change, it takes effect when that host fetches its new config — so renew, then redeploy that host.
+You do not have to wait for expiry. `renew` on a host signs a new certificate
+at once. It applies when the host fetches its new config, so renew, then
+redeploy that host.
 :::
 
 ---
 
-## 3. The "Outbound-Only" Advantage
+## 3. Outbound-Only Connections
 
-The most significant benefit of the Stone-Age.io connectivity stack is the security of the **Outbound-Only** model.
+- **No open ports:** edge devices need no open ports on their local routers.
+- **No port forwarding:** NATS and Nebula both connect *outbound* to your
+  central infrastructure.
+- **Smaller attack surface:** nothing listens on the public internet, so port
+  scanners and bots cannot find the devices.
 
-- **No Open Ports:** Your edge devices (Things) do not need any ports open on their local routers. 
-- **No Port Forwarding:** Both NATS and Nebula initiate connections *outbound* to your central infrastructure.
-- **Reduced Attack Surface:** Since no ports are listening on the public internet, your devices are invisible to standard port scanners and automated bot attacks.
-
-Combining the cryptographic identity of NATS with the tunnelling of Nebula means a device presents signed material at both layers, and a compromised device is revoked at both — without a shared secret, a VPN concentrator, or an inbound port on the site.
+A device presents signed material to both NATS and Nebula, and you revoke a
+compromised device in both. No shared secret, VPN concentrator or inbound port
+is needed.
 
 ---
 
 ## 4. Where to Go Next
 
-- **Layer 1 (declarative event logic):** [Automation](./automation.md).
-- **Layer 2 (stream processing):** [Stream Processing](./stream-processing.md).
-- **Layer 3 (long-term storage):** [Observability](./observability.md).
-- **Who may author roles, hosts, and account wiring:** [Authorization & Roles](./authorization.md).
-- **Rotating the CA, and auditing host certificates whose mask no longer matches their network:** [Stone CLI — Nebula operations](./stone-cli.md#nebula-operations-that-are-not-record-writes).
-- **The edge integration story:** [The Agent](./agent.md).
-- **Modeling & syncing a site:** [Leaf Nodes](./leaf-nodes.md).
-- **The layer model in full:** [Platform Layers](./platform-layers.md).
+- Layer 1: [Automation](./automation.md)
+- Layer 2: [Stream Processing](./stream-processing.md)
+- Layer 3: [Observability](./observability.md)
+- Who can manage roles, hosts and account wiring: [Authorization & Roles](./authorization.md)
+- CA rotation and the host certificate audit: [Stone CLI](./stone-cli.md#nebula-operations-that-are-not-record-writes)
+- The edge: [The Agent](./agent.md)
+- Modeling and syncing a site: [Leaf Nodes](./leaf-nodes.md)
+- The layer model: [Platform Layers](./platform-layers.md)

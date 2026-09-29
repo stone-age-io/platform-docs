@@ -4,49 +4,46 @@ nav_order: 90
 ---
 # API Reference
 
-Almost everything in Stone-Age.io is stock PocketBase REST against a collection —
-`GET /api/collections/things/records`, `PATCH /api/collections/locations/records/:id`,
-and so on — governed entirely by the API rules in `schema.json`
-([Authorization & Roles](./authorization.md)). The
-[PocketBase API docs](https://pocketbase.io/docs/api-records/) cover that surface,
-and this page does not repeat it.
+Most of the Stone-Age.io API is stock PocketBase REST on a collection, such as
+`GET /api/collections/things/records` or
+`PATCH /api/collections/locations/records/:id`. The API rules in `schema.json`
+control it ([Authorization & Roles](./authorization.md)). The
+[PocketBase API docs](https://pocketbase.io/docs/api-records/) describe it.
 
-This page covers the **ten endpoints the platform adds on top of that**: nine
-under `/api/`, plus `/metrics`. Each of the application routes exists because a
-PocketBase API rule could not express what it needed to.
+This page covers the **ten endpoints the platform adds**: nine under `/api/`,
+and `/metrics`. Each application route exists because a PocketBase API rule
+cannot express what it does.
 
 ---
 
 ## 1. The whole surface
 
-| Route | Method | Who may call it | Does |
+| Route | Method | Who can call it | Does |
 | :--- | :--- | :--- | :--- |
-| [`/api/client-config`](#get-apiclient-config) | `GET` | any `users` session | Deployment facts the SPA cannot be compiled with |
-| [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to stand up a NATS leaf server |
+| [`/api/client-config`](#get-apiclient-config) | `GET` | any `users` session | Deployment settings the SPA cannot contain at build time |
+| [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to run a NATS leaf server |
 | [`/api/me/nats-creds/rotate`](#post-apimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
 | [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any authenticated caller | Redeem an invitation token |
-| [`/api/org/things`](#post-apiorgthings) | `POST` | `member`+ for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
+| [`/api/org/things`](#post-apiorgthings) | `POST` | `member` and up for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
 | [`/api/org/nats-account/keys`](#post-apiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
-| [`/api/org/nebula-ca/rotate`](#post-apiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA, in three steps |
-| [`/api/org/nebula/cert-audit`](#get-apiorgnebulacert-audit) | `GET` | `owner` / `admin` | Hosts whose certificate no longer matches their network |
+| [`/api/org/nebula-ca/rotate`](#post-apiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA in three steps |
+| [`/api/org/nebula/cert-audit`](#get-apiorgnebulacert-audit) | `GET` | `owner` / `admin` | Hosts whose certificate does not match their network |
 | [`/api/ready`](#get-apiready) | `GET` | unauthenticated | Readiness probe, `200` or `503` |
 | [`/metrics`](#get-metrics) | `GET` | unauthenticated by default | Prometheus exposition |
 
-Roles are per-organization memberships and resolve against the caller's **active**
-organization (`users.current_organization`). See
-[Authorization §2](./authorization.md#2-capability-matrix).
+Roles come from memberships and apply to the caller's **active** organization
+(`users.current_organization`). See [Authorization §2](./authorization.md#2-capability-matrix).
 
-Two things are deliberately left out of the table, because neither is a route the
-platform adds to answer something a rule cannot:
+Two more endpoints are not in the table, because they do not replace a rule:
 
-- **`GET /branding/{path}`** — unauthenticated static files for the operator's
-  theme overlay (`theme.css`, `logo.svg`, `branding.json`). It serves a host
-  directory, not data. See [Configuration §`branding`](./configuration.md#branding).
-- **`POST /api/files/token`** — stock PocketBase, but you cannot fetch an uploaded
-  file without it. Every file field on the platform is **protected**, so
-  `/api/files/...` accepts only a short-lived *file* token (`?token=`), minted by
-  this endpoint, and checks it against the collection's view rule. **An auth token
-  is not a file token**: a URL built with one answers `404`. See
+- **`GET /branding/{path}`** serves unauthenticated static files for the
+  operator's theme (`theme.css`, `logo.svg`, `branding.json`) from a host
+  directory. See [Configuration §`branding`](./configuration.md#branding).
+- **`POST /api/files/token`** is stock PocketBase, and you need it to fetch any
+  uploaded file. Every file field on the platform is **protected**, so
+  `/api/files/...` accepts only a short-lived *file* token (`?token=`) from this
+  endpoint and checks it against the collection's view rule. **An auth token is
+  not a file token.** A URL with an auth token returns `404`. See
   [Platform Entities §5](./platform-ui-entities.md#photos-and-file-fields).
 
 ---
@@ -54,26 +51,23 @@ platform adds to answer something a rule cannot:
 ## 2. Three rules that apply to all of them
 
 **No route takes a record id.** Every `/api/me/*` route targets the caller's own
-authenticated record; every `/api/org/*` route targets the caller's active
-organization. The target is derived from the session, never named in the request,
-so none of these can be aimed at another tenant. When you are reading a route here
-and looking for the id parameter, its absence is the security property.
+record. Every `/api/org/*` route targets the caller's active organization. The
+target comes from the session, never from the request, so no route can target
+another tenant. The missing id parameter is the security property.
 
-**A route that writes with `app.Save()` bypasses every API rule.** So each check
-the rules would have made is restated inside the route. `POST /api/org/things` is
-the worked example: the organization comes from the caller's own record, and a
-linked `nats_user` or `nebula_host` is verified to belong to that organization —
-without that second check the route would be a cross-tenant credential-theft path.
-Rules protect the CRUD endpoints, not these.
+**A route that writes with `app.Save()` skips every API rule.** So each route
+repeats the checks the rules would make. For example, `POST /api/org/things`
+takes the organization from the caller's own record, and checks that a linked
+`nats_user` or `nebula_host` belongs to that organization. Without the second
+check, the route would let a caller steal another tenant's credential.
 
-**Each one exists for one of three reasons**, and it is worth knowing which,
-because it tells you what a proposed new route has to justify:
+**Each route exists for one of three reasons.** A new route must also have one:
 
 | Reason | Routes |
 | :--- | :--- |
-| A rule cannot express a single-field allowlist (the alternative is `:isset = false` on every other field, a deny-list that opens up silently when a field is added) | `nats-creds/rotate`, `nats-account/keys`, `nebula-ca/rotate` |
+| A rule cannot allow only one field. The alternative is `:isset = false` on every other field, a deny-list that opens silently when someone adds a field. | `nats-creds/rotate`, `nats-account/keys`, `nebula-ca/rotate` |
 | One operation needs two authority levels | `org/things` |
-| The answer needs something the caller cannot compute or must not read whole | `leaf-config`, `nebula/cert-audit`, `client-config` |
+| The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `nebula/cert-audit`, `client-config` |
 
 ---
 
@@ -81,37 +75,35 @@ because it tells you what a proposed new route has to justify:
 
 ### `GET /api/client-config`
 
-Deployment facts the single-page console needs at runtime but cannot be compiled
-with. Requires a `users` session.
+Deployment settings that the console needs at runtime and cannot contain at
+build time. Requires a `users` session.
 
 ```json
 { "natsWebsocketUrls": ["wss://bus.acme.io:9222"] }
 ```
 
-The value is `nats.websocket_urls` from `config.yaml`. It is **not** derived from
-`nats.server_url`: the first is a TCP address *this process* dials to publish
-account claims, the second is a WebSocket listener a *browser* dials, on a
-different port and often a different hostname. An empty list is a valid answer and
-means "not configured" — the console then falls back to its compiled-in
-`ws://localhost:9222`.
+The value is `nats.websocket_urls` from `config.yaml`. It does **not** come
+from `nats.server_url`. `server_url` is a TCP address that the Control Plane
+connects to for publishing account claims. `websocket_urls` is a WebSocket
+listener that a *browser* connects to, on another port and often another
+hostname. An empty list means "not configured", and the console uses its
+built-in `ws://localhost:9222`.
 
-The response is deployment-wide rather than per-organization, and that follows
-from the NATS hierarchy: every organization is an account under one operator, so
-they all live on the same cluster. The axis that genuinely varies is *location* —
-hub versus a specific leaf — which is a property of the box the browser runs on,
-so it is a device-level override in `localStorage` rather than anything the server
-knows. See [Configuration §`nats`](./configuration.md#2-section-reference).
+The response is the same for every organization, because every organization
+is an account under one operator on the same cluster. What does vary is the
+*location*, hub or a specific leaf. That depends on the device the browser runs
+on, so it is an override in the browser's `localStorage`. See
+[Configuration §`nats`](./configuration.md#2-section-reference).
 
 ::: note Why it requires auth when the value is not a secret
-Nothing needs it before login — the console will not dial the bus without a
-session and a linked NATS identity anyway. Since there is no pre-login need,
-there is no reason to hand an unauthenticated scanner the address of the bus.
+The console does not connect to the bus before login. With no need before
+login, there is no reason to give an unauthenticated scanner the bus address.
 :::
 
 ### `GET /api/me/leaf-config`
 
-Everything an [Agent](./agent.md) needs to stand up a NATS leaf server. Bound to
-the `things` collection; the target is the caller's own record.
+Everything an [Agent](./agent.md) needs to run a NATS leaf server. It is bound
+to the `things` collection, and the target is the caller's own record.
 
 ```json
 {
@@ -128,39 +120,35 @@ the `things` collection; the target is the caller's own record.
 }
 ```
 
-`domain` is the same string as `code` — the JetStream domain is computed from the
-Thing's code and never stored, because a stored column could disagree with the
-code it was derived from, and when it did the symptom was a site that silently
-stopped appearing. The agent writes it into both `server_name` and
-`jetstream { domain }`.
+`domain` is the same string as `code`. The JetStream domain is computed from
+the Thing's code and is not stored, so it cannot disagree with the code. The
+agent writes it into `server_name` and `jetstream { domain }`.
 
-**The route gates on nothing beyond being an authenticated Thing, and that is
-deliberate.** Everything it serves is either public trust material — the operator,
-account and `$SYS` account JWTs, which every server in the network validates
-anyway — or the caller's own credential, which it must already hold to connect at
-all. A Thing that will never run a leaf node can call it and learns nothing it
-could not already read.
+**The route checks only that the caller is an authenticated Thing.** Everything
+it returns is public trust material or the caller's own credential. Every
+server in the network already validates the operator, account and `$SYS`
+account JWTs. The caller must already hold its credential to connect. A Thing
+that never runs a leaf node learns nothing new from it.
 
-What is **not** served: account seeds, signing keys, and any `$SYS` *user*
-credential. `nats_system_operator` stays superuser-only. The server reads the
-secret-bearing collections with its own privileges and returns ten named fields,
-never whole records — so the blast radius of a leaked edge credential is those ten
-values regardless of how those collections' rules later evolve.
+The route does **not** return account seeds, signing keys or any `$SYS` *user*
+credential. Only superusers can read `nats_system_operator`. The server reads
+the secret collections with its own privileges and returns ten named fields,
+never whole records. A leaked edge credential exposes only those ten values,
+whatever the collection rules become later.
 
 ::: warning Do not add a device read branch to `nats_*` or `nebula_*`
-Extend this route instead. The point of it is that the edge's blast radius is
-a fixed list of named fields rather than a consequence of rules that change
-for unrelated reasons. See [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config).
+Extend this route instead. The route keeps the edge's exposure to a fixed list
+of named fields, not to rules that change for other reasons. See
+[Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config).
 :::
 
-The field names are a **cross-repo contract** — the agent decodes them by name, in
-a different module — so a rename here is a breaking change for every deployed
-site.
+The field names are a **contract with the agent repository**. The agent reads
+them by name, so a rename breaks every deployed site.
 
 ### `POST /api/me/nats-creds/rotate`
 
-Re-mint the caller's own NATS credential. Available to **every role, including
-`dashboard`**, for callers in both `users` and `things`.
+Mint a new NATS credential for the caller. **Every role, including
+`dashboard`**, can call it, from `users` and `things`.
 
 ```
 POST /api/me/nats-creds/rotate
@@ -171,34 +159,34 @@ POST /api/me/nats-creds/rotate
 { "rotated": true, "nats_user": "a1b2c3d4e5f6g7h" }
 ```
 
-It writes exactly one field, `regenerate`, on the caller's linked `nats_users`
-row. pb-nats watches that field, re-mints the JWT and `creds_file`, then clears
-it — so **re-read your own record afterwards** to pick up the new credential.
+It writes one field, `regenerate`, on the caller's linked `nats_users` row.
+pb-nats sees the field, mints a new JWT and `creds_file`, and clears the field.
+**Read your own record again** to get the new credential.
 
-For a `users` caller the identity is the `nats_user` on the membership for the
-active organization; for a `things` caller it is the relation on the Thing itself.
-Either way nothing is read from the request. (Which identity a membership links to
-is itself owner/admin-only — every role may keep or clear its own link but not
-re-point it, because the credential read follows the link. See
-[Authorization §4](./authorization.md#4-the-row-scoped-credential-model).)
+For a `users` caller, the identity is the `nats_user` on the membership for the
+active organization. For a `things` caller, it is the relation on the Thing.
+Nothing comes from the request. Only an owner or admin can choose which
+identity a membership links to. See
+[Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 | Response | When |
 | :--- | :--- |
-| `200` | Re-minted |
+| `200` | New credential minted |
 | `400` | A `users` caller with no active organization |
 | `403` | The linked identity is **suspended** (`active = false`) |
-| `404` | No membership in the active organization, or no identity linked |
+| `404` | No membership in the active organization, or no linked identity |
 
 ::: note A suspended identity cannot rotate itself back to life
-pb-nats treats `active = false` as "revoked, reissue nothing". But a
-regenerate mints a JWT issued *after* the account's revocation cutoff, which
-NATS accepts — so without the `403` this route would be a self-service
-un-suspend. Suspending and reactivating stay owner/admin actions through the
-normal update rule on `nats_users`, or a consequence of
-[deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
-that holds the identity. Rotation is also not how you retire a **leaked**
-file: `regenerate` re-signs for the same seed, so the leaked `.creds` keeps
-working. That is `revoke`, which moves to a new key pair (owner/admin).
+pb-nats treats `active = false` as "revoked, issue nothing". A new credential
+would have a JWT issued *after* the account's revocation cutoff, and NATS would
+accept it. Without the `403`, this route would end the suspension. Owners and
+admins suspend and reactivate through the normal update rule on `nats_users`,
+or by [deactivating the device](./authorization.md#42-taking-a-device-out-of-service)
+that holds the identity.
+
+Rotation does not retire a **leaked** file. `regenerate` signs again for the
+same seed, so the leaked `.creds` keeps working. Use `revoke`, which moves to a
+new key pair (owner/admin).
 :::
 
 ---
@@ -207,8 +195,8 @@ working. That is `revoke`, which moves to a new key pair (owner/admin).
 
 ### `POST /api/org/invites/accept`
 
-Redeem an invitation token. Any authenticated caller; the invitation is matched to
-the caller by email address, case-insensitively.
+Redeem an invitation token. Any authenticated caller can call it. The
+invitation must match the caller's email address, ignoring case.
 
 ```json
 { "token": "8f3a…" }
@@ -220,37 +208,31 @@ the caller by email address, case-insensitively.
 
 | Response | When |
 | :--- | :--- |
-| `200` with `organization` | Membership created with the role the invitation carried |
-| `200` with `"alreadyMember": true` | You were already in; the invitation is deleted as cleanup. Usually a double-clicked link |
+| `200` with `organization` | Membership created with the invitation's role |
+| `200` with `"alreadyMember": true` | You were already a member. The invitation is deleted. This is usually a double-clicked link. |
 | `400` | No token in the body |
-| `403` | The invitation was issued to a different email address |
+| `403` | The invitation is for another email address |
 | `404` | No invitation with that token |
-| `410` | Expired. The invitation is deleted on the way out |
+| `410` | Expired. The invitation is deleted. |
 
-Creating the membership, setting `current_organization` when it was blank, and
-deleting the invitation all happen in one transaction. `current_organization` is
-set **only when blank** — accepting an invitation to a second organization should
-not move you out of the one you are working in.
+One transaction creates the membership, sets `current_organization` if it was
+blank, and deletes the invitation. `current_organization` changes **only when
+blank**, so accepting a second invitation does not move you out of your current
+organization.
 
-::: warning Renamed in 0.6.0
-This was `POST /api/tenancy/accept-invite` until pb-tenancy was absorbed into
-the platform. The old path named a library that no longer exists. Invitation
-**links** already in delivered mail are unaffected — they point at the console
-route `/accept-invite`, which posts here, not at the API directly. Anything
-driving invitations outside the console needs updating.
-:::
+Invitation links in email go to the console route `/accept-invite`, which posts
+to this endpoint.
 
-From the CLI this is `stone invite accept <token>`, where the token is the
-`?token=` value from the invitation link and **not** the invite record's id.
-Redeeming sets `current_organization` only when it was blank, so follow it with
-`stone org switch` — which is also what writes the nats-cli context the new
-membership has no creds for yet.
+In the CLI, use `stone invite accept <token>`. The token is the `?token=` value
+from the invitation link, **not** the invite record's id. Then run
+`stone org switch`, which also writes the nats-cli context for the new
+membership.
 
 ### `POST /api/org/things`
 
 Create a Thing and, optionally, mint its NATS identity and Nebula host in **one
-transaction**. Requires a `users` session with `member`, `admin` or `owner` in the
-active organization.
+transaction**. Requires a `users` session with `member`, `admin` or `owner` in
+the active organization.
 
 ```json
 {
@@ -265,28 +247,26 @@ active organization.
 }
 ```
 
-Each identity block takes a `mode`:
+Each identity block has a `mode`:
 
 | Mode | Effect | Extra fields |
 | :--- | :--- | :--- |
-| `auto` | Mint a new identity | `nats.role_id` (optional — defaults to the organization's `is_default` role); `nebula.network_id`, `nebula.overlay_ip` |
-| `link` | Attach an existing one, verified to belong to this organization | `nats.user_id`; `nebula.host_id` |
-| `none` | Leave it unbound — a pure inventory row | — |
+| `auto` | Mint a new identity | `nats.role_id` (optional, defaults to the organization's `is_default` role); `nebula.network_id`, `nebula.overlay_ip` |
+| `link` | Attach an existing one, checked to belong to this organization | `nats.user_id`; `nebula.host_id` |
+| `none` | Leave it unbound: an inventory record only | none |
 
-`name` is required (`400` without it). `code` is optional: left blank, the route
-generates one under the Thing Type's prefix (`CA-9KD-4PX`), before anything is
-saved, because the email and the NATS username are both built from it. The
-response carries the code either way. A supplied code is refused if another
-Thing in the organization already holds it in any case (`cam-1` against
-`CAM-1`). See [Generated codes](./thing-types.md#generated-codes).
-
-An absent identity block is `none`, and an unrecognised mode is rejected rather
-than treated as `none`.
-
-`nats.mode: "auto"` needs an **active** NATS account to sign under, so while the
-organization is [suspended](./authorization.md#31-suspending-an-organization) it
-answers `400` ("no active NATS account for this organization"). `link` and `none`
-still work.
+- `name` is required (`400` without it).
+- `code` is optional. If it is blank, the route generates one under the Thing
+  Type's prefix (`CA-9KD-4PX`) before it saves anything, because the email and
+  the NATS username come from the code. The response always includes the code.
+- The route refuses a code that another Thing in the organization already has,
+  ignoring case (`cam-1` and `CAM-1` conflict). See
+  [Generated codes](./thing-types.md#generated-codes).
+- A missing identity block means `none`. An unknown mode is rejected.
+- `nats.mode: "auto"` needs an **active** NATS account. While the organization
+  is [suspended](./authorization.md#31-suspending-an-organization), it returns
+  `400` ("no active NATS account for this organization"). `link` and `none`
+  still work.
 
 ```json
 {
@@ -297,34 +277,31 @@ still work.
 }
 ```
 
-The email is generated as `<thing code>@<organization code>.thing.local` — the
-organization's **code**, never its name, because a name is not unique and can
+The email is `<thing code>@<organization code>.thing.local`. It uses the
+organization's **code**, not its name, because a name is not unique and can
 change.
 
-**The password is returned exactly once** — PocketBase stores only its hash, so
-this response is the only chance to record it.
+**The password is returned only once.** PocketBase stores only its hash, so
+record it from this response.
 
-**Two authority levels in one operation, which is why this is a route.** Creating
-inventory is a `member` action; attaching an identity is not. `things.createRule`
-approximates the split by freezing `nats_user` / `nebula_host` in the member
-branch, but a *provisioning* endpoint that mints those records cannot be expressed
-as a create rule at all. Here it is a role check per section: a `member` calling
-with anything other than `none` on both blocks gets `403`.
+**This is a route because one operation needs two authority levels.** A
+`member` can create inventory but cannot attach an identity.
+`things.createRule` freezes `nats_user` and `nebula_host` in the member branch,
+but a create rule cannot describe an endpoint that mints those records. The
+route checks the role for each part. A `member` who sends anything other than
+`none` on both blocks gets `403`.
 
-::: note Why one transaction, and why the atomicity is real
-This replaced three unguarded client calls whose partial failure orphaned a
-signed NATS credential and an allocated overlay IP, and which never sent
-`active`, so every Thing the console created was locked out by
-`things.authRule`. PocketBase defers `*AfterCreateSuccess` hooks to commit, and
-pb-nats mints and publishes on that hook — so a rollback means pb-nats never
-signed anything and never published. The failure mode is "nothing happened",
-not "NATS knows about a user PocketBase forgot".
+::: note Why the transaction is truly atomic
+PocketBase runs `*AfterCreateSuccess` hooks only after the commit, and pb-nats
+mints and publishes in that hook. After a rollback, pb-nats has signed and
+published nothing. A failure means "nothing happened", never "NATS knows a user
+that PocketBase does not".
 :::
 
 ### `POST /api/org/nats-account/keys`
 
-Manage the signing keys on the active organization's NATS account. **Owner/admin
-only.**
+Manage the signing keys on the active organization's NATS account.
+**Owner/admin only.**
 
 ```json
 { "action": "add_signing" }
@@ -332,27 +309,27 @@ only.**
 
 | Action | Effect |
 | :--- | :--- |
-| `add_signing` | Graceful rotation: appends a new signing key. Existing user JWTs stay valid |
-| `remove_signing` | Removes one key by `public_key` (required in the body). pb-nats refuses to remove the last remaining key |
-| `rotate` | **Emergency replacement:** purges every signing key and generates one. Every user JWT in the account stops validating and must be re-minted |
+| `add_signing` | Routine rotation: adds a new signing key. Existing user JWTs stay valid. |
+| `remove_signing` | Removes one key by `public_key` (required in the body). pb-nats refuses to remove the last key. |
+| `rotate` | **Emergency replacement:** deletes every signing key and generates one. Every user JWT in the account stops validating and must be minted again. |
 
 ```json
 { "applied": "add_signing", "nats_account": "3c4d…" }
 ```
 
-Reach for `add_signing` for routine rotation; `rotate` is for suspected key
-compromise.
+Use `add_signing` for routine rotation. Use `rotate` only if you suspect a key
+is compromised.
 
-The `switch` **is** the allowlist — each action sets exactly one field, and an
-unrecognised action is rejected rather than ignored. `nats_accounts.updateRule` is
-Platform-Operator-only, because the record mixes fields a tenant may legitimately
-trigger with the account limits it was sold and the signed account `jwt`. See
+The route's `switch` statement is the allowlist. Each action sets one field,
+and an unknown action is rejected. `nats_accounts.updateRule` is
+Platform-Operator-only, because the record also holds the account limits the
+tenant bought and the signed account `jwt`. See
 [Authorization §4.1](./authorization.md#41-account-signing-keys).
 
 ### `POST /api/org/nebula-ca/rotate`
 
-Roll the active organization's Nebula CA. **Owner/admin only**, and the console
-presents it as a three-step panel on the CA detail view.
+Roll the active organization's Nebula CA. **Owner/admin only.** The console
+shows it as a three-step panel on the CA detail view.
 
 ```json
 { "step": "prepare" }
@@ -360,72 +337,70 @@ presents it as a three-step panel on the CA detail view.
 
 | Step | What it does | Reversible |
 | :--- | :--- | :--- |
-| `prepare` | Publishes the new CA as *trusted* without moving issuance | Yes — fully |
-| `commit` | Swaps issuance to the new CA and re-signs every active host. Idempotent, so re-running recovers a partial sweep | The outgoing CA is still trusted |
-| `finish` | Drops the outgoing CA. **Refused** while any active host still holds a certificate signed by it, and the error names the host | No |
+| `prepare` | Publishes the new CA as *trusted*. Issuance does not change. | Yes, fully |
+| `commit` | Moves issuance to the new CA and re-signs every active host. You can run it again to finish a partial sweep. | The old CA is still trusted |
+| `finish` | Removes the old CA. **Refused** while any active host still has a certificate signed by it. The error names the host. | No |
 
 ```json
 { "applied": "prepare", "nebula_ca": "5e6f…" }
 ```
 
-The route allowlists the three verbs; pb-nebula validates the *transition* and its
-message is surfaced verbatim on a `400`, because that message is the whole reason
-the interlock is usable.
+The route allows the three steps. pb-nebula checks each *transition*, and on a
+`400` the route returns pb-nebula's message unchanged, because that message
+tells you what to do.
 
-**Three steps because the wait between them is the feature.** Nebula verification
-is mutual and config distribution is pull-based, so a single write carrying both
-new trust and new certificates splits the mesh: a host that has fetched presents a
-new-CA certificate to one that has not, and the handshake fails in *both*
-directions. `prepare` exists to land the trust half first, everywhere.
+**The wait between steps is the point.** Nebula checks certificates in both
+directions, and hosts pull their config. If one write changed trust and
+certificates together, a host with a new-CA certificate would meet a host that
+has not fetched yet, and the handshake would fail both ways. `prepare` makes the
+new trust reach every host first.
 
-**The tenant owns this lever deliberately** — a Platform Operator cannot judge when
-a fleet has caught up. Requires pb-nebula v0.3.2. See
-[Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
+The tenant controls this, because only the fleet's operator knows when the
+fleet has caught up. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
 ### `GET /api/org/nebula/cert-audit`
 
-Which of the organization's Nebula hosts hold a certificate whose network no
-longer matches the network the host belongs to. **Owner/admin only.**
+Lists the organization's Nebula hosts whose certificate network does not match
+the network the host belongs to. **Owner/admin only.**
 
 ```json
 { "stale": ["4f5g6h7i8j9k0l1", "2m3n4o5p6q7r8s9"] }
 ```
 
-`stale` is never `null` — an empty array means "no host needs attention", where a
-null would read as "the audit did not run".
+`stale` is never `null`. An empty array means no host needs attention. `null`
+would look like "the audit did not run".
 
-It exists because pb-nebula signed host certificates at `/32` until v0.3.0. Nebula
-puts a certificate's network straight onto the tun device and installs a link
-route for it, so the mask **is** the host's route to the overlay: a `/32` verifies,
-renders, handshakes — and moves no packet. Nothing errors anywhere.
+Nebula puts a certificate's network directly on the tun device and adds a link
+route for it, so the mask **is** the host's route to the mesh. A certificate
+with the wrong mask, such as `/32`, verifies, renders and handshakes, but moves
+no packets, and nothing reports an error.
 
-**A route because answering it means parsing a Nebula certificate**, which no
-browser can do.
+**It is a route because it must parse a Nebula certificate**, which a browser
+cannot do.
 
 ::: warning Read-only, and nothing is re-signed automatically
-Re-signing moves a certificate's fingerprint, and a fingerprint is what
-`pki.blocklist` revokes — so a sweep would rewrite every peer config in the
-mesh on the strength of a dependency bump. The audit names the hosts; the fix
-is `renew` on one host at a time, then redeploy that host's config.
+A re-sign changes a certificate's fingerprint, and `pki.blocklist` revokes by
+fingerprint. An automatic sweep would rewrite every peer config in the mesh. The
+audit names the hosts. To fix one, run `renew` on it, then redeploy that host's
+config. Do one host at a time.
 
-**Inactive hosts are excluded**, and not as an optimization: an inactive host
-is revoked, so re-signing it would publish a new fingerprint while the old
-certificate stayed valid and un-blocklisted — silently un-revoking it. A host
-whose certificate or network cannot be read is omitted rather than reported.
+**Inactive hosts are left out.** An inactive host is revoked. Re-signing it
+would publish a new fingerprint that is not on any blocklist, which would
+silently restore it. A host whose certificate or network cannot be read is left
+out, not reported.
 :::
 
 ---
 
 ## 5. Observability
 
-Both are served by the Control Plane itself and need no session and no NATS
-connection. Full detail, including every check and metric, is on
-[Health & Metrics](./health-metrics.md).
+The Control Plane serves both endpoints. They need no session and no NATS
+connection. [Health & Metrics](./health-metrics.md) lists every check and
+metric.
 
 ### `GET /api/ready`
 
-Unauthenticated, and **always served** — a probe endpoint that can be disabled is
-one some deployment will disable and then be unable to explain.
+Unauthenticated, and **always on**. You cannot disable it.
 
 ```json
 {
@@ -444,76 +419,75 @@ one some deployment will disable and then be unable to explain.
 }
 ```
 
-Ten checks: `database`, `schema`, `schema_version`, `bootstrap`, `nats_operator`,
-`nats_reachable`, `nats_trust`, `nebula_cert_expiry`, `nats_websocket_urls`,
-`encryption_at_rest`.
+Ten checks: `database`, `schema`, `schema_version`, `bootstrap`,
+`nats_operator`, `nats_reachable`, `nats_trust`, `nebula_cert_expiry`,
+`nats_websocket_urls`, `encryption_at_rest`.
 
-**Four states, and only `fail` is unready** — so the endpoint answers `503` only
-when something is genuinely broken, and `200` for warnings. That is what makes it
-safe in front of a load balancer.
+**There are four states, and only `fail` is unready.** The endpoint returns
+`503` only when something is broken, and `200` for warnings, so you can put it
+behind a load balancer.
 
 | State | Means |
 | :--- | :--- |
 | `ok` | Checked and healthy |
 | `warn` | Running, but misconfigured. Still `200` |
-| `skipped` | The check could not look. Ranks **below** `ok` |
+| `skipped` | The check could not run. Ranks **below** `ok` |
 | `fail` | Unready. `503` |
 
-Every non-OK check carries remediation guidance in `fix` — a command where there
-is one, prose where the fix is a judgement. Probing runs in the
-background on `readiness.interval`, off the startup path — so during startup the
-endpoint correctly answers "503, not probed yet" rather than blocking the listener
-on a NATS dial timeout.
+Every check that is not `ok` has a `fix` field: a command where there is one,
+or text where the fix needs judgement. Checks run in the background every
+`readiness.interval`. During startup, the endpoint returns "503, not probed
+yet" instead of blocking on a NATS connection timeout.
 
 ### `GET /metrics`
 
-Prometheus exposition. On by default (`metrics.enabled`), **unauthenticated by
-default**, and closed with `metrics.token` (Bearer or Basic) or a proxy.
+Prometheus exposition. It is on by default (`metrics.enabled`) and
+**unauthenticated by default**. Protect it with `metrics.token` (Bearer or
+Basic) or a proxy.
 
-Two constraints worth knowing before you add a series:
+Before you add a series:
 
-- **No per-organization labels.** `/metrics` is open by default, and a tenant name
-  beside a certificate inventory is free reconnaissance.
-- **`stone_age_records{collection="things"}` counts devices CONFIGURED, not
-  online.** An alert on it can never fire. Anything mistakable for a health signal
-  says so in its HELP text.
+- **Do not add per-organization labels.** `/metrics` is open by default, and a
+  tenant name next to a certificate inventory helps an attacker.
+- **`stone_age_records{collection="things"}` counts devices configured, not
+  online.** An alert on it can never fire. Any metric that looks like a health
+  signal but is not says so in its HELP text.
 
-Alert on certificate expiry relative to now, so the horizon lives in the alert:
+Alert on certificate expiry relative to now, so the alert holds the horizon:
 
 ```
 stone_age_certificate_expiry_seconds - time() < 30 * 86400
 ```
 
-Give the CA a wider horizon than a host — 90 days, not 30. A host certificate is
-reissued in a moment; a CA can only be rotated, which is a staged procedure with a
-wait in the middle of it.
+Give the CA a wider horizon than a host: 90 days, not 30. You can reissue a
+host certificate at once. A CA needs a staged rotation with a wait in the
+middle.
 
 ---
 
 ## 6. What is deliberately not here
 
-- **No resolver service.** A QR label carries a bare code and nothing fetches the
-  decoded string as a destination. See [ADR 0002](./decisions/0002-organization-code-namespace.md#why-a-qr-payload-is-the-bare-code).
+- **No resolver service.** A QR label holds a bare code, and nothing opens the
+  decoded string as a destination. See
+  [ADR 0002](./decisions/0002-organization-code-namespace.md#why-a-qr-payload-is-the-bare-code).
 - **No bulk certificate re-issue.** See `cert-audit` above.
-- **No route granting Platform Operator status.** `bootstrap` and the embedded
-  admin panel are the only two paths. `users.updateRule` refuses `is_operator`,
-  and so does every branch of `users.createRule` — including the one that lets
-  a Platform Operator onboard users, so an operator cannot mint an operator.
-- **No server-side twin push.** `twin_desired` is a delivery mechanism — nothing in
-  the platform applies a desired value to a device. See
-  [Architecture §4.3](./architecture.md#43-the-console-says-differs-never-pending).
-- **JetStream and KV management is not an HTTP API.** Streams and buckets are
-  created over the browser's own NATS connection, so they are bounded by the
-  caller's **NATS** permissions rather than by PocketBase API rules — and, in
-  total, by the account's JetStream storage limits (`max_jetstream_disk_storage`,
-  `max_jetstream_memory_storage`), which are set when the account is provisioned.
+- **No route that grants Platform Operator status.** Only `bootstrap` and the
+  admin panel can. `users.updateRule` and every branch of `users.createRule`
+  refuse `is_operator`, so an operator cannot create an operator.
+- **No server-side twin push.** Nothing in the platform applies a desired value
+  to a device. See [Architecture §4.3](./architecture.md#43-the-console-says-differs-never-pending).
+- **No HTTP API for JetStream and KV.** The browser creates streams and buckets
+  over its own NATS connection. The caller's **NATS** permissions limit them,
+  not API rules. The account's JetStream storage limits
+  (`max_jetstream_disk_storage`, `max_jetstream_memory_storage`), set when the
+  account is provisioned, limit the total.
 
 ---
 
 ## 7. Where to Go Next
 
-- **Who may call what, and the rules behind it:** [Authorization & Roles](./authorization.md).
-- **The same operations from a terminal:** [Stone CLI](./stone-cli.md).
-- **The edge identity model `leaf-config` serves:** [Leaf Nodes](./leaf-nodes.md).
-- **Every check and metric in full:** [Health & Metrics](./health-metrics.md).
-- **Config keys the routes read:** [Configuration Reference](./configuration.md).
+- Who can call what: [Authorization & Roles](./authorization.md)
+- The same operations from a terminal: [Stone CLI](./stone-cli.md)
+- The edge identity model behind `leaf-config`: [Leaf Nodes](./leaf-nodes.md)
+- Every check and metric: [Health & Metrics](./health-metrics.md)
+- Config keys the routes read: [Configuration Reference](./configuration.md)

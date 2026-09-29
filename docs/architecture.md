@@ -4,17 +4,14 @@ nav_order: 40
 ---
 # Architecture
 
-The Stone-Age.io Platform is architected to decouple **Control** (the "who" and "where") from **Data** (the "what" and "how"). This separation ensures that the platform remains lightweight and responsive, while the underlying infrastructure provides industrial-grade security and reliability.
-
-This document focuses on the Control Plane / Data Plane split that structures the platform at the highest level. The Data Plane is further organized into four composable layers — see [Platform Layers](./platform-layers.md) for that model, and for how Planes and Layers relate.
+The platform separates **control** (who and where) from **data** (what and
+how). This page covers that split. The Data Plane itself has four layers. See
+[Platform Layers](./platform-layers.md) for those.
 
 ---
 
 ## 1. Control Plane vs. Data Plane
 
-Understanding the split between these two layers is key to understanding the platform.
-
-<center>
 ```mermaid
 graph TB
     subgraph Platform["Platform Components (each a single binary)"]
@@ -46,75 +43,100 @@ graph TB
     Thing -->|"3. UDP<br/>(Mesh VPN)"| Nebula
     
 ```
-</center>
 
 ### The Control Plane
- 
-**Powered by: PocketBase**
 
-The Control Plane is where you manage your business logic and inventory. It is the "Source of Truth" for your static and relational data.
+**Powered by PocketBase.** The Control Plane is the source of truth for
+inventory and identity.
 
-- **Identity:** Users, Organizations, and Memberships.
-- **Inventory:** Things, Thing Types, Locations, and Floorplans.
-- **Credentials:** Generating NATS JWTs, Nebula Certificates, and API Tokens.
-- **Orchestration:** PocketBase hooks automatically trigger infrastructure provisioning when you change things in the UI.
-- **Authorization:** The PocketBase **API rules** on each collection — the platform's only permission layer — plus one hook enforcing a tenancy invariant the rules cannot express. See §3 and [Authorization & Roles](./authorization.md).
+- **Identity:** Users, Organizations and Memberships.
+- **Inventory:** Things, Thing Types, Locations and Floorplans.
+- **Credentials:** NATS JWTs, Nebula certificates and API tokens.
+- **Provisioning:** PocketBase hooks provision infrastructure when you change
+  records.
+- **Authorization:** the PocketBase API rules on each collection are the only
+  permission layer. One hook also enforces a tenancy invariant that the rules
+  cannot express. See [§3](#authorization-inside-an-organization) and
+  [Authorization & Roles](./authorization.md).
 
-### The Data Plane 
+### The Data Plane
 
-**Powered by: NATS.io & Nebula**
+**Powered by NATS.io and Nebula.** The Data Plane moves all telemetry and
+commands from things (devices, applications) and users.
 
-The Data Plane is where the actual work happens. It handles the movement of every byte of telemetry and every command sent by your things (IoT devices, applications, etc.) and users.
-
-- **Messaging:** Real-time pub/sub, request/reply, and streaming via NATS.
-- **Connectivity:** Secure, peer-to-peer mesh networking via Nebula.
-
-The Data Plane is internally organized as four composable layers (substrate, declarative event logic, stream processing, long-term storage). The Control Plane sits alongside the Data Plane and provisions the identities and credentials the Data Plane uses at runtime. See [Platform Layers](./platform-layers.md) for the layer model; §2 below covers how the Control Plane stays connected to NATS without participating in tenant-level event flow.
+- **Messaging:** pub/sub, request/reply and streaming through NATS.
+- **Connectivity:** peer-to-peer mesh networking through Nebula.
 
 ---
 
 ## 2. Component Topology
 
-Stone-Age.io is not a single monolithic executable. It's a small set of independent components, **each a single binary**, that communicate through NATS subjects. Every component is independently deployable, independently upgradable, and independently scalable.
+The platform is a small set of independent binaries that talk over NATS
+subjects. You can deploy, upgrade and scale each one on its own.
 
-The minimum viable deployment is **one** binary: `stone-age serve --nats` runs the NATS server inside the Control Plane ([ADR 0001](./decisions/0001-embedded-nats-server.md)). Run NATS as its own `nats-server` process and it is two, which is what buys the Data Plane its independence from Control Plane restarts (below). Every other component is additive — you add it when you need the capability it provides, and it joins the fabric by speaking NATS to the same bus.
+The smallest deployment is **one** binary: `stone-age serve --nats` runs the
+NATS server inside the Control Plane ([ADR 0001](./decisions/0001-embedded-nats-server.md)).
+If you run `nats-server` as its own process, a Control Plane restart does not
+stop the Data Plane. Add every other component when you need it.
 
-| Component | Role | Binary | Added when you need... |
+| Component | Role | Binary | Add it when you need... |
 |---|---|---|---|
 | **Control Plane** | Identity, inventory, provisioning, embedded UI | `stone-age` | Always required |
-| **NATS** | Messaging substrate, streams, KV | `nats-server`, or embedded via `serve --nats` | Always required — as its own process, or inside the Control Plane |
-| **Nebula Lighthouse** | Mesh VPN directory / hole-punching | `nebula` | Secure edge connectivity |
-| **Agent** | Edge telemetry, service checks, remote exec | `agent` | You have devices or servers to manage |
-| **Rule engine** | Layer 1 declarative event logic (router, gateway, scheduler) | `rule-router` | Automation, webhook I/O, scheduled publishing |
-| **Stream processor** | Layer 2 windowed/stateful computation | eKuiper, Benthos, custom Go/Rust | Time-window aggregations, stream joins, anomaly detection |
-| **Telegraf** | Layer 3 TSDB ingestion bridge | `telegraf` | Long-term historical storage |
-| **TSDB** | Long-term time-series storage | VictoriaMetrics, InfluxDB, etc. | Long-term historical storage |
-| **Dashboards** | Historical visualization and alerting | Grafana, Perses | Long-term historical analysis |
+| **NATS** | Messaging, streams, KV | `nats-server`, or embedded with `serve --nats` | Always required, as its own process or inside the Control Plane |
+| **Nebula Lighthouse** | Mesh VPN directory and hole punching | `nebula` | Secure edge connectivity |
+| **Agent** | Edge telemetry, service checks, remote exec | `agent` | Devices or servers to manage |
+| **Rule engine** | Layer 1 event logic (router, gateway, scheduler) | `rule-router` | Automation, webhooks, scheduled publishes |
+| **Stream processor** | Layer 2 windowed or stateful computation | eKuiper, Benthos, custom Go/Rust | Window aggregations, stream joins, anomaly detection |
+| **Telegraf** | Layer 3 bridge into the TSDB | `telegraf` | Long-term storage |
+| **TSDB** | Long-term time-series storage | VictoriaMetrics, InfluxDB, etc. | Long-term storage |
+| **Dashboards** | Historical charts and alerts | Grafana, Perses | Historical analysis |
 
 ### Bootstrapping the NATS Server from the Control Plane
 
-The Control Plane's role isn't limited to runtime credential management — it also produces the server-side artifacts you need to start NATS in the first place. When you initialize PocketBase, the platform generates a NATS Operator JWT, a System Account JWT, a System User, a resolver configuration, and a ready-to-use `nats-server` config file. You export these with a single command:
+When you initialize PocketBase, the platform generates a NATS Operator JWT, a
+System Account JWT, a System User, a resolver configuration and a `nats-server`
+config file. Export them with one command:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
 ```
 
-The exported directory contains everything needed to run `nats-server -c ./nats-config/nats.conf` against the Control Plane's identity hierarchy. From that point on, PocketBase's connection to the System Account propagates any account or user changes you make in the UI to the running cluster in real-time — no config file edits, no server restarts.
+Then run `nats-server -c ./nats-config/nats.conf`. From that point, PocketBase
+sends every account and user change to the running cluster over the System
+Account. You do not edit config files or restart servers.
 
-This is a deliberate design choice: the Control Plane owns the NATS Operator key and stamps the server's identity artifacts, but once NATS is running it takes over its own lifecycle. You can run multiple NATS servers or an entire cluster from a single Control Plane, scale them independently, and rotate their config without touching PocketBase. The Control Plane's ongoing role is the admin-subject connection described below, not server supervision.
+The Control Plane owns the NATS Operator key and creates the server's identity
+files. After NATS starts, it manages its own lifecycle. You can run several NATS
+servers or a cluster from one Control Plane, and scale or reconfigure them
+without PocketBase. The Control Plane does not supervise the servers.
 
-Small deployments can collapse the two processes with `stone-age serve --nats`, which runs a NATS server inside the Control Plane from that same exported config. Nothing above changes — same NATS Operator, same identity hierarchy, same file — except that the Data Plane's independence from the Control Plane is suspended while they share a process. Off by default; see [Operations §2.1](./operations.md#21-where-the-nats-server-runs) and [ADR 0001](./decisions/0001-embedded-nats-server.md).
-
-The getting-started doc walks through this workflow end-to-end. See [Getting Started](./getting-started.md) for the runnable commands.
+`stone-age serve --nats` runs a NATS server inside the Control Plane from the
+same exported config. The operator, identity hierarchy and file are the same.
+The one difference is that the Data Plane now shares a process with the Control
+Plane. This mode is off by default. See [Operations §2.1](./operations.md#21-where-the-nats-server-runs)
+and [Getting Started](./getting-started.md).
 
 ### Key Properties of This Topology
 
-- **The Control Plane is a narrow administrative NATS client, not a tenant-data participant.** PocketBase connects to NATS on the System Account to propagate credential and account changes (`$SYS.REQ.CLAIMS.UPDATE` and related admin subjects) so that changes made in the UI take effect on the cluster in real-time, without restarts. It does not publish or subscribe on tenant subjects — no telemetry, no rule events, no device commands flow through it. With NATS running as its own process, a PocketBase restart pauses new provisioning operations but does not interrupt any running tenant traffic. With `serve --nats` the bus shares the process, so a restart is a brief total bus outage.
-- **Every runtime component is a NATS client.** Agents publish telemetry. The rule engine subscribes to subjects and publishes derived events. Stream processors consume and produce on NATS. Telegraf subscribes to telemetry subjects and writes to the TSDB. The common vocabulary is NATS subjects.
-- **Components can be colocated or distributed.** A small deployment might run the Control Plane, NATS, Nebula Lighthouse, and rule engine on a single host. A large deployment might run each centrally, with NATS leaf nodes and rule engine instances at each edge site. The components don't know or care which topology they're in — they only know about NATS.
-- **Each component can be scaled independently.** The rule engine is stateless per-message and scales horizontally — with one caveat: its built-in `throttle` windows live in each instance's memory, so scaling out gives each instance its own windows. NATS clusters horizontally. The Control Plane scales vertically (it's a low-traffic metadata store). Stream processors scale per pipeline.
+- **The Control Plane is an admin-only NATS client.** PocketBase connects on the
+  System Account and publishes account and credential changes
+  (`$SYS.REQ.CLAIMS.UPDATE` and related admin subjects). It does not publish or
+  subscribe on tenant subjects. With NATS as its own process, a PocketBase
+  restart pauses new provisioning but does not stop tenant traffic. With
+  `serve --nats`, a restart is a short outage of the whole bus.
+- **Every runtime component is a NATS client.** Agents publish telemetry. The
+  rule engine subscribes and publishes derived events. Stream processors read
+  and write NATS. Telegraf subscribes and writes to the TSDB.
+- **Components can share a host or be spread out.** A small deployment can run
+  the Control Plane, NATS, a Nebula lighthouse and the rule engine on one host.
+  A large one can run them centrally, with NATS leaf nodes and rule engines at
+  each site. The components only know about NATS.
+- **Each component scales on its own.** The rule engine keeps no state between
+  messages and scales horizontally. Its `throttle` windows are in each
+  instance's memory, so each instance has its own windows. NATS clusters
+  horizontally. The Control Plane scales vertically, because it is a
+  low-traffic metadata store. Stream processors scale per pipeline.
 
-<center>
 ```mermaid
 flowchart LR
     subgraph Central["Central Deployment"]
@@ -151,57 +173,94 @@ flowchart LR
     RR_EDGE <-->|"subscribe/publish"| LEAF
     AGENT2 -->|"publish"| LEAF2
 ```
-</center>
 
-This separation is deliberate and it's the reason the platform scales from a developer laptop to a multi-site MSP deployment without architectural changes. You add components, you don't rewire.
+The same design runs on a laptop and on a multi-site MSP deployment. To grow,
+you add components. You do not change how they connect.
 
 ---
 
 ## 3. Multi-Tenancy & Infrastructure Isolation
 
-In the Stone-Age.io Platform, multi-tenancy is not just a software filter; it is **infrastructure-enforced**. When you create an **Organization** in the platform, a specific chain of events occurs to isolate that tenant:
+The infrastructure enforces tenancy. When you create an **Organization**, the
+platform creates these primitives for it:
 
 | Platform Entity | Infrastructure Primitive | Isolation Method |
 | :--- | :--- | :--- |
-| **Organization** | **NATS Account** | Cryptographic multi-tenancy via NATS Operator mode. |
-| **Organization** | **Nebula CA** | A unique Certificate Authority is generated for every Org. |
-| **Thing** (auth record) | **NATS User** | Each Thing has its own NATS user signed by the Org's Account. |
-| **Membership** (User ↔ Org link) | **NATS User** (relation) | A Membership references a NATS user in that Org's Account, giving the human a credential scoped to that organization. |
+| **Organization** | **NATS Account** | Cryptographic multi-tenancy through NATS Operator mode. |
+| **Organization** | **Nebula CA** | Each Org gets its own Certificate Authority. |
+| **Thing** (auth record) | **NATS User** | Each Thing has its own NATS user, signed by the Org's Account. |
+| **Membership** (User to Org link) | **NATS User** (relation) | A Membership points to a NATS user in that Org's Account, so the person has a credential scoped to that organization. |
 
-This means that even if a device in *Organization A* is compromised, it has no cryptographic path to see messages or network traffic in *Organization B*.
+A compromised device in *Organization A* has no cryptographic path to messages
+or network traffic in *Organization B*.
 
 ### 3.1 Inventory-as-Identity
 
-The table above has a second reading, and it is the one that explains why the platform is shaped the way it is.
+Many systems keep two registries: an asset database that knows the lobby camera
+exists, and a device-management system that knows what the camera can do on the
+network. The two drift apart. Someone removes a device from one and forgets the
+other.
 
-Most systems keep two registries: an asset database that knows the camera in the lobby exists, and a separate identity or device-management system that knows what that camera is allowed to do on the network. The two drift. Someone decommissions a device in one and forgets the other.
+In Stone-Age.io, **the inventory record is the identity.**
 
-Stone-Age.io collapses them. **The inventory record is the identity.**
+A `things` record is a PocketBase **auth record**. It has credentials and can
+sign in to the API to fetch its own configuration. It has a relation to a
+`nats_users` record (its messaging identity) and a relation to a `nebula_hosts`
+record (its mesh identity). One row is four things:
 
-A `things` record is a first-class PocketBase **auth record** — it has credentials and can log in to the API to fetch its own configuration. It carries a relation to a `nats_users` record (its identity on the messaging fabric) and a relation to a `nebula_hosts` record (its identity on the encrypted mesh). One row in one collection is therefore four things at once:
-
-| The row is… | Which means… |
+| The row is... | Which means... |
 | :--- | :--- |
-| An **inventory entry** | It has a code, a name, a location, a type, and metadata |
-| A **login** | It can authenticate against the REST API as itself and read its own record |
-| A **messaging identity** | Its linked NATS user is signed by the Org's Account, with permissions from its NATS role |
-| A **mesh node** | Its linked Nebula host holds a certificate issued by the Org's CA |
+| An **inventory entry** | It has a code, a name, a location, a type and metadata |
+| A **login** | It can authenticate against the REST API and read its own record |
+| A **messaging identity** | Its NATS user is signed by the Org's Account, with permissions from its NATS role |
+| A **mesh node** | Its Nebula host has a certificate from the Org's CA |
 
-Two consequences follow, and both are load-bearing:
+**The halves are optional.** `POST /api/org/things` takes a `mode` for each
+identity: `auto` (mint a new one), `link` (attach an existing one) or `none`. A
+Thing with `none` on both is a plain inventory row that never appears on the
+bus. This is [depth 1](./index.md#start-where-you-need-to). A `member` can
+create and edit inventory, but only an Owner or Admin can attach identities.
 
-**The halves are separable.** The identity relations are optional. `POST /api/org/things` takes a `mode` per identity — `auto` (mint a new one), `link` (attach an existing one), or `none`. A Thing created with `none` on both is a plain inventory row that will never appear on the bus. This is what makes [depth 1](./index.md#start-where-you-need-to) real rather than aspirational, and it is why a `member` can create and edit inventory while only an Owner or Admin can attach identities to it.
+**One action changes the asset and the credential.** When you clear `active` on
+a Thing:
 
-**Lifecycle actions apply to the asset and the credential together.** Because there is one record, there is one place to act on it. Clearing `active` on a Thing does not just grey a row in a list — it does four things at once: the device cannot sign in again, every session it already holds is signed out immediately, its NATS identity is suspended (the key revoked, nothing reissued), and its Nebula certificate is added to every peer's blocklist, which takes effect as each peer's config is redeployed. Reactivating issues a *new* `.creds` file and the old one stays revoked. Decommissioning an asset and revoking its access are the same operation, so they cannot fall out of step. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+1. The device cannot sign in again.
+2. Every session it holds is signed out immediately.
+3. Its NATS identity is suspended. The key is revoked and nothing is reissued.
+4. Its Nebula certificate goes on every peer's blocklist. This takes effect as
+   each peer's config is redeployed.
 
-The org-level analogue of this idea is **Infrastructure-as-Tenant** — creating an Organization is what provisions its NATS Account and Nebula CA. Same principle, one level up: the management record and the infrastructure it implies are created and destroyed as a unit.
+When you reactivate the Thing, it gets a *new* `.creds` file and the old one
+stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+
+The same idea applies to Organizations (**Infrastructure-as-Tenant**). Creating
+an Organization provisions its NATS Account and Nebula CA, and the record and
+its infrastructure are created and deleted together.
 
 ### Authorization inside an Organization
 
-Cryptography draws the boundary *between* tenants. Inside one, access is governed by five roles on the Membership record — `owner`, `admin`, `member`, `viewer`, and `dashboard` — plus two cross-organization identities, the **Platform Operator** (`users.is_operator`) and the **SuperUser**. `owner` and `admin` are identical in every rule; `member` runs inventory; `viewer` reads it; `dashboard` reaches only the Visualizer; editing the Organization record and reading the audit log are Platform-Operator-only.
+Cryptography separates tenants. Inside a tenant, five roles on the Membership
+record control access: `owner`, `admin`, `member`, `viewer` and `dashboard`.
+Two identities work across organizations: the **Platform Operator**
+(`users.is_operator`) and the **SuperUser**.
 
-**The PocketBase API rules declared on each collection are the only permission layer.** The provisioning libraries (`pb-nats`, `pb-nebula`) contain no tenancy logic — they never reference `organization` — and the console's capability map decides what renders, not what is permitted. The one deliberate exception is an *invariant*, not a permission: a hook refuses any relation that points into another Organization's records — superusers included — because a rule cannot follow a raw submitted id to its target, and `pb-nats` would otherwise sign a credential inside whatever Account that id named. The full model, the capability matrix, and the row-scoped credential design live on [Authorization & Roles](./authorization.md).
+- `owner` and `admin` are the same in every rule.
+- `member` manages inventory.
+- `viewer` reads inventory.
+- `dashboard` can open only the Visualizer.
+- Only Platform Operators can edit the Organization record and read the audit
+  log.
 
-<center>
+**The PocketBase API rules on each collection are the only permission layer.**
+The provisioning libraries (`pb-nats`, `pb-nebula`) have no tenancy logic. The
+console's capability map decides what it shows, not what is permitted.
+
+One hook enforces an invariant: it refuses any relation into another
+Organization's records, also for superusers. A rule cannot follow a submitted id
+to its target, and without the hook `pb-nats` would sign a credential in
+whichever Account that id named. See [Authorization & Roles](./authorization.md)
+for the capability matrix and the credential design.
+
 ```mermaid
 graph TB
     subgraph OrgA
@@ -242,61 +301,93 @@ graph TB
         B_CA -.->|"Certificate"| B_Thing
     end
 ```
-</center>
 
 ---
 
 ## 4. The Digital Twin Concept (Live State)
 
-While PocketBase stores the **Inventory** (the identity/metadata about a thing), the live **State** of a thing is stored in the **NATS Key-Value (KV) Store**. We call this the Digital Twin.
+PocketBase stores the **inventory** of a thing. The **NATS KV store** holds its
+live **state**. This live state is the digital twin.
 
-*   **PocketBase (Static/Slow/Initial):** Stores the serial number, the type, the location, the assigned owner, etc. Data that doesn't change often or data used to seed the beginning of a thing.
-*   **NATS KV (Variable/Fast/Live):** Stores the current temperature, the light switch status, the last heartbeat, and the current firmware version. Data that moves fast, but often used in stateful contexts.
+- **PocketBase** holds data that changes slowly or seeds a new thing: serial
+  number, type, location, owner.
+- **NATS KV** holds data that changes fast: current temperature, switch status,
+  last heartbeat, firmware version.
 
-**Why this matters:**
-The UI connects directly to NATS via WebSockets. When a property changes in the KV store, the UI updates instantly without polling a database. This architecture allows the platform to handle high-frequency data with millisecond latency.
+The console connects to NATS over WebSocket. When a KV value changes, the
+console updates with no database polling.
 
 ### 4.1 Two buckets, one writer each
 
-There are **two** KV buckets per organization, split by who owns the data:
+Each organization has **two** KV buckets, split by who writes the data:
 
 | Bucket | Who writes it | Direction |
 | :--- | :--- | :--- |
-| `twin` | the device | edge → hub (**reported** state) |
-| `twin_desired` | a console user | hub → edge (**desired** state) |
+| `twin` | the device | edge to hub (**reported** state) |
+| `twin_desired` | a console user | hub to edge (**desired** state) |
 
-Keys are `<kind>.<code>.<prop>` — `thing.S01.temp`, `location.CHI-W-A.occupancy` — and the two buckets pair on the *same* key. Direction lives in the bucket, so keys carry no sync bookkeeping. Note that these are **organization-level buckets keyed by code**, not one bucket per Location or Thing.
+Keys are `<kind>.<code>.<prop>`, for example `thing.S01.temp` or
+`location.CHI-W-A.occupancy`. The two buckets use the *same* key for a
+property. The bucket gives the direction, so keys carry no sync data. These
+buckets are per organization, keyed by code. There is no bucket per Location or
+Thing.
 
-**One writer per bucket is the entire safety property.** A single bucket written from both ends does not pick a loser on a conflict — it *oscillates*, with the two values swapping back and forth across the leaf link indefinitely.
+**One writer per bucket is what keeps the data safe.** If both ends write one
+bucket, a conflict has no winner. The two values swap back and forth across the
+leaf link with no end.
 
-At the edge, the twin is now a **preset over a general mechanism** rather than the mechanism itself: an agent takes lists of buckets to mirror down and relay up, and `sync.twin: true` expands to exactly these two ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). Everything this section says about the twin holds for any bucket a site declares — including one-writer-per-bucket, which stopped being structural when the lists arrived and is now a config check that refuses to start.
+At the edge, the twin is a preset. An agent takes lists of buckets to mirror
+down and relay up, and `sync.twin: true` expands to these two buckets
+([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). The
+rules on this page apply to every bucket a site declares. The agent refuses to
+start if two lists give one bucket two writers.
 
-Because reported state is written by the edge, **it is read-only in the console.** An edit button on a reported key would be a lie: the value comes back on the next sync. `twin_desired` is the writable half, and it is where a console user's actual control lives.
+Reported state is written by the edge, so **it is read-only in the console.**
+An edit to a reported key would be overwritten on the next sync. `twin_desired`
+is the writable bucket.
 
 ### 4.2 What belongs in `twin_desired`, and what does not
-
-Four jobs, four homes. The last two are the ones people try to put in `twin_desired`:
 
 | Job | Where it goes |
 | :--- | :--- |
 | Reported state | `twin` KV, written by the device |
-| Setpoints and configuration | `twin_desired` KV — durable, so a device booting after three days offline reads the current value from its local mirror |
-| Commands (`reboot`) | A NATS message on `cmd.>`, **not** a KV value. A durable "reboot now" sitting in a bucket forever is a bug. |
-| Ranges, thresholds, alarms, hysteresis | A [rule](./automation.md) over `twin`. Not a desired value. |
+| Setpoints and configuration | `twin_desired` KV. It is durable, so a device that boots after three days offline reads the current value from its local mirror. |
+| Commands (`reboot`) | A NATS message on `cmd.>`, **not** a KV value. A "reboot now" that stays in a bucket is a bug. |
+| Ranges, thresholds, alarms, hysteresis | A [rule](./automation.md) over `twin`, not a desired value. |
 
-**Pair a desired key with an echo, never with a measurement.** Desired belongs on a property the device *echoes back* to acknowledge an instruction — `setpoint`, `mode`. Those converge exactly, so equality is the right question and a difference means "the device has not accepted my instruction". Desired `temp = 20` against reported `temp = 20.3` compares an instruction to a continuous reading; it differs forever, and no tolerance fixes that in general because the right tolerance varies by property, device and season. "Alarm when temp leaves 18–22" is a threshold over *reported* state — a rule, not a desired value.
+**Pair a desired key with an echo, not a measurement.** Put a desired value on
+a property the device echoes back to acknowledge an instruction, such as
+`setpoint` or `mode`. Those values match exactly when the device accepts the
+instruction, so a difference means the device has not accepted it. A desired
+`temp = 20` against a reported `temp = 20.3` compares an instruction to a
+continuous reading. It differs permanently, and no single tolerance fixes that
+for all properties, devices and seasons. "Alarm when temp leaves 18 to 22" is a
+rule over reported state.
 
-A desired value is a **partial assertion**: only the keys present in the desired object are compared, so extra fields in the reported object are ignored. Full-equality comparison rots — the day a device reports one new field, every assertion set months ago would flip to "differs". Subset semantics apply to objects; arrays and scalars compare exactly.
+A desired value is a **partial assertion**. Only the keys in the desired object
+are compared, and extra fields in the reported object are ignored. With full
+equality, one new reported field would make every older assertion "differ".
+Objects use subset comparison. Arrays and scalars must match exactly.
 
 ### 4.3 The console says "differs", never "pending"
 
-**Nothing in this platform applies desired values to devices** — no hook, no agent, no subscription. `twin_desired` is a *delivery mechanism*: the platform's job ends when the value is readable in the edge's local KV. What consumes it is your firmware or your rules, the same boundary as minting a NATS credential and not caring what publishes with it.
+**The platform does not apply desired values to devices.** No hook, agent or
+subscription does this. `twin_desired` only delivers the value: the platform's
+job ends when the value is readable in the edge's local KV. Your firmware or
+your rules consume it.
 
-So the console states the difference and predicts nothing. A message like "waiting for the device" would assert a control loop that does not exist. It also shows the *values* rather than a word for them — `"auto" → "manual"` in the row, a reported/desired column pair in the detail pane — because "differs on: mode" is the same width and sends the reader off to look both values up.
+So the console shows the difference and predicts nothing. "Waiting for the
+device" would imply a control loop that does not exist. The console shows the
+values, such as `"auto"` and `"manual"` in the row, and a reported/desired
+column pair in the detail pane.
 
-The KV store is also where Layer 1 rules keep durable state — alarm status and presence keys. (Debounce and rate limiting are the rule engine's built-in `throttle`, whose windows live in the engine's memory rather than in KV.) See [Automation](./automation.md) for the canonical patterns.
+Layer 1 rules also keep durable state in KV, such as alarm status and presence
+keys. Debounce and rate limiting use the rule engine's `throttle`, which keeps
+its windows in memory, not KV. See [Automation](./automation.md).
 
-The subjects that flow through the broader NATS bus are declared, per kind of participant, by **Thing Types**. (Payload shape deliberately is not — see [Thing Types](./thing-types.md).) A Thing Type is the contract for what a Thing publishes, subscribes to, requests, or replies to — making the subject hierarchy that underpins the Digital Twin explicit rather than implicit. See [Thing Types](./thing-types.md) for the full model.
+**Thing Types** declare the subjects each kind of participant uses: what it
+publishes, subscribes to, requests and replies to. They do not describe payload
+shape. See [Thing Types](./thing-types.md).
 
 ```mermaid
 graph LR
@@ -324,51 +415,53 @@ graph LR
 
 ## 5. The Chain of Trust
 
-The Stone-Age.io Platform uses a "Chain of Trust" model based on Public Key Infrastructure (PKI) and JSON Web Token (JWT).
+The platform's trust model uses public key infrastructure (PKI) and JSON Web
+Tokens (JWT).
 
 ### NATS Security (nKeys & JWTs)
 
-The Control Plane is the source of every Account JWT, and pushes them to the servers. The servers run a **full resolver** (`resolver: { type: full }` in the exported config) and the Control Plane publishes each new or changed Account JWT to it on `$SYS.REQ.CLAIMS.UPDATE` — there is no separate account-server process to run or reach.
+The Control Plane creates every Account JWT and pushes it to the servers. The
+servers run a **full resolver** (`resolver: { type: full }` in the exported
+config). The Control Plane publishes each new or changed Account JWT on
+`$SYS.REQ.CLAIMS.UPDATE`. There is no separate account server.
 
-1.  The Control Plane holds the **NATS Operator** key.
-2.  Each Org has an **Account** key signed by the NATS Operator.
-3.  Each Thing/User has a **User** key signed by their Account.
+1. The Control Plane holds the **NATS Operator** key.
+2. Each Org has an **Account** key, signed by the NATS Operator.
+3. Each Thing and User has a **User** key, signed by its Account.
 
-Authentication happens via **JWTs** and **nKeys**. Accounts are distributed to the cluster in real-time. Users sign a challenge during the connection handshake, and the chain of trust is verified.
+Clients authenticate with **JWTs** and **nKeys**. A user signs a challenge
+during the connection handshake, and the server verifies the chain.
 
 ### Nebula Security (Certificates)
 
-Nebula functions similarly to SSH keys but for your entire network.
-
-1.  The platform generates a unique **CA** (Certificate Authority) for each Org.
-2.  Within a CA you can create one or more unique networks.
-3.  Each **Host** belongs to a single network and is issued a certificate signed by that CA.
-4.  Hosts will only communicate with other hosts that have a certificate signed by the *exact same* CA.
+1. The platform generates a **CA** (Certificate Authority) for each Org.
+2. A CA can have one or more networks.
+3. Each **host** belongs to one network and has a certificate signed by that CA.
+4. Hosts communicate only with hosts whose certificates come from the *same* CA.
 
 ---
 
-## 6. Compatibility and Automation Strategy 
+## 6. Compatibility
 
 ### Third-Party Applications
 
-Since the platform manages just the infrastructure, you can plug in any application that emits or consumes data. We love to see the interesting ways the platform is utilized. Webhooks, Websockets, MQTT clients, etc. provide diverse protocol adapters for a wide range of compatibility.
+The platform manages the infrastructure, so any application that sends or
+receives data can connect. Webhooks, WebSockets and MQTT clients all work.
 
 ### MQTT
 
-NATS provides a native MQTT integration via JetStream. Enable your server/cluster/leaf-node to allow MQTT connections and utilize your JWT as a bearer token to use the same auth as NATS clients.
-
-### Layered Event Processing
-
-Above Layer 0, the platform's event logic is structured as three composable tiers — declarative rules (Layer 1), stateful stream processing (Layer 2), and long-term storage (Layer 3) — each its own single-binary component speaking NATS. The architectural model and graduation criteria live in [Platform Layers](./platform-layers.md); the per-layer detail lives in [Automation](./automation.md), [Stream Processing](./stream-processing.md), and [Observability](./observability.md). This document doesn't recap them.
+NATS has native MQTT support through JetStream. Enable MQTT on your server,
+cluster or leaf node. MQTT clients send their JWT as a bearer token and use the
+same auth as NATS clients.
 
 ---
 
 ## 7. Where to Go Next
 
-- For the conceptual layer model: [Platform Layers](./platform-layers.md).
-- For the contract layer that describes participants on the fabric: [Thing Types](./thing-types.md).
-- For roles, API rules, and the credential model: [Authorization & Roles](./authorization.md).
-- For Layer 0 (substrate) detail: [Connectivity](./connectivity.md).
-- For Layer 1 (rule engine) detail: [Automation](./automation.md).
-- For Layer 2 (stream processing) detail: [Stream Processing](./stream-processing.md).
-- For Layer 3 (long-term storage) detail: [Observability](./observability.md).
+- The layer model: [Platform Layers](./platform-layers.md)
+- Subject contracts: [Thing Types](./thing-types.md)
+- Roles, API rules and credentials: [Authorization & Roles](./authorization.md)
+- Layer 0: [Connectivity](./connectivity.md)
+- Layer 1: [Automation](./automation.md)
+- Layer 2: [Stream Processing](./stream-processing.md)
+- Layer 3: [Observability](./observability.md)

@@ -4,141 +4,217 @@ nav_order: 70
 ---
 # Dashboards & Widgets
 
-The Visualizer is the console's dashboard surface: a resizable grid of widgets, each bound to a NATS subject (optionally replayed from JetStream) or a KV key. It is the screen you put in front of someone who does not administer the platform — a technician watching a site, or an unattended display in a control room.
+The Visualizer is the console's dashboard view: a resizable grid of widgets.
+Each widget reads a NATS subject (optionally replayed from JetStream) or a KV
+key. It is the screen for people who do not administer the platform, such as a
+technician who watches a site, or an unattended display in a control room.
 
-Everything on it runs over **the browser's own NATS connection**. There is no server-side rendering step and no polling loop against the database: a value changes on the bus, and the widget bound to it updates. That also means a widget can only see what the caller's NATS credential permits, which is set per identity in [Connectivity](./connectivity.md) and is independent of the console role.
+All of it runs over **the browser's own NATS connection**. There is no
+server-side rendering and no database polling. When a value changes on the bus,
+the widget updates. A widget can see only what the viewer's NATS credential
+permits. That permission is set per identity in [Connectivity](./connectivity.md)
+and does not depend on the console role.
 
 ---
 
 ## 1. Where a dashboard lives
 
-Dashboards are **not** PocketBase records. Each one is a JSON document with two possible homes, chosen per dashboard:
+Dashboards are **not** PocketBase records. Each one is a JSON document, stored
+in one of two places:
 
 | Storage | Where | Who sees it |
 | :--- | :--- | :--- |
 | **Local** | the browser's `localStorage` | that browser only |
 | **Shared** | a NATS KV bucket, `dashboards` by default | anyone whose credential can read the bucket |
 
-Local is the default and needs nothing configured. Shared dashboards are how a team keeps one canonical view, and how an unattended screen gets its layout without someone building it there: the key name may contain dots, which the console renders as folders (`site-a.lobby`).
+Local is the default and needs no configuration. Use shared dashboards to give
+a team one view, or to give an unattended screen its layout without building it
+on that screen. Key names can contain dots, which the console shows as folders
+(`site-a.lobby`).
 
-Because shared storage is a KV bucket rather than a collection, **access is governed by NATS permissions, not by API rules** — a credential that can write the `dashboards` bucket can edit every shared dashboard in it. Give an appliance login a read-only NATS role if you do not want it saving over the layout.
+Shared storage is a KV bucket, so **NATS permissions control access, not API
+rules**. A credential that can write the `dashboards` bucket can edit every
+shared dashboard in it. Give an appliance login a read-only NATS role so it
+cannot overwrite the layout.
 
-Local storage holds up to 25 dashboards, and the console warns as you approach that. Dashboards export and import as a single JSON file, which is the practical way to move one between deployments.
+Local storage holds up to 25 dashboards, and the console warns you as you get
+close. To move a dashboard between deployments, export and import it as a JSON
+file.
 
 ---
 
 ## 2. Data sources
 
-A data-bound widget reads from one of two places. Choosing the right one is most of getting a dashboard to behave.
+A data-bound widget reads from one of two sources.
 
-| Source | What it does | Reach for it when |
+| Source | What it does | Use it for |
 | :--- | :--- | :--- |
-| **Subject** | A live subscription. By default fire-and-forget: you see messages published from the moment the widget mounts. Tick **Use JetStream (History)** and it replays from the stream covering the subject first, with a deliver policy: *All*, *Last*, *Last Per Subject*, *New*, or *By Time Window* (`10m`, `1h30m`). | Telemetry, logs, anything where "now" is what matters — with history ticked, a chart that should not start empty. |
-| **KV key** | A KV key, watched for updates. | Current state rather than a stream of events: a setpoint, a status, a twin value. |
+| **Subject** | A live subscription. By default you see only messages published after the widget loads. With **Use JetStream (History)**, it first replays from the stream that covers the subject. Deliver policies: *All*, *Last*, *Last Per Subject*, *New* or *By Time Window* (`10m`, `1h30m`). | Telemetry, logs and events. Turn on history for a chart that must not start empty. |
+| **KV key** | A KV key, watched for updates. | Current state, such as a setpoint, a status or a twin value. |
 
-Which widgets take which is fixed by the type, not chosen freely:
+The widget type decides the source:
 
-- **Subject only:** Text, Chart, Stat, Gauge, Console, Stream Table. Chart, Console and Stream Table take several subjects at once.
+- **Subject only:** Text, Chart, Stat, Gauge, Console, Stream Table. Chart,
+  Console and Stream Table take several subjects.
 - **KV only:** KV, KV Table.
-- **Either:** Status and Markdown switch between a subject and a KV key; Markdown can also be bound to nothing at all.
-- **Controls** carry their own targets: Switch and Slider run in a KV mode (read and write one key) or a core mode (publish, and watch a state subject); Button and Publisher publish.
+- **Either:** Status and Markdown. Markdown can also have no source.
+- **Controls** have their own targets. Switch and Slider have a KV mode (read and
+  write one key) and a core mode (publish, and watch a state subject). Button
+  and Publisher publish.
 
-Two consequences worth internalizing:
+Two things to know:
 
-- **A plain subject widget is empty until the next message arrives.** On a subject that publishes every ten minutes, a freshly loaded dashboard looks broken for ten minutes. Tick JetStream history with *Last* or *Last Per Subject*, or use a KV source, when the current value matters more than the event.
-- **JetStream history and KV both need JetStream**, which the account must be entitled to — and a stream must already cover the subject for history to replay anything. The `$SYS` account is not JetStream-enabled, which is one of the reasons [Getting Started](./getting-started.md) tells you not to run real workloads on it.
+- **A plain subject widget is empty until the next message.** If a subject
+  publishes every ten minutes, a new dashboard looks broken for up to ten
+  minutes. When the current value matters, turn on JetStream history with
+  *Last* or *Last Per Subject*, or use a KV source.
+- **JetStream history and KV both need JetStream** on the account, and a stream
+  must already cover the subject for history to replay. The `$SYS` account has
+  no JetStream, which is one reason not to run real work on it
+  ([Getting Started](./getting-started.md)).
 
-Widgets that buffer (charts, tables, the console, stat) keep the last *N* messages — a count, set per widget. There is no age limit on the buffer; aging messages out by time is the Chart's own window (§3). The buffer is per widget and lives in the browser; nothing is persisted.
+Buffering widgets (charts, tables, console, stat) keep the last *N* messages.
+You set *N* per widget. The buffer has no age limit. To drop old points by time,
+use the Chart's time window (§3). The buffer is in the browser, and nothing is
+saved.
 
-**Every message is stamped with a time on arrival**, and charts and tables use it rather than the moment the browser happened to render. In order: a **Timestamp Path** you set, pointing into the payload (epoch seconds, ms, µs or ns, or ISO 8601); otherwise the time JetStream stored it, for a replayed message; otherwise the time the browser received it. Set the path whenever the device carries its own clock — a replay of an hour of history otherwise stacks up at "just now".
+**Each message gets a timestamp on arrival.** Charts and tables use it, in this
+order:
+
+1. A **Timestamp Path** you set into the payload (epoch seconds, ms, µs or ns,
+   or ISO 8601).
+2. For a replayed message, the time JetStream stored it.
+3. The time the browser received it.
+
+Set the path when the device has its own clock. If you do not, an hour of
+replayed history shows up at "now".
 
 ---
 
 ## 3. The widget types
 
-Sixteen of them. The grid defaults to 12 columns — each dashboard can switch to 4, 6, 8, 10, 16 or 20, or *Auto* — and each type has a sensible default size.
+There are sixteen widget types. The grid has 12 columns by default. Each
+dashboard can change to 4, 6, 8, 10, 16 or 20 columns, or *Auto*. Each type has
+a default size.
 
 ### Display
 
 | Widget | What it shows |
 | :--- | :--- |
-| **Text** | The latest value, formatted. Supports threshold rules that recolour it by comparison (`>`, `>=`, `<`, `<=`, `==`, `!=`). |
-| **Stat** | A KPI number with a trend indicator and a mini sparkline. |
-| **Gauge** | A circular meter against a min/max range. |
-| **Status** | State mapping plus a watchdog: maps values to labels and colours, and can go stale when nothing arrives within a timeout. Reads a subject or a KV key; in KV mode the JSONPath applies and staleness counts from when the entry was written. |
-| **Chart** | Line, bar, or **State Timeline**, over a real time axis, rendered with ECharts. See below. |
+| **Text** | The latest value, formatted. Threshold rules change its colour by comparison (`>`, `>=`, `<`, `<=`, `==`, `!=`). |
+| **Stat** | A KPI number with a trend indicator and a small sparkline. |
+| **Gauge** | A circular meter with a min/max range. |
+| **Status** | Maps values to labels and colours. It shows stale when nothing arrives within a timeout. It reads a subject or a KV key. In KV mode the JSONPath applies, and staleness counts from when the entry was written. |
+| **Chart** | Line, bar or **State Timeline** on a real time axis, drawn with ECharts. See below. |
 
-**Charts** draw *N* series from one widget. Each series has a label, a JSONPath into the full payload, and an optional exact-subject filter — the filter is what separates devices that all publish the same shape (`{"running": true}`) on different subjects, where the path alone cannot tell them apart. A **time window** (`30m`, `1h30m`) ages points off the left edge and keeps the axis sliding while nothing arrives; with JetStream history on *By Time Window*, the same value is the replay window, so the two cannot disagree. Leave it empty and the chart shows the last *N* messages. The buffer still caps memory under a window, and the chart says so when it is the buffer, not the window, that is bounding what you see.
+A **Chart** draws *N* series. Each series has a label, a JSONPath into the
+payload, and an optional exact-subject filter. Use the filter when several
+devices publish the same shape (`{"running": true}`) on different subjects,
+because the path alone cannot tell them apart.
 
-The **State Timeline** draws one row per series and merges consecutive equal values into a coloured segment — the shape for "was the pump running, and when". Threshold rules give a matching value its colour and a display label; a value no rule matches gets a colour derived from the value itself, so it is stable across reloads.
+A **time window** (`30m`, `1h30m`) drops points off the left edge and keeps the
+axis moving when nothing arrives. With JetStream history on *By Time Window*,
+the same value sets the replay window. With no window, the chart shows the last
+*N* messages. The buffer still limits memory, and the chart tells you when the
+buffer, not the window, limits what you see.
+
+The **State Timeline** draws one row per series and joins consecutive equal
+values into one coloured segment. Use it for "was the pump running, and when".
+Threshold rules give a matching value a colour and a label. A value that no rule
+matches gets a colour computed from the value, so it stays the same across
+reloads.
 
 ### Tables and records
 
 | Widget | What it shows |
 | :--- | :--- |
-| **KV** | A single KV entry, raw or as parsed JSON, with thresholds. |
-| **KV Table** | A whole KV bucket as a live table, with configurable columns. |
-| **Stream Table** | A live message stream rendered as a table — one row per message, columns extracted by JSON path. |
+| **KV** | One KV entry, raw or as parsed JSON, with thresholds. |
+| **KV Table** | A whole KV bucket as a live table, with columns you choose. |
+| **Stream Table** | A live message stream as a table, one row per message, with columns taken by JSON path. |
 
 ### Controls
 
 | Widget | What it does |
 | :--- | :--- |
-| **Button** | Publishes a fixed payload to a subject. Can do a request/reply with a timeout instead of a plain publish. |
-| **Switch** | A toggle, backed either by a KV key or by publish-and-watch-a-subject. Optionally asks for confirmation first. |
-| **Slider** | A range control. In core mode it publishes on change (optionally watching a state subject); in KV mode it writes a key. Optionally asks for confirmation first. |
-| **Publisher** | An ad-hoc message composer with history. If the target is a Thing with a [Thing Type](./thing-types.md), it binds to a `Thing + Operation` pair: the subject resolves from the Thing's context and renders read-only. The payload stays free text. |
-| **Scanner** | Scans a QR code with the device camera and looks up or publishes against the result. The [labels the platform prints](./platform-ui-entities.md#codes-and-qr-labels) carry a bare Location or Thing code, which is what the `{value}` placeholder in a KV key template or PocketBase filter expects — so `code = "{value}"` resolves a printed label with no extra configuration. The decoded string is never treated as a destination. |
+| **Button** | Publishes a fixed payload to a subject, or sends a request and waits for a reply with a timeout. |
+| **Switch** | A toggle, backed by a KV key or by publishing and watching a subject. It can ask for confirmation. |
+| **Slider** | A range control. In core mode it publishes on change and can watch a state subject. In KV mode it writes a key. It can ask for confirmation. |
+| **Publisher** | A message composer with history. For a Thing with a [Thing Type](./thing-types.md), it binds to a Thing and an operation. The subject then resolves from the Thing and is read-only. The payload is free text. |
+| **Scanner** | Scans a QR code with the device camera, then looks up or publishes with the result. [Platform labels](./platform-ui-entities.md#codes-and-qr-labels) hold a bare Location or Thing code. The `{value}` placeholder in a KV key template or PocketBase filter takes that code, so `code = "{value}"` finds a printed label with no extra setup. The scanner never opens the decoded string as a destination. |
 
 ### Context
 
 | Widget | What it shows |
 | :--- | :--- |
-| **Map** | Geographic placement over a vector basemap, with live markers. Up to 50 hand-placed markers, each either fixed or positioned live from a subject (lat/lon by JSONPath), carrying up to 10 items: KV values, text from a subject, publish buttons and switches. Optionally, **dynamic markers** from a KV bucket — one marker per key under a pattern (`vehicles.>`), lat/lon/label by JSONPath, with popup fields — capped at 500. Clustering and fit-to-markers are opt-in. Floor plans are not a widget: they live on the Location detail view. |
-| **Console** | A raw live log of every message the widget's subscription sees. The first thing to add when debugging "why is nothing arriving". |
-| **Markdown** | Text and images — runbook links, a legend, a note about what the screen is for — optionally bound to a subject or a KV key, so `{{value}}` or `{{field.path}}` renders the latest payload inline. The output is sanitised, so a payload cannot inject script. |
+| **Map** | Live markers on a vector basemap. Up to 50 markers you place by hand, each fixed or moved live from a subject (lat/lon by JSONPath), with up to 10 items each: KV values, text from a subject, publish buttons and switches. Optional **dynamic markers** from a KV bucket, one per key under a pattern (`vehicles.>`), with lat/lon/label by JSONPath and popup fields, up to 500. Clustering and fit-to-markers are optional. Floor plans are on the Location detail view, not in a widget. |
+| **Console** | A raw live log of every message the widget's subscription receives. Add it first when nothing seems to arrive. |
+| **Markdown** | Text and images, such as runbook links, a legend or a note about the screen. It can read a subject or KV key, and `{{value}}` or `{{field.path}}` shows the latest payload inline. The output is sanitised, so a payload cannot inject script. |
 
 ---
 
 ## 4. Variables
 
-A dashboard can declare variables, which appear as a bar of inputs above the grid — free text, or a select with fixed options. Any subject, KV key or query in a widget can reference one with `{{name}}`:
+A dashboard can have variables, which appear as inputs above the grid: free
+text, or a select with fixed options. Any subject, KV key or query in a widget
+can use one as `{{name}}`:
 
 ```
 sensors.{{device_id}}.temp
 ```
 
-Changing the value in the bar re-resolves every widget that references it, so one dashboard covers a fleet instead of one dashboard per device. An unresolved name is left in place as literal `{{device_id}}` rather than silently becoming an empty subject — so a typo looks like a typo.
+When you change the value, every widget that uses it resolves again, so one
+dashboard covers a whole fleet. An unknown name stays as the literal text
+`{{device_id}}`, not an empty subject, so a typo is visible.
 
-Variables are part of the dashboard document, so a shared dashboard carries them, and each viewer's *current selections* are their own.
+Variables are saved in the dashboard, so a shared dashboard includes them. Each
+viewer's *current selections* are their own.
 
 ---
 
 ## 5. Editing, locking, and the appliance case
 
-A dashboard is either unlocked (drag, resize, add and configure widgets) or locked (view only). Locking is what makes a dashboard safe to leave on a wall display, and it pairs with the [`dashboard` role](./authorization.md#1-the-five-tenant-roles) — an appliance login that reaches the Visualizer and its own settings page and nothing else.
+A dashboard is unlocked (drag, resize, add and configure widgets) or locked
+(view only). Lock a dashboard before you leave it on a wall display. Use it
+with the [`dashboard` role](./authorization.md#1-the-five-tenant-roles), an
+appliance login that sees only the Visualizer and its own settings page.
 
-The Visualizer also runs in a **restricted mode** for that role: kiosk mode, the debug panel, keyboard shortcuts and the grid-size selector are off, and it can add only ten widget types — Button, Switch, Slider, Publisher, KV, KV Table, Text, Status, Stat and Scanner. Chart, Gauge, Map, Console, Markdown and Stream Table are not offered. A dashboard built by someone else that already contains them still renders; the restriction is on what the appliance login can add.
+For that role, the Visualizer runs in **restricted mode**. Kiosk mode, the debug
+panel, keyboard shortcuts and the grid-size selector are off. The role can add
+only ten widget types: Button, Switch, Slider, Publisher, KV, KV Table, Text,
+Status, Stat and Scanner. It cannot add Chart, Gauge, Map, Console, Markdown or
+Stream Table. A dashboard that already has them still shows them.
 
-Three things to get right for an unattended screen:
+For an unattended screen:
 
-1. **Set a startup dashboard** with *Set as Startup* on the dashboard's menu in the sidebar list, so a reboot lands on the right view rather than the last one someone happened to open. It is remembered in **that browser's** local storage, not on the login — set it on the screen itself.
-2. **Give it its own NATS identity with a read-only role.** The console role restricts *screens*; what the browser can do on the bus is entirely the linked `nats_users` role. A wall display should not hold a credential that can publish to `cmd.>`.
-3. **Check it can do WebGL** if any dashboard has a Map. The basemap is a vector style drawn on a WebGL canvas; on a display without it the basemap does not draw.
+1. **Set a startup dashboard** with *Set as Startup* in the dashboard's menu in
+   the sidebar list, so a reboot opens the right view. The setting is saved in
+   **that browser's** local storage, not on the login, so set it on the screen
+   itself.
+2. **Give it its own NATS identity with a read-only role.** The console role
+   limits *screens*. What the browser can do on the bus comes only from the
+   linked `nats_users` role. A wall display must not hold a credential that can
+   publish to `cmd.>`.
+3. **Check for WebGL** if a dashboard has a Map. The basemap draws on a WebGL
+   canvas and does not appear without it.
 
 ---
 
 ## 6. Live State is not a widget
 
-The twin browser on a Thing or Location detail view is a different surface from the Visualizer: it shows the KV keys under `thing.<code>` or `location.<code>`, with reported and desired values side by side. See [Platform Entities & UI](./platform-ui-entities.md#the-digital-twin) for how it reads, and [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the two-bucket model behind it.
+The twin browser on a Thing or Location detail view is separate from the
+Visualizer. It shows the KV keys under `thing.<code>` or `location.<code>`, with
+reported and desired values side by side. See
+[Platform Entities & UI](./platform-ui-entities.md#the-digital-twin) and
+[Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
 
-You can of course point a KV widget at the same bucket and key. The difference is that the twin view pairs reported against desired and shows the drift; a KV widget shows one bucket.
+A KV widget can read the same bucket and key, but it shows one bucket. The twin
+view compares reported and desired values and shows where they differ.
 
 ---
 
 ## 7. Where to Go Next
 
-- **What a widget is allowed to see:** [Connectivity](./connectivity.md) — NATS roles and permission fields.
-- **Contracts that drive the Publisher's forms:** [Thing Types](./thing-types.md).
-- **The live-state model:** [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
-- **Turning values into actions instead of pixels:** [Automation](./automation.md).
+- What a widget can see: [Connectivity](./connectivity.md) (NATS roles and permissions)
+- Subject contracts for the Publisher: [Thing Types](./thing-types.md)
+- The live-state model: [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state)
+- Actions from values: [Automation](./automation.md)

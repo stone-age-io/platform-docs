@@ -4,108 +4,149 @@ nav_order: 200
 ---
 # Operations & Production
 
-This page covers running the Stone-Age.io Platform in production: what state you're protecting, the availability model, backup and recovery, upgrades, and how component versions relate to each other.
+This page covers running Stone-Age.io in production: the state to protect, the
+availability model, backup and recovery, upgrades, and component versions.
 
-The short version: the platform's operational posture follows directly from the [plane split](./platform-layers.md#1-planes-and-layers). The Data Plane gets high availability the NATS-native way — clustering at the hub, [leaf-node autonomy](./leaf-nodes.md) at the edge. The Control Plane gets something simpler and, for its role, better: a small, easily-backed-up SQLite file and a recovery time measured in minutes.
+Operations follow the [plane split](./platform-layers.md#1-planes-and-layers).
+The Data Plane gets high availability the NATS way: clustering at the hub and
+[leaf-node autonomy](./leaf-nodes.md) at the edge. The Control Plane gets a
+small SQLite file that is easy to back up, and a recovery time of minutes.
 
 ---
 
 ## 1. What You're Protecting
 
-Operational state lives in different places, with different owners and different backup stories. Know which is which before designing your routine:
-
 | State | Where it lives | Loss impact | Protected by |
 | :--- | :--- | :--- | :--- |
-| **Identity hierarchy** — NATS Operator key, NATS Accounts, Nebula CAs, user/Thing credentials | Control Plane (`pb_data`) | **Severe.** The NATS Operator key is the root of the entire chain of trust — losing it orphans every Account and credential it signed. | This page (§3). |
-| **Inventory & contracts** — Orgs, Things, Thing Types, Locations, schemas, rules-adjacent config | Control Plane (`pb_data`) | High, but recoverable — re-entry is tedious, not impossible. Also recoverable from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
-| **Live state** — Digital Twin KV, other KV buckets, JetStream streams | NATS servers (JetStream storage) | Depends on the bucket. The reported twin (`twin`) repopulates as devices report again. The **desired** twin (`twin_desired`) does not — operators wrote it, nothing re-derives it, and losing it loses every setpoint. Neither does any other bucket a tenant created, nor its contents. Stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
-| **Historical telemetry** | Your Layer 3 TSDB | Your call — it's [BYO](./observability.md). | Your TSDB's own backup tooling. |
-| **Edge leaf config** | `nats-leaf.conf` + creds on the edge box | None. Regenerate with `agent -leaf-config` — see [Leaf Nodes](./leaf-nodes.md). | Nothing needed. |
+| **Identity hierarchy**: NATS Operator key, NATS Accounts, Nebula CAs, user and Thing credentials | Control Plane (`pb_data`) | **Severe.** The NATS Operator key is the root of the chain of trust. Losing it orphans every Account and credential it signed. | This page (§3). |
+| **Inventory and contracts**: Orgs, Things, Thing Types, Locations, schemas, related config | Control Plane (`pb_data`) | High, but you can enter it again, or restore it from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
+| **Live state**: twin KV, other KV buckets, JetStream streams | NATS servers (JetStream storage) | Depends on the bucket. The reported twin (`twin`) fills again as devices report. The **desired** twin (`twin_desired`) does not: people wrote it, nothing recreates it, and losing it loses every setpoint. Other tenant buckets and their contents are also lost. Stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
+| **Historical telemetry** | Your Layer 3 TSDB | Your choice: it is [your own](./observability.md). | Your TSDB's backup tools. |
+| **Edge leaf config** | `nats-leaf.conf` and creds on the edge box | None. Regenerate it with `agent -leaf-config` ([Leaf Nodes](./leaf-nodes.md)). | Nothing needed. |
 
-The takeaway: **`pb_data` is the crown jewels.** It's also a single directory — one SQLite database plus `pb_data/storage`, which holds every uploaded file (Thing and Location photos, floor plans, organization logos, avatars) — which makes protecting it straightforward. The upload half grows with the inventory and rides in every backup; `stone_age_database_size_bytes` counts only the database, so watch the directory's disk usage too ([Health & Metrics §3](./health-metrics.md#3-get-metrics)).
+**`pb_data` is the most important state.** It is one directory: a SQLite
+database, and `pb_data/storage`, which holds every uploaded file (Thing and
+Location photos, floor plans, organization logos, avatars). Uploads grow with
+the inventory and are in every backup. `stone_age_database_size_bytes` counts
+only the database, so also watch the directory's disk use
+([Health & Metrics §3](./health-metrics.md#3-get-metrics)).
 
-> **Backups contain secrets.** A Control Plane backup includes the NATS Operator key, every org's Nebula CA private key, and credential material — including every issued `.creds` file and Nebula host config in plaintext, since at-rest encryption covers the minting keys and not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). Treat backup artifacts with the same care as the live database: restrict the S3 bucket, encrypt at rest, and don't leave downloaded copies on workstations. Consider `--encryptionEnv` (see [Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
+> **Backups contain secrets.** A Control Plane backup has the NATS Operator key, every org's Nebula CA private key, and every issued `.creds` file and Nebula host config in plaintext. At-rest encryption covers the minting keys, not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). Protect backups like the live database: restrict the S3 bucket, encrypt at rest, and do not leave copies on workstations. Use `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
 
 ---
 
 ## 2. The Availability Model
 
-The platform deliberately puts high availability where it matters and fast recovery where HA would be wasted complexity.
+### Data Plane: highly available
 
-### Data Plane: HA by construction
+The runtime path (telemetry, commands, rules, live dashboards) never depends on
+one process:
 
-The runtime path — telemetry, commands, rules, live dashboards — never depends on a single process:
+- **NATS clusters horizontally.** With three or five `nats-server` nodes, the
+  bus survives the loss of a node. Streams and KV buckets with `replicas: 3`
+  keep their data. This is standard NATS operation. See the
+  [NATS docs](https://docs.nats.io).
+- **Leaf nodes keep sites running.** A WAN or hub outage does not stop
+  site-local devices, rules or stream processors. KV buckets that a site syncs
+  catch up when the link returns. Other messages published during the outage
+  reach the hub only if a stream at the leaf stored them. See
+  [Leaf Nodes](./leaf-nodes.md).
+- **Rule engines and stream processors scale horizontally**, and their durable
+  state is in replicated KV. What they hold in memory, such as rule-router's
+  throttle windows, is per instance and lost on restart.
 
-- **NATS clusters horizontally.** Run three or five `nats-server` nodes and the bus survives node loss; JetStream streams and KV buckets with `replicas: 3` survive it durably. This is stock NATS operations — their [docs](https://docs.nats.io) cover it well.
-- **Leaf nodes keep sites autonomous.** A WAN or hub outage doesn't stop site-local devices, rules, or stream processors. The KV buckets a site declares for sync reconverge when connectivity returns; anything else published while islanded reaches the hub only if a stream at the leaf holds it. See [Leaf Nodes](./leaf-nodes.md).
-- **Rule engines and stream processors scale horizontally**, and their durable state is in replicated KV. What they hold in memory — rule-router's throttle windows, for one — is per instance and is lost on restart.
+### Control Plane: fast recovery, not failover
 
-### Control Plane: recovery-oriented, not failover-oriented
-
-The Control Plane is a low-traffic metadata store, and its outage is far less dramatic than it sounds:
+The Control Plane is a low-traffic metadata store. An outage affects less than
+you might expect:
 
 | While the Control Plane is down... | Status |
 | :--- | :--- |
-| Device telemetry, commands, live dashboards' data | ✅ Unaffected — pure Data Plane |
-| Layer 1 rules, Layer 2 processors, Layer 3 ingestion | ✅ Unaffected |
-| Already-issued NATS/Nebula credentials | ✅ Keep working — auth is verified by the cluster, not by PocketBase |
-| Console login, entity management | ❌ Paused |
-| Provisioning new Orgs / Things / credentials | ❌ Paused |
-| Agent bootstrap and credential sync | ⏸️ Paused — the Agent retries, and an already-provisioned site keeps running on the credential and leaf config it holds |
+| Device telemetry, commands, live dashboard data | ✅ Not affected (Data Plane only) |
+| Layer 1 rules, Layer 2 processors, Layer 3 ingestion | ✅ Not affected |
+| NATS and Nebula credentials already issued | ✅ Keep working. The cluster checks them, not PocketBase. |
+| Console login, record management | ❌ Paused |
+| Provisioning new Orgs, Things and credentials | ❌ Paused |
+| Agent bootstrap and credential sync | ⏸️ Paused. The Agent retries, and a provisioned site keeps running on the credential and leaf config it has. |
 
-Nothing in that bottom half is latency-critical. So instead of running an HA database topology to protect a metadata store, the platform's answer is **aggressive backups plus a short, rehearsed restore path** (§3–4). With scheduled native backups, S3 offsite copies, and filesystem snapshots, realistic time-to-recovery is minutes — which, for a service whose outage pauses provisioning but not production traffic, is the right trade.
+None of the paused work is urgent. So the platform uses **frequent backups and
+a short, practiced restore** (§3 and §4), not an HA database. With scheduled
+backups, S3 copies and filesystem snapshots, recovery takes minutes, and the
+outage pauses provisioning, not production traffic.
 
 ### 2.1 Where the NATS server runs
 
-The table above assumes the classic split: Control Plane in one process, `nats-server` in another. `stone-age serve --nats` runs the NATS server inside the Control Plane process instead, from the same `nats.conf` that `nats export` writes ([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
+The table above assumes the Control Plane and `nats-server` run as separate
+processes. `stone-age serve --nats` runs the NATS server inside the Control
+Plane instead, from the same `nats.conf` that `nats export` writes
+([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
 
-That is a real deployment option, not a development toy, but it changes the first row of that table. There are three rungs and you move between them by editing config:
+This is a valid production option, but it changes the first row of that table.
+There are three options, and you move between them by editing config:
 
 | | What runs | A Control Plane restart costs | Use when |
 | :--- | :--- | :--- | :--- |
-| **1. Embedded** | One process | A brief total bus outage | Small installs; the fabric can blink during an upgrade |
-| **2. Embedded + external** | Control Plane + one `nats-server`, clustered | Devices reconnect; fabric stays up | Upgrade windows start to hurt |
-| **3. Fully external** | Control Plane + a NATS cluster | Nothing | HA, or scaling the bus independently |
+| **1. Embedded** | One process | A short outage of the whole bus | Small installs, where a short gap during an upgrade is acceptable |
+| **2. Embedded + external** | Control Plane and one `nats-server`, clustered | Devices reconnect, the bus stays up | Upgrade gaps start to matter |
+| **3. Fully external** | Control Plane and a NATS cluster | Nothing | HA, or scaling the bus separately |
 
-At rung 1, **the Data Plane's independence from the Control Plane is suspended** — restarting `stone-age` restarts the bus. That is the whole trade, and it is why `--nats` is off by default.
+In option 1, **the Data Plane depends on the Control Plane**: restarting
+`stone-age` restarts the bus. For this reason `--nats` is off by default.
 
-At rung 2 the independence comes back for planned work, with one wrinkle worth knowing before you rely on it. Measured against a two-node cluster with the embedded node stopped:
+Option 2 removes that dependency for planned work. With a two-node cluster and
+the embedded node stopped:
 
 | | |
 | :--- | :--- |
-| Core NATS pub/sub, device connections | Survive |
-| JetStream KV reads and writes (R1) | Survive |
-| JetStream **management** — create/delete stream, consumer, bucket | **Stalls** until the node returns |
+| Core NATS pub/sub, device connections | Keep working |
+| JetStream KV reads and writes (R1) | Keep working |
+| JetStream **management**: create or delete a stream, consumer or bucket | **Stops** until the node returns |
 
-Two nodes means RAFT quorum is two, so losing one leaves the JetStream meta group without a leader. What stops working is creating and modifying streams and buckets — Control Plane work, and the Control Plane is what is down. Telemetry keeps flowing throughout.
+With two nodes, the RAFT quorum is two, so with one node down the JetStream
+meta group has no leader. You cannot create or change streams and buckets. That
+is Control Plane work, and the Control Plane is down anyway. Telemetry keeps
+flowing.
 
-> **Two nodes is not high availability.** It buys independence for *planned* upgrades and nothing more; losing the external node at rung 2 is worse than running at rung 1. Real fault tolerance needs three voting nodes — rung 3.
+> **Two nodes is not high availability.** It covers *planned* upgrades only. In option 2, losing the external node is worse than option 1. Real fault tolerance needs three voting nodes (option 3).
 
-> **Devices must know both URLs.** A device holding a single URL pointed at the embedded node still drops when it restarts. Give clients both, or the benefit disappears in practice.
+> **Devices must know both URLs.** A device with only the embedded node's URL still disconnects when that node restarts.
 
-Moving 2 → 3 is the one step that isn't purely additive; see [§5.5](#55-moving-the-nats-server-out-of-the-control-plane). The reasoning behind all of this is recorded in [ADR 0001](./decisions/0001-embedded-nats-server.md).
+Moving from option 2 to option 3 is the one step that is not only additive
+([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)). The reasons are in
+[ADR 0001](./decisions/0001-embedded-nats-server.md).
 
 ---
 
 ## 3. Backups
 
-Use the layers together: **native scheduled backups** as the authoritative artifact, **S3** for offsite, **`pb` (pb-cli)** for scripting and rehearsal, and **ZFS snapshots** for instant local rollback.
+Use these together: **native scheduled backups** as the authoritative copy,
+**S3** for offsite, **`pb` (pb-cli)** for scripts and rehearsals, and **ZFS
+snapshots** for fast local rollback.
 
 ### 3.1 Native scheduled backups
 
-PocketBase — and therefore the platform binary — ships with backup support built in. A backup is a consistent zip of the entire `pb_data` directory, taken safely while the server runs.
+PocketBase, and so the platform binary, has built-in backups. A backup is a
+consistent zip of the whole `pb_data` directory, taken safely while the server
+runs.
 
-Configure it as the SuperUser in the embedded admin UI (`/_/` → **Settings → Backups**):
+Configure it as the SuperUser in the admin UI (`/_/` → **Settings →
+Backups**):
 
-- **Schedule** — a cron expression (e.g. `0 2 * * *` for nightly at 02:00).
-- **Max kept** — how many backups to retain before the oldest is pruned.
-- **Storage** — local disk by default, or an **S3-compatible bucket** (endpoint, bucket, region, credentials). With S3 configured, every scheduled backup lands offsite automatically — no extra tooling.
+- **Schedule:** a cron expression, for example `0 2 * * *` for 02:00 every
+  night.
+- **Max kept:** how many backups to keep before the oldest is deleted.
+- **Storage:** local disk by default, or an **S3-compatible bucket** (endpoint,
+  bucket, region, credentials). With S3, every scheduled backup goes offsite
+  automatically.
 
-This alone satisfies the baseline: nightly, consistent, offsite, auto-pruned.
+This gives you nightly, consistent, offsite backups with automatic pruning.
 
 ### 3.2 Scripted backups with pb-cli
 
-[`pb-cli`](https://github.com/skeeeon/pb-cli) (`pb`) is a generic PocketBase CLI that drives the same backup API from scripts — useful for pre-upgrade snapshots, extra offsite copies, and restore rehearsal. Backup operations require SuperUser auth.
+[`pb-cli`](https://github.com/skeeeon/pb-cli) (`pb`) is a general PocketBase
+CLI that uses the same backup API from scripts. Use it for pre-upgrade backups,
+extra offsite copies and restore rehearsals. Backup operations need SuperUser
+auth.
 
 ```sh
 # One-time setup
@@ -124,24 +165,37 @@ pb backup list --output json \
   | xargs -I {} pb backup delete {} --force
 ```
 
-`pb` also moves backups *between* environments (`backup upload` + `backup restore`), which is how you rehearse recovery and stage upgrades against real data — see §5.3.
+`pb` also moves backups *between* environments (`backup upload` and
+`backup restore`). Use this to rehearse recovery and test upgrades on real data
+(§5.3).
 
 ### 3.3 Filesystem snapshots (ZFS)
 
-We recommend running the Control Plane with `pb_data` on its own **ZFS dataset** with automatic snapshots (sanoid, zfs-auto-snapshot, or your distro's equivalent):
+Put `pb_data` on its own **ZFS dataset** with automatic snapshots (sanoid,
+zfs-auto-snapshot or your distribution's equivalent):
 
 ```sh
 zfs create tank/stone-age
 # point the binary at it: ./stone-age serve --dir /tank/stone-age/pb_data
 ```
 
-- **Near-zero cost, near-instant rollback.** Frequent snapshots (every 5–15 minutes) cost almost nothing and `zfs rollback` restores the whole directory in seconds — the fastest possible answer to "the upgrade went sideways" or "someone deleted the wrong org."
-- **Replication for offsite.** `zfs send | zfs recv` to a second box gives you a warm standby of the data directory with no application awareness needed.
-- **One caveat:** a snapshot of a *running* database is crash-consistent, not application-consistent. SQLite in WAL mode recovers cleanly from that in practice, but the **native backup zip remains the authoritative restore artifact** — snapshots are the convenience layer on top, not a replacement.
+- **Cheap and fast.** Snapshots every 5 to 15 minutes cost almost nothing, and
+  `zfs rollback` restores the directory in seconds, for example after a bad
+  upgrade or a deleted org.
+- **Offsite replication.** `zfs send | zfs recv` to a second box gives you a warm
+  standby of the data directory.
+- **Caveat:** a snapshot of a *running* database is crash-consistent, not
+  application-consistent. SQLite in WAL mode recovers from that, but the
+  **native backup zip is the authoritative restore copy**. Snapshots add to it.
 
 ### 3.4 What this routine does *not* cover
 
-By design, per the table in §1: JetStream/KV contents (protect with replicas and mirrors at the NATS layer), your TSDB (its own tooling), and edge state (self-healing). One more worth keeping: a periodic [`stone pull`](./stone-cli.md#5-declarative-workspaces-pull-apply) workspace in git is a human-readable, diffable record of your tenant configuration — not a substitute for backups (it carries no secrets or identity material), but a fine complement for auditing and selective re-creation.
+As in §1: JetStream and KV contents (use replicas and mirrors), your TSDB (use
+its own tools) and edge state (it rebuilds itself). Also keep a regular
+[`stone pull`](./stone-cli.md#5-declarative-workspaces-pull-apply) workspace in
+git. It is a readable, diffable record of tenant configuration, useful for
+audits and selective rebuilds. It is not a backup, because it has no secrets or
+identity material.
 
 ---
 
@@ -149,7 +203,7 @@ By design, per the table in §1: JetStream/KV contents (protect with replicas an
 
 ### Restore in place
 
-For "bad change, wind it back" scenarios:
+To undo a bad change:
 
 ```sh
 pb auth --collection _superusers
@@ -157,35 +211,48 @@ pb backup list
 pb backup restore nightly-20260609   # confirms before acting; the server restarts itself
 ```
 
-Or equivalently: admin UI → **Settings → Backups** → restore. Or, if the damage is filesystem-level and you're on ZFS: `zfs rollback tank/stone-age@<snapshot>` and restart the service.
+Or use the admin UI (**Settings → Backups** → restore). For filesystem damage
+on ZFS, run `zfs rollback tank/stone-age@<snapshot>` and restart the service.
 
 ### Rebuild from nothing
 
-Total host loss. You need: the platform binary (or the means to build it) and any backup artifact.
+If you lose the host, you need the platform binary (or the means to build it)
+and any backup.
 
 1. Prepare the new host.
 2. Install the `stone-age` binary on it.
-3. Recover `pb_data`. Use whichever of these applies:
+3. Recover `pb_data` in one of these ways:
     - Restore the ZFS replica.
     - Unzip a native backup into place.
-    - Start the binary empty, then run `pb backup upload` followed by `pb backup restore` against it.
-4. Run `./stone-age serve` with your existing `config.yaml` and `STONE_AGE_*` env vars.
-5. Re-point DNS and the reverse proxy at the new host.
+    - Start the binary empty, then run `pb backup upload` and `pb backup restore`
+      against it.
+4. Run `./stone-age serve` with your existing `config.yaml` and `STONE_AGE_*`
+   env vars.
+5. Point DNS and the reverse proxy at the new host.
 
-The NATS cluster needs **no changes** — it kept running the whole time, and every credential it validates was signed by keys that are back in place. The restored Control Plane reconnects on the System Account and resumes propagating changes in real time, exactly as described in [Architecture §2](./architecture.md#2-component-topology).
+The NATS cluster needs **no changes**. It kept running, and the keys that
+signed every credential it checks are back in place. The restored Control Plane
+reconnects on the System Account and sends changes again, as in
+[Architecture §2](./architecture.md#2-component-topology).
 
 ### Verify after any restore
 
-- **`curl -s localhost:8090/api/ready | jq`** first. One request answers most of
-  this list: whether the schema imported, whether an operator exists, whether the
-  NATS server still trusts this database’s operator, and whether the binary is
-  older than the `pb_data` you just restored. Every warning or failure carries the
-  command that fixes it. See [Health & Metrics](./health-metrics.md).
-- Console login works (Platform Operator user) and the **NATS Status: Connected** indicator is green.
-- Create a throwaway Thing in a test org — confirms the provisioning hooks and the System Account connection end-to-end.
-- Sites are attached again. There is no console screen for this; ask the hub over a tenant's own NATS connection — the site-connectivity widget recipe in [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up), or `$SYS.REQ.ACCOUNT.PING.CONNZ` from the `nats` CLI. That reading comes from the hub, so it is a live fact rather than a replayed one.
+- **Run `curl -s localhost:8090/api/ready | jq` first.** It shows whether the
+  schema imported, whether an operator exists, whether the NATS server still
+  trusts this database's operator, and whether the binary is older than the
+  restored `pb_data`. Every warning or failure has the command that fixes it.
+  See [Health & Metrics](./health-metrics.md).
+- Console login works (Platform Operator user), and **NATS Status: Connected**
+  is green.
+- Create a throwaway Thing in a test org. This tests the provisioning hooks and
+  the System Account connection.
+- Sites are connected again. Ask the hub over a tenant's own NATS connection,
+  with the widget in [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up), or send
+  `$SYS.REQ.ACCOUNT.PING.CONNZ` with the `nats` CLI. The answer comes live from
+  the hub.
 
-**Rehearse this.** A backup you've never restored is a hypothesis, not a backup. The `pb` migration flow in §5.3 doubles as a restore drill — do it on a schedule, not just before upgrades.
+**Practice restores on a schedule.** A backup you have never restored is not
+proven. The `pb` flow in §5.3 is also a restore drill.
 
 ---
 
@@ -193,34 +260,39 @@ The NATS cluster needs **no changes** — it kept running the whole time, and ev
 
 ### 5.1 How upgrades work
 
-The platform binary embeds its schema and runs **migrations** automatically: replace the binary, restart, and any pending schema migrations apply at startup. Because the UI and schema are compiled into the same artifact, the Control Plane upgrades **atomically** — there is no window where the UI, API, and schema disagree.
+The platform binary embeds its schema and runs **migrations** at startup. To
+upgrade, replace the binary and restart. The UI and schema are in the same
+binary, so the Control Plane upgrades **atomically**: the UI, API and schema
+never disagree.
 
-> **A migration file is what makes a schema or API-rule change reach *your* deployment.** The embedded `schema.json` is applied when a database is first created; an existing `pb_data` keeps its collections and its rules until a `migrations/schema_update_*.go` accompanies the change. So "the fix is in the new binary" is only true if the release shipped the migration — which matters most for **authorization** changes, since the API rules are the platform's permission layer. See [Authorization §7](./authorization.md#7-changing-the-rules).
+> **Only a migration file changes the schema or API rules of an existing deployment.** The embedded `schema.json` applies when a database is created. An existing `pb_data` keeps its collections and rules until a release ships a `migrations/schema_update_*.go` for the change. This matters most for **authorization** changes, because the API rules are the platform's permission layer. See [Authorization §7](./authorization.md#7-changing-the-rules).
 
-The procedure:
+To upgrade:
 
-1. **Read the release notes.** Pre-1.0, breaking changes can occur. They are called out per release and have so far been minimal.
-2. **Back up.** Run `pb backup create --name "pre-upgrade-vX.Y.Z"`, or take a ZFS snapshot, or both. Thirty seconds of discipline that makes the rollback below trivial.
-3. **Swap the binary.**
-4. **Restart the service.** Migrations run, then the server comes up.
-5. **Verify** — the same checklist as §4.
+1. **Read the release notes.** Before 1.0, a release can have breaking changes.
+   The notes list them.
+2. **Back up.** Run `pb backup create --name "pre-upgrade-vX.Y.Z"`, take a ZFS
+   snapshot, or both.
+3. **Replace the binary.**
+4. **Restart the service.** Migrations run, then the server starts.
+5. **Verify**, with the checklist in §4.
 
-**If it went wrong**, roll back in this order:
+**If it goes wrong**, roll back in this order:
 
 1. Stop the service.
 2. Put the previous binary back.
 3. Restore the pre-upgrade backup, or run `zfs rollback`.
 4. Start the service.
 
-Migrations are forward-only. **Rollback is always *old binary + restored data*, never the new binary against old data.**
+Migrations only go forward. **A rollback is always the old binary with restored
+data, never the new binary with old data.**
 
-### 5.2 Pre-1.0 expectations
+### 5.2 Before 1.0
 
-Until 1.0, treat minor versions as potentially breaking and pin what you deploy. In practice breaking changes have been small and migration-handled, but the contract is explicit: **read the notes, back up first.** After 1.0, standard semver discipline applies.
+Until 1.0, treat minor versions as possibly breaking, and pin what you deploy.
+Read the notes and back up first. After 1.0, standard semver applies.
 
 ### 5.3 Rehearse on staging with real data
-
-`pb` makes a realistic dress rehearsal cheap:
 
 ```sh
 # Copy production state to staging
@@ -235,121 +307,195 @@ pb backup restore from-prod
 # Now run the NEW binary against staging and watch the migrations apply
 ```
 
-If the upgrade misbehaves, you found out on staging — against your actual schema and data shape, not a toy fixture.
+If the upgrade fails, it fails on staging, with your real schema and data.
 
 ### 5.4 Upgrading the other components
 
-The Control Plane is the only component with a database and migrations. Everything else upgrades by binary swap, in any order, because the interfaces between components are protocols, not shared code (§6):
+Only the Control Plane has a database and migrations. You upgrade everything
+else by replacing the binary, in any order, because components share protocols,
+not code (§6):
 
-- **`rule-router`, stream processors, Telegraf** — restart with the new binary; they reconnect to NATS and resume. Durable state is in NATS; what they hold in memory (rule-router's throttle windows, for one) is lost on restart.
-- **Agents** — swap and restart; designed around reconnection and fail-soft behaviour. On a site gateway, restarting the agent bounces the leaf server too **if** `nats.server_config` is set; leave it unset and a separately supervised `nats-server` keeps the bus up across the upgrade, which is usually what you want on a live site.
-- **NATS and Nebula** — stock upstream upgrade procedures; the platform places no constraints beyond theirs (see §6).
+- **`rule-router`, stream processors, Telegraf:** restart with the new binary.
+  They reconnect to NATS and continue. Durable state is in NATS. In-memory state,
+  such as rule-router's throttle windows, is lost on restart.
+- **Agents:** replace and restart. They reconnect by design. On a site gateway,
+  restarting the agent also restarts the leaf server **if** `nats.server_config`
+  is set. Leave it unset, and a separately supervised `nats-server` keeps the bus
+  up during the upgrade, which is usually better on a live site.
+- **NATS and Nebula:** use the standard upstream upgrade steps. The platform adds
+  no limits beyond theirs (§6).
 
 ### 5.5 Moving the NATS server out of the Control Plane
 
-Going from `serve --nats` to a standalone `nats-server` ([§2.1](#21-where-the-nats-server-runs)). Almost all of it is free: the NATS Operator JWT, every account, and every user credential live in the Control Plane database and are re-derived, not migrated. Devices keep the credentials they already hold.
+This moves you from `serve --nats` to a standalone `nats-server`
+([§2.1](#21-where-the-nats-server-runs)). Most of it costs nothing. The NATS
+Operator JWT, every account and every user credential are in the Control Plane
+database and are generated again, not migrated. Devices keep their credentials.
 
-**JetStream data is the exception.** Streams, consumers, and the KV buckets holding Digital Twin state live in the embedded server's store directory. An R1 stream on the embedded node dies with that node. Plan for it before you start.
+**JetStream data is the exception.** Streams, consumers and the KV buckets with
+twin state are in the embedded server's store directory. An R1 stream on the
+embedded node is lost with that node. Plan for it before you start.
 
-The easiest version of this migration is the one where there is nothing to move:
-
-> **If you expect to grow out of embedded mode, don't put JetStream on the embedded node in the first place.** Add the external node early, keep `jetstream: {}` out of the embedded config, and this section becomes a config edit.
+> **If you expect to leave embedded mode, do not put JetStream on the embedded node.** Add the external node early and keep `jetstream: {}` out of the embedded config. Then this section is only a config edit.
 
 Otherwise, replicate before you drain:
 
 1. **Add the external node.**
-    - Give both NATS configs a matching `cluster` block. Use the same `name` in both, and point each one's routes at the other.
+    - Give both NATS configs a matching `cluster` block, with the same `name` in
+      both, and point each one's routes at the other.
     - Restart both servers.
-    - Confirm the route formed. `nats server list` must show two servers in the cluster.
+    - Check the route: `nats server list` must show two servers in the cluster.
 
-2. **Raise replicas on anything you intend to keep.** Nothing is safe to drain until it is replicated.
-    - Set `replicas: 2` on every stream on the embedded node: `nats stream update <name> --replicas 2`.
+2. **Raise replicas on everything you want to keep.** Nothing is safe to drain
+   until it is replicated.
+    - Set `replicas: 2` on every stream on the embedded node:
+      `nats stream update <name> --replicas 2`.
     - Set `replicas: 2` on every KV bucket on the embedded node.
-    - Confirm each one reports the new peer as **current**, not catching up: `nats kv status <bucket>`.
+    - Check that each shows the new peer as **current**, not catching up:
+      `nats kv status <bucket>`.
 
-3. **Drain the embedded node.** This moves JetStream leadership off the node, rather than losing it abruptly.
+3. **Drain the embedded node.** This moves JetStream leadership off it in a
+   controlled way.
     - Step down its raft leadership: `nats server raft step-down`.
 
 4. **Stop the embedded server.**
-    - Drop `--nats`, or set `nats.embedded: false`.
+    - Remove `--nats`, or set `nats.embedded: false`.
     - Point `nats.server_url` at the external node.
     - Restart the Control Plane.
 
-5. **Return replicas to their intended value.** A single remaining node cannot hold `replicas: 2`. Do one of the following:
-    - Set the replica count back to `1` on every stream and bucket you changed in step 2.
+5. **Set replicas back to the value you want.** One remaining node cannot hold
+   `replicas: 2`. Do one of these:
+    - Set the replica count back to `1` on every stream and bucket you changed in
+      step 2.
     - Add the third node now, then set the replica count to `3`.
 
 6. **Verify before you delete anything.**
-    - Confirm devices reconnect and twins update.
-    - Confirm `nats stream report` shows every stream present, with the expected message counts.
-    - Remove the old store directory. Do this last, and only once the two checks above pass.
+    - Check that devices reconnect and twins update.
+    - Check that `nats stream report` shows every stream with the expected
+      message counts.
+    - Remove the old store directory. Do this last, and only when both checks
+      pass.
 
-> **Rehearse this on a copy first** (§5.3). Steps 2 and 3 are where data is lost if the peer was not actually current, and "it looked fine" is not the same as a message count that matches.
+> **Rehearse this on a copy first** (§5.3). Steps 2 and 3 lose data if the peer was not really current. A matching message count is the proof, not "it looked fine".
 
 ---
 
 ## 6. Component Version Compatibility
 
-Stone-Age.io is a set of independent binaries, so the compatibility question is really: *what does each component actually depend on?* The answer is deliberately narrow — components couple to **protocols and the collections schema**, never to each other's code.
+Components depend on **protocols and the collections schema**, never on each
+other's code.
 
 | Component | Depends on | Compatibility notes |
 | :--- | :--- | :--- |
-| **Stone Age Console** (embedded UI) | Ships inside the `stone-age` binary | Always in lockstep with the schema by construction. No version skew is possible. |
-| **`stone` CLI** | PocketBase REST API + the platform's collections schema; NATS protocol | The REST API is stable upstream PocketBase. The collections schema is the platform's own contract — additive changes don't break the CLI; pre-1.0 breaking schema changes are flagged in release notes. |
-| **Agent** | PocketBase auth API (bootstrap only) + NATS protocol | After bootstrap it's a pure NATS client. |
-| **`rule-router`** | NATS subjects + KV only | Knows nothing about PocketBase. Versioned independently. |
-| **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Fully platform-agnostic. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
+| **Stone Age Console** (embedded UI) | Ships inside the `stone-age` binary | Always matches the schema. |
+| **`stone` CLI** | PocketBase REST API and the platform's collections schema; NATS protocol | The REST API is stable upstream PocketBase. Additive schema changes do not break the CLI. Before 1.0, the release notes flag breaking schema changes. |
+| **Agent** | PocketBase auth API (bootstrap only) and NATS protocol | After bootstrap it is a plain NATS client. |
+| **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
+| **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
 | **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Any modern NATS 2.x with JetStream and JWT/operator-mode auth. Follow upstream support guidance. |
-| **`nebula`** | Certificates issued by the org CAs | Stock upstream; the platform only mints standard Nebula certs and configs. |
+| **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
-Practical guidance:
-
-- **Upgrade the Control Plane first** when a release touches the schema — clients (`stone`, the Agent) tolerate additive changes, and the release notes call out anything that isn't.
-- **Layer 1–3 components don't care about platform releases at all.** Their contract is the subject namespace, which is yours to keep stable — see [Connectivity](./connectivity.md).
-- **Pre-1.0, pin versions** across `stone-age`, `stone`, and the Agent, and move them together when the notes mention schema changes. The Agent releases from its own repository on its own tags, so its version does not track the platform's. Post-1.0, additive-only within a major version is the rule.
+- **Upgrade the Control Plane first** when a release changes the schema. `stone`
+  and the Agent tolerate additive changes, and the release notes list any that
+  are not additive.
+- **Layer 1 to 3 components do not depend on platform releases.** Their contract
+  is the subject namespace, which you keep stable. See
+  [Connectivity](./connectivity.md).
+- **Before 1.0, pin versions** of `stone-age`, `stone` and the Agent, and upgrade
+  them together when the notes mention schema changes. The Agent has its own
+  repository and version numbers. After 1.0, changes within a major version are
+  additive only.
 
 ---
 
 ## 7. Production Checklist
 
-A condensed pre-flight list for taking a deployment to production:
+- [ ] **TLS on everything outward-facing:** HTTPS in front of the Control Plane,
+  `wss://` on the NATS WebSocket listener, and TLS on client and leaf ports
+  (see the NATS docs).
+- [ ] **Backups scheduled** in the admin UI, **with S3 offsite**, and a restore
+  actually rehearsed (§4).
+- [ ] **Readiness probe connected** to whatever runs the process:
+  `GET /api/ready` returns `503` only when something is broken, so a load
+  balancer can use it. Point your scraper at `GET /metrics`. Both are
+  unauthenticated by default. `metrics.token` protects `/metrics`, and a proxy
+  can protect either ([Health & Metrics](./health-metrics.md)).
+- [ ] **`pb_data` on its own dataset or volume**, ideally ZFS with automatic
+  snapshots (§3.3).
+- [ ] **App-settings encryption** with `--encryptionEnv`
+  ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP,
+  S3 and OAuth2 secrets only.
+- [ ] **Column encryption set separately:** `nats.encryption_key` and
+  `nebula.encryption_key` encrypt the NATS and Nebula minting keys. They are
+  empty by default, cannot encrypt existing rows, and a lost key loses what it
+  protected. Neither covers **issued** credentials (`creds_file`,
+  `config_yaml`), so use disk encryption and encrypted backups too
+  ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
+- [ ] **Audit retention set:** by default, `audit.retention` keeps everything
+  ([Configuration §2](./configuration.md#2-section-reference)). Only Platform
+  Operators can read the log. Tenants see who changed what in their `activity`
+  feed. Requests for old and new *values* still come to you
+  ([Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)).
+- [ ] **NATS account limits reviewed:** the defaults are 100 connections, 5000
+  subscriptions, 5 GiB of JetStream disk and 64 MiB of JetStream memory per
+  organization. Size disk to each plan, keep memory small, and set connections
+  well above real load. Decide **before** you create tenants, because the limits
+  are set at provisioning. After that, only a Platform Operator can edit an
+  account's record ([Configuration §2](./configuration.md#2-section-reference)).
+- [ ] **NATS clustered** (3 or more nodes), with `replicas: 3` on the streams and
+  KV buckets that matter.
+- [ ] **Credential expiry reviewed:** the NATS Users and Nebula Hosts lists flag
+  anything that expires within 30 days or has expired. Nebula host certificates
+  always expire (`validity_years`). NATS user JWTs expire only if an expiry was
+  set. A fleet is usually provisioned at once, so its credentials expire together
+  and fail silently. Reissue before the date. **Nebula expiry is worse**, because
+  Nebula is the out-of-band path: an expired fleet removes the route you would
+  use to fix it.
+- [ ] **Nebula expiry alerted:** `GET /api/ready` has a `nebula_cert_expiry`
+  check, which warns and never fails. `GET /metrics` has
+  `stone_age_certificate_expiry_seconds{kind}` as an absolute Unix timestamp.
+  Alert relative to now, with 90 days for a CA and 30 for a host:
 
-- [ ] **TLS everywhere outward-facing** — HTTPS in front of the Control Plane; `wss://` on the NATS WebSocket listener; TLS on client/leaf ports per the NATS docs.
-- [ ] **Backups scheduled** (admin UI cron) **with S3 offsite** configured — and a restore actually rehearsed (§4).
-- [ ] **The readiness probe wired into whatever runs the process** — `GET /api/ready`, which returns `503` only when something is genuinely broken and `200` for warnings, so it is safe to put in front of a load balancer. Point your scraper at `GET /metrics` while you are there. Both are unauthenticated by default and neither needs a NATS connection or a session; `metrics.token` closes the second one, and a proxy closes either ([Health & Metrics](./health-metrics.md)).
-- [ ] **`pb_data` on its own dataset/volume**, ideally ZFS with automatic snapshots (§3.3).
-- [ ] **App-settings encryption** enabled via `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP, S3 and OAuth2 secrets — **and nothing else**.
-- [ ] **Column encryption set separately** — `nats.encryption_key` and `nebula.encryption_key` in `config.yaml` are what encrypt the minting keys: the NATS operator, account and user seeds and signing keys, and the Nebula CA and host private keys. They are empty by default, they cannot be applied retroactively to rows that already exist, and losing a key loses the material it protected. A checklist that ticks `--encryptionEnv` and stops has left every tenant’s CA private key in plaintext. Neither covers **issued** credentials — `creds_file` and `config_yaml` stay plaintext by construction, so disk encryption and encrypted backups carry that part ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
-- [ ] **Audit retention** configured deliberately — `audit.retention` defaults keep everything forever ([Configuration §2](./configuration.md#2-section-reference)). Remember the log is **Platform-Operator-only**: no tenant role can read it. The plain "who changed this, and when" question is now self-served by the tenant-facing `activity` feed; what still reaches you is any request needing the *values* a change carried ([Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)).
-- [ ] **NATS account limits reviewed** — the shipped defaults are 100 connections, 5000 subscriptions, 5 GiB of JetStream disk and 64 MiB of JetStream memory per organization. Size disk to what each plan is sold with, keep memory small, and set connections well above real load. They are stamped at provisioning, so decide **before** creating tenants: an existing account changes only by a Platform Operator editing its record ([Configuration §2](./configuration.md#2-section-reference)).
-- [ ] **NATS clustered** (3+ nodes) with `replicas: 3` on JetStream streams and KV buckets that matter.
-- [ ] **Credential expiry reviewed** — the NATS Users and Nebula Hosts lists flag anything expiring within 30 days, and anything already expired. Nebula host certificates always carry an expiry (`validity_years`); NATS user JWTs carry one only if it was set. Expired device credentials fail silently and, because a fleet is usually provisioned in a batch, they tend to fail *together*. Regenerate before the date, not after the outage. **Nebula’s expiry is the worse one**, because Nebula is the out-of-band path: reissuing a host certificate needs the Control Plane you were trying to reach over the mesh in the first place, so an expired fleet takes away the route you would have used to fix it.
-- [ ] **Nebula expiry alerted, not just visible** — the list badges above only help someone already looking at the right screen, and a CA minted with a ten-year validity lapses long after everyone who knew about it stopped thinking about it. The Control Plane reports Nebula certificate expiry without anyone logging in:
-    - `GET /api/ready` carries a `nebula_cert_expiry` check. It **warns**, and deliberately never fails — readiness failing means "stop sending this node traffic", and a lapsed *device* certificate is no reason to take the console out of a load balancer.
-    - `GET /metrics` publishes `stone_age_certificate_expiry_seconds{kind}` (`nebula_ca` / `nebula_host`), the soonest expiry of that kind **as an absolute Unix timestamp**, alongside `stone_age_certificates`, `_expired` and `_expiring` counts. Alert relative to now rather than on a stored countdown, so the horizon lives in the alert:
+    ```
+    stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400
+    stone_age_certificate_expiry_seconds{kind="nebula_ca"}   - time() < 90 * 86400
+    ```
 
-        ```
-        stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400
-        stone_age_certificate_expiry_seconds{kind="nebula_ca"}   - time() < 90 * 86400
-        ```
-
-    Host certificates count only `active = true` rows, so a decommissioned device’s lapsed certificate does not page anyone. There is no per-organization label: `/metrics` is open by default, and a tenant name beside a certificate inventory is free reconnaissance. Set an alert on the CA series in particular — every host certificate chains to it.
-
-    **Give the CA a wider horizon than a host: 90 days, not 30.** A host certificate is reissued in a moment; a CA can only be *rotated*, which is a staged procedure with a wait in the middle of it, and 30 days is less than that procedure comfortably needs. The console, `_expiring` and the readiness check all use 90 days for a CA and 30 for a host for this reason — hence the two expressions above rather than one.
-- [ ] **A decommissioning path agreed** — know before you need it that clearing `active` on a Thing is the control that actually cuts a device off, that it applies to a site gateway exactly as to any other device, and what it does: new logins refused, every issued session token killed, the linked NATS identity suspended (revoked, nothing reissued), and the linked Nebula host blocklisted — which takes effect as peers pick up their next config, since Nebula has no CRL. Reactivating issues a **new** `.creds` the device must be given ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)). **Deactivate, never delete:** deleting a Thing cascades to neither identity, so its credential and certificate stay live.
-- [ ] **A tenant-suspension path agreed** — clearing `active` on an **organization** withdraws its NATS account: the account claim is deleted, so every device, edge agent and browser in that tenant disconnects at once, and it stays withdrawn across restarts. It is Platform Operator only and **reversible** — no credential is revoked or re-minted, so re-ticking the box restores the account and every existing `.creds` connects again. It is deliberately narrow: it does not touch Nebula, does not lock the console, and does not end anyone's session, so a suspended tenant still signs in and reads what it owns. The operator and system organizations refuse it.
-- [ ] **SuperUser reserved** for infrastructure work; day-to-day administration through a Platform Operator user ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
-- [ ] **Least-privilege role review** — walk each org's memberships and confirm nobody holds more than they need. `admin` is **not** a junior grant: it is identical to `owner` in every API rule, including every credential-bearing collection. Most humans want `member` ([Authorization](./authorization.md)).
-- [ ] **`./scripts/test-authz.sh` green** on the exact commit you're deploying — the API rules are the platform's tenancy enforcement, and the suite is the only thing that checks them against a live server. If the release changed a rule, confirm it also shipped a migration (§5.1).
-- [ ] **A `stone pull` workspace in git** for reviewable, diffable tenant configuration ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
+    Set the CA alert in particular, because every host certificate chains to it.
+    See [Health & Metrics §4](./health-metrics.md#4-certificate-expiry).
+- [ ] **A decommissioning procedure agreed:** clearing `active` on a Thing cuts a
+  device off, gateways included. It refuses new logins, ends every session,
+  suspends the NATS identity, and blocklists the Nebula host as peers get their
+  next config. Reactivating issues a **new** `.creds` for the device
+  ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+  **Deactivate, never delete:** a delete does not touch either identity.
+- [ ] **A tenant-suspension procedure agreed:** clearing `active` on an
+  **organization** withdraws its NATS account, so every device, agent and
+  browser in the tenant disconnects, including after restarts. Only a Platform
+  Operator can do it, and it is **reversible**: no credential changes, so setting
+  the flag again reconnects everything. It does not change Nebula, lock the
+  console or end sessions. The operator and system organizations refuse it
+  ([Authorization §3.1](./authorization.md#31-suspending-an-organization)).
+- [ ] **SuperUser kept for infrastructure work**, with daily administration done
+  as a Platform Operator
+  ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
+- [ ] **Least-privilege review:** check each org's memberships. `admin` is the
+  same as `owner` in every API rule, including every credential collection. Most
+  people need `member` ([Authorization](./authorization.md)).
+- [ ] **`./scripts/test-authz.sh` passes** on the exact commit you deploy. The API
+  rules are the platform's tenancy enforcement, and this suite is the only live
+  test of them. If the release changed a rule, check that it also has a migration
+  (§5.1).
+- [ ] **A `stone pull` workspace in git** for reviewable tenant configuration
+  ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
 
 ---
 
 ## 8. Where to Go Next
 
-- **First-time setup the checklist assumes:** [Getting Started](./getting-started.md).
-- **Config keys referenced above:** [Configuration Reference](./configuration.md).
-- **Roles, API rules, and the audit-log boundary:** [Authorization & Roles](./authorization.md).
-- **The plane split that shapes this whole page:** [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md).
-- **Edge resilience during outages:** [Leaf Nodes](./leaf-nodes.md).
-- **The GitOps workspace as a config audit trail:** [Stone CLI](./stone-cli.md).
+- The first-time setup this checklist assumes: [Getting Started](./getting-started.md)
+- Config keys: [Configuration Reference](./configuration.md)
+- Roles, API rules and the audit log: [Authorization & Roles](./authorization.md)
+- The plane split: [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md)
+- Edge resilience during outages: [Leaf Nodes](./leaf-nodes.md)
+- The GitOps workspace: [Stone CLI](./stone-cli.md)

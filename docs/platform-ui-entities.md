@@ -4,222 +4,476 @@ nav_order: 60
 ---
 # Platform Entities & UI
 
-The Stone Age Console provides a unified interface for managing the logical and physical structures of your IoT environment or Event-Driven Architecture. This document explains the primary entities used to organize your data and how they interact with the user interface.
+This page describes the main records you manage in the Stone Age Console and
+how the console shows them.
 
-These entities live in the **Control Plane** (PocketBase) — they're the source of truth for identity, inventory, and relationships. At provisioning time and at runtime, they shape what flows through the **Data Plane** (NATS subjects, KV buckets, Nebula certificates). See [Architecture](./architecture.md) for the Control/Data Plane split in full.
+These records are in the **Control Plane** (PocketBase). They are the source of
+truth for identity, inventory and relationships. They decide what the **Data
+Plane** carries: NATS subjects, KV buckets and Nebula certificates. See
+[Architecture](./architecture.md).
 
 ---
 
 ## 1. Organizations & Memberships
 
-Organizations are the top-level container for all data and infrastructure. Every resource in the platform belongs to an Organization and platform Users can belong to multiple Organizations.
+Every record belongs to an Organization. A user can belong to several
+Organizations.
 
 ### Organizations
 
-- **Isolation:** Each Organization receives its own private NATS Account and Nebula Certificate Authority.
-- **Organization Code:** A short slug (`acme`, `northwind`) that is the **one globally unique identifier in the ecosystem** — every other code on the platform is unique only *within* an Organization. It is derived from the name when you don't supply one, and it roots the public namespace: the managed-org subject rewrite carries it, sibling apps name a tenant by it, and it is the handle that lets a consumer join their data to the platform's without a mapping table. **Optional, but immutable once set** — creation refuses a colliding code rather than inventing `acme-2`, because a wrong code would be baked into signed account JWTs and printed on labels long before anyone noticed. A leading digit is fine (`816tech` is a valid code). See [ADR 0002](./decisions/0002-organization-code-namespace.md).
-- **Ownership:** An organization has an **Owner**, who holds full tenant authority and cannot leave it. Creating, *editing* and *deleting* the organization record are all **Platform Operator** actions: the record carries the tenancy flags and drives NATS Account and Nebula CA provisioning, and deleting it blanks rather than cascades — orphaning the whole inventory — so no tenant role has an update or delete path to it. See [Authorization §3](./authorization.md#3-cross-organization-identities).
-- **Suspension:** A Platform Operator can clear an organization's **Active** flag, which withdraws its NATS account: every device, agent and browser in the tenant disconnects at once. It is reversible — no credential is revoked, so everything reconnects when the flag is set again — and deliberately narrow: Nebula is untouched, and the tenant can still sign in to the console and read what it owns. The operator and system organizations refuse it. See [Authorization §3.1](./authorization.md#31-suspending-an-organization).
-- **Invites:** Owners and Admins can invite users to join their organization via email. Invites generate a secure token used for onboarding. Invitations can offer any role except `owner`.
+- **Isolation:** each Organization has its own NATS Account and Nebula
+  Certificate Authority.
+- **Organization code:** a short slug such as `acme` or `northwind`. It is the
+  **only globally unique identifier in the platform**. Every other code is
+  unique only within its Organization.
+  - If you do not supply one, the platform derives it from the name. A leading
+    digit is valid (`816tech`).
+  - The managed-org subject rewrite, sibling apps and external data joins all
+    use it to name the tenant.
+  - It is optional, but **you cannot change it once set**. Creation refuses a
+    code that is already in use and does not invent `acme-2`, because the code
+    goes into signed account JWTs and printed labels.
+  - See [ADR 0002](./decisions/0002-organization-code-namespace.md).
+- **Ownership:** an Organization has an **Owner**, who has full tenant
+  authority and cannot leave it. Only a **Platform Operator** can create, edit
+  or delete the Organization record. The record holds the tenancy flags and
+  drives NATS Account and Nebula CA provisioning. Deleting it does not cascade:
+  it orphans the whole inventory. See [Authorization §3](./authorization.md#3-cross-organization-identities).
+- **Suspension:** a Platform Operator can clear an Organization's **Active**
+  flag. This withdraws its NATS account, and every device, agent and browser in
+  the tenant disconnects. No credential is revoked, so everything reconnects
+  when you set the flag again. Nebula is not affected, and the tenant can still
+  sign in to the console and read its records. You cannot suspend the operator
+  or system organizations. See [Authorization §3.1](./authorization.md#31-suspending-an-organization).
+- **Invites:** Owners and Admins invite users by email. The invite contains a
+  secure token for onboarding. An invite can offer any role except `owner`.
 
 ### Memberships
 
-A Membership binds a PocketBase User to an Organization.
+A Membership links a User to an Organization with one of five roles:
 
-- **Roles (per-organization):**
-    - `Owner`: Full tenant authority. **Identical to `Admin` in every API rule** — the only difference is that an Owner cannot leave their own organization.
-    - `Admin`: Full tenant authority — members and invitations, NATS and Nebula infrastructure, Thing/Location types and contracts, and the identity links on a Thing.
-    - `Member`: Creates and edits Things and Locations, and reads the contract collections (Thing Types, Operations). Cannot delete a Thing or Location, cannot attach identities to one, and cannot read the infrastructure collections at all.
-    - `Viewer`: Read-only staff. Browses the inventory screens and uses dashboards, and writes nothing anywhere. Adding it needed no rule change at all — a role that names itself in no write branch is denied by construction.
-    - `Dashboard`: An appliance login for an unattended screen — the Visualizer and its own settings page, nothing else. It holds no write capability, which is exactly why the authorization suite uses it as the probe that proves an allowlist works.
-    - Both, like every role, can still read the one NATS identity linked to their own membership, which is what the browser connects with. Neither restriction is a NATS restriction: what a login can do on the bus is whatever its linked `nats_users` role permits, set independently.
-- **Identity Linking:** A critical feature of the Membership is the **Linked NATS Identity**. This allows a human user to browse the NATS bus using specific credentials assigned to their membership for that specific Organization. Since users can be members of multiple Organizations, this NATS user relation is stored on the membership record itself. Access to it is **row-scoped**, not field-hidden: a member, viewer or dashboard holder sees exactly that one `nats_users` row and no other — see [Authorization §4](./authorization.md#4-the-row-scoped-credential-model). Because the read follows the link, **choosing** which identity a membership links to is an Owner/Admin action (on the member's detail page); every role may clear its own link from Settings, but not point it somewhere else.
+| Role | Can do |
+| :--- | :--- |
+| `owner` | Full tenant authority. **The same as `admin` in every API rule.** The one difference: an Owner cannot leave their own organization. |
+| `admin` | Full tenant authority: members and invites, NATS and Nebula infrastructure, types and contracts, and the identity links on a Thing. |
+| `member` | Creates and edits Things and Locations. Reads Thing Types and Operations. Cannot delete a Thing or Location, attach identities, or read the infrastructure collections. |
+| `viewer` | Read-only staff. Browses inventory and uses dashboards. Writes nothing. |
+| `dashboard` | A login for an unattended screen. Sees only the Visualizer and its own settings page. Writes nothing. |
+
+Every role can read the one NATS identity linked to its own membership, which
+is the identity the browser connects with. What a login can do on the bus comes
+from that identity's `nats_users` role, which is set separately.
+
+**Linked NATS identity.** A user can be a member of several Organizations, so
+the NATS user relation is on the membership, not the user. Access to it is
+**row-scoped**: a member, viewer or dashboard holder can read exactly that one
+`nats_users` row. See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
+The read follows the link, so only an Owner or Admin can **choose** the linked
+identity (on the member's detail page). Every role can clear its own link from
+Settings, but cannot point it at another identity.
 
 ### Cross-Organization Roles
 
-Two roles exist *outside* the per-organization Membership model and apply to the user account itself:
+Two roles apply to the user account, outside any Membership:
 
-- **Platform Operator** (`users.is_operator = true`): Can create, edit, suspend and delete Organizations, and invite users into any Org. Editing the organization record is **exclusively** a Platform Operator action — no tenant role, not even Owner, has an update path to it. A Platform Operator is also the only identity that can read the **audit log** (`audit_logs`); no tenant role can. Platform Operators are the day-to-day platform administrators and the recommended identity for managing the system from the UI. The first one is created by the `bootstrap` command, which — along with the embedded admin panel — is the only way to grant Platform Operator status. The API cannot, and that includes a Platform Operator creating a user: the flag is refused there too.
-- **SuperUser** (`_superusers` collection): A backend service account with full database access regardless of API rules. Created via `./stone-age superuser upsert` and intended for infrastructure-level management — schema imports, NATS Operator/System Account seeding, and other platform-level concerns. SuperUsers are not members of any organization; they sign in at the embedded admin UI (`/_/`).
+- **Platform Operator** (`users.is_operator = true`) creates, edits, suspends
+  and deletes Organizations, and invites users into any Org. No tenant role, not
+  even Owner, can edit the Organization record. Only a Platform Operator can
+  read the **audit log** (`audit_logs`). Use a Platform Operator for daily
+  administration in the console. The `bootstrap` command creates the first one.
+  `bootstrap` and the admin panel are the only ways to set the flag. The API
+  refuses it, also from a Platform Operator.
+- **SuperUser** (`_superusers` collection) is a service account with full
+  database access that ignores API rules. Create it with
+  `./stone-age superuser upsert`. Use it for infrastructure work such as schema
+  imports and NATS Operator and System Account seeding. SuperUsers are not
+  members of any organization. They sign in at the admin UI (`/_/`).
 
 ### Permissions
 
-Permissions are enforced **solely** by PocketBase API rules on each collection. (One server-side hook enforces an invariant rather than a permission: no relation may point into another organization's records. See [Authorization](./authorization.md).) The UI's capability map decides which menu items and buttons render — it is navigation convenience, **not** the security boundary, and a hidden button is still a reachable endpoint for anyone holding a token.
+PocketBase API rules on each collection are the **only** permission layer. One
+server-side hook also enforces an invariant: no relation may point into another
+organization's records. See [Authorization](./authorization.md). The console's
+capability map only decides which menu items and buttons appear. A hidden
+button is still a reachable endpoint for anyone with a token.
 
-**The authoritative capability matrix lives on one page: [Authorization & Roles](./authorization.md).** Rather than duplicate it here, the highlights that most often surprise people:
+[Authorization & Roles](./authorization.md) has the full capability matrix.
+The points that most often surprise people:
 
-- `Owner` and `Admin` are the same allowlist in every rule. Granting `admin` grants full tenant authority.
-- `Member` **does** create and edit Things and Locations. It cannot delete them, deactivate them, or attach a NATS user or Nebula host to a Thing — a member who could re-point those relations at a privileged identity and then authenticate as the Thing would have a credential-theft path, and one who could clear `active` could take any device in the org off the network. Members create and edit inventory; **decommissioning it is a management action.**
-- `Member`, `Viewer` and `Dashboard` cannot **read** the infrastructure collections at all (`nats_users`, `nats_roles`, `nats_account_exports`, `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They receive an empty list, not a filtered one — with the single exception of their own linked NATS identity.
-- Editing the Organization record, and reading the audit log, are Platform-Operator-only.
-- Every role, including `Dashboard`, can rotate its own NATS credential (`POST /api/me/nats-creds/rotate`) — unless that identity is suspended.
+- `owner` and `admin` are the same in every rule. Granting `admin` grants full
+  tenant authority.
+- `member` **can** create and edit Things and Locations. It cannot delete or
+  deactivate them, and it cannot attach a NATS user or Nebula host to a Thing.
+  A member who could point those relations at a privileged identity could then
+  authenticate as the Thing and steal a credential. A member who could clear
+  `active` could take any device off the network.
+- `member`, `viewer` and `dashboard` cannot **read** the infrastructure
+  collections (`nats_users`, `nats_roles`, `nats_account_exports`,
+  `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They get an empty
+  list, except for their own linked NATS identity.
+- Only Platform Operators can edit the Organization record and read the audit
+  log.
+- Every role, including `dashboard`, can rotate its own NATS credential,
+  unless that identity is suspended.
 
 ### Self-Service Credential Rotation
 
-Any authenticated identity with a linked NATS user — a `users` membership or a `things` record — can rotate its own credential:
+Any authenticated identity with a linked NATS user (a `users` membership or a
+`things` record) can rotate its own credential:
 
 ```
 POST /api/me/nats-creds/rotate
 ```
 
-It takes **no id parameter**: it only ever targets the caller's own linked identity, so there is no other identity it could be aimed at. Available to every role, including `dashboard`. Afterwards, re-read your own record to pick up the new `.creds`.
+It takes **no id**. It always targets the caller's own linked identity. After
+the call, read your own record again to get the new `.creds`.
 
-The reason this is a route rather than a permissive update rule is that a PocketBase rule cannot express a single-field allowlist, and the field that must stay closed is consequential — `nats_users.publish_permissions` is copied verbatim into the JWT the platform signs. A **suspended** identity (`active = false`) gets `403`: a re-mint would be issued after the revocation cutoff and quietly lift the suspension. Suspending, reactivating and revoking stay Owner/Admin actions — and note that on the NATS user's detail view, **Revoke** is for *leaked* credentials: it moves the identity to a new key pair and hands back a working replacement, leaving it active. To take an identity out of service, deactivate the Thing that holds it. See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
+This is a route, not an update rule, because a PocketBase rule cannot allow
+only one field. The field that must stay closed is
+`nats_users.publish_permissions`, which the platform copies into the JWT it
+signs. A **suspended** identity (`active = false`) gets `403`, because a new
+credential would be issued after the revocation cutoff and end the suspension.
+
+Suspending, reactivating and revoking are Owner/Admin actions. On a NATS user's
+detail view, **Revoke** is for *leaked* credentials. It moves the identity to a
+new key pair, returns a working replacement, and leaves the identity active. To
+take an identity out of service, deactivate the Thing that holds it. See
+[Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 ---
 
-## 2. Locations 
+## 2. Locations
 
-Locations define the physical or logical hierarchy of your environment. They answer the question: *"Where is this thing?"*
+Locations are the physical or logical hierarchy of your sites. They answer
+*"Where is this thing?"*
 
 ### Concepts
 
-- **Hierarchy:** Locations support parent/child relationships (e.g., `Global > North America > Chicago > Warehouse A > Row 4`).
-- **Location Code:** A unique identifier (e.g., `CHI-W-A`), unique within the Organization (ignoring case) and matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$` — no dots, no NATS wildcards, no spaces ([why](./thing-types.md#what-a-code-may-contain)). Prefer the name already on the door or drawing (`RM-204`); a Location saved without a code gets a [generated one](./thing-types.md#generated-codes) under its type's prefix, so none is left without. It namespaces the **Digital Twin** in the NATS Key-Value store, it is the join key a sibling app resolves a ticket or work order against, and it is the payload of the site's [QR label](#codes-and-qr-labels). **Immutable once set:** changing it orphans every twin key, label and external history pointing at it. The Location's **type** is frozen once set too.
-- **Path:** Computed by the server on every save: the Location's code and every ancestor's, from the root down, with `/` between and at both ends (`/KC/BD-3/RM-204/`). The end slashes mean `/BD-3/` never matches inside `/BD-30/`. It makes "everything under BD-3" one filter, `location.path ~ '/BD-3/'` on Things and `path ~ '/BD-3/'` on Locations, and it is what [long-term dashboards](observability.md#5-where-things-are-joining-against-the-inventory) filter by site with. Moving a Location under a different parent rewrites its path and every path beneath it in the same save. A move under the Location itself or one of its descendants is refused. Deleting a parent makes each child a root, with its subtree. A path sent by a client is ignored. The Location page shows it. ([ADR 0004](decisions/0004-long-term-data-and-location-path.md)) `~` is SQL `LIKE`, so an `_` in a code matches any one character; with both slashes required, that rarely matters.
-- **Metadata:** A flexible JSON field for storing site-specific data like time zones, contact info, or local gateway IPs.
+- **Hierarchy:** Locations have parents and children, for example
+  `Global > North America > Chicago > Warehouse A > Row 4`.
+- **Location code:** an identifier such as `CHI-W-A`, unique within the
+  Organization (ignoring case).
+  - It must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`: no dots, NATS wildcards
+    or spaces ([why](./thing-types.md#what-a-code-may-contain)).
+  - Use the name already on the door or drawing (`RM-204`). A Location saved
+    with no code gets a [generated one](./thing-types.md#generated-codes) under
+    its type's prefix.
+  - It names the Location's **digital twin** keys in NATS KV. Sibling apps use it
+    to find a ticket or work order. It is the payload of the site's
+    [QR label](#codes-and-qr-labels).
+  - **You cannot change it once set**, because every twin key, label and
+    external record that uses it would be orphaned. The Location's **type** is
+    also frozen once set.
+- **Path:** the server computes it on every save. It is the Location's code and
+  the code of each ancestor, from the root down, with `/` between them and at
+  both ends: `/KC/BD-3/RM-204/`.
+  - The end slashes stop `/BD-3/` from matching inside `/BD-30/`.
+  - "Everything under BD-3" is one filter: `location.path ~ '/BD-3/'` on Things
+    and `path ~ '/BD-3/'` on Locations.
+    [Long-term dashboards](observability.md#5-where-things-are-joining-against-the-inventory)
+    filter by site this way.
+  - `~` is SQL `LIKE`, so `_` in a code matches any one character. Both slashes
+    are required, so this rarely matters.
+  - Moving a Location rewrites its path and every path below it in the same
+    save. The server refuses a move under the Location itself or one of its
+    descendants.
+  - Deleting a parent makes each child a root, with its subtree.
+  - The server ignores a path sent by a client. The Location page shows the
+    path. See [ADR 0004](decisions/0004-long-term-data-and-location-path.md).
+- **Metadata:** a JSON field for site data such as time zone, contacts or local
+  gateway IPs.
 
 ### Mapping & Visualization
 
-The UI provides two distinct ways to see your locations:
+The console shows Locations in two ways:
 
-1.  **Geospatial Map:** A global view using **Leaflet**, plotting locations by Latitude and Longitude.
-2.  **Floor Plans:** An image-overlay system. You can upload a JPG/PNG of a floor plan and "drag and drop" **Things** onto the map to represent their physical position in a room.
+1. **Map:** a **Leaflet** map that plots Locations by latitude and longitude.
+2. **Floor plans:** upload a JPG or PNG floor plan and drag **Things** onto it
+   to show where they are in a room.
 
-**The map draws one pin per *site*, not one per location.** A location gets a pin only when nothing above it in the hierarchy has coordinates; everything below folds into that pin and is reached through its drawer. Without this, a campus, its buildings, their floors and their rooms all carry coordinates within a few metres of each other and every address becomes a pile — and "Room 302" is not a fact at map scale anyway. Interior geography is what the floor plan is for.
+**The map draws one pin per site, not one per Location.** A Location gets a pin
+only when no ancestor has coordinates. Everything below it goes into that pin,
+and you open it from the pin's drawer. Without this, a campus, its buildings,
+floors and rooms would all stack within a few metres. Use floor plans for
+positions inside a building.
 
-It promotes the outermost *mapped* ancestor rather than the root, because whether a tenant puts coordinates on the campus or only on the buildings is a modelling choice the platform does not control. Unmapped intermediate ancestors are walked through, so a room under an unmapped floor still folds onto its building. Pins that remain stacked by pure geography — two adjacent sites — are then **clustered**, which is the other half of the same problem and is not solved by folding.
+The pin goes to the outermost ancestor that has coordinates, not to the root,
+because tenants put coordinates on different levels. Ancestors with no
+coordinates are skipped, so a room under an unmapped floor goes into its
+building's pin. Nearby sites that still overlap are **clustered**.
 
-Searching flattens the map back out, matching the list view beside it: one search box on one screen should not produce two disagreeing counts.
+A search shows every matching Location on the map, the same as the list beside
+it, so both show the same count.
 
 ---
 
-## 3. Things 
+## 3. Things
 
-A **Thing** is any entity that produces or consumes data — or just an asset you want a record of. In Stone-Age.io, a Thing is a first-class **Auth Record**, and that one record doubles as the device's identity on the messaging fabric and the mesh. See [Architecture §3.1 — Inventory-as-Identity](./architecture.md#31-inventory-as-identity) for why the platform collapses those two registries into one.
+A **Thing** is anything that produces or consumes data, or an asset you want to
+record. A Thing is a PocketBase **auth record**. The same record is the
+device's identity on the bus and the mesh. See
+[Inventory-as-Identity](./architecture.md#31-inventory-as-identity).
 
-**Pure inventory is a supported use.** The identity relations below are optional; a Thing with neither is an asset-tracking row and nothing more. Nothing on this page obliges you to put a device on the bus.
+The identity relations are optional. A Thing with neither is an asset-tracking
+record and nothing more.
 
 ### Concepts
 
-- **Identity:** Because Things are an authentication collection, they can log in to the PocketBase API directly to fetch their own configuration. An Owner or Admin can set a new password from the **Authentication** card on the Thing's *edit* form if it is lost — type it in and save; nothing is generated or displayed. (The only time the platform shows a Thing password is the one it generates at creation.)
-- **Thing Code:** Same character rules as the Location code, used for NATS namespacing (e.g., `camera.CA-9KD-4PX`), and likewise the join key for sibling apps and the payload of the device's [QR label](#codes-and-qr-labels). **Immutable once set**, for the same reasons. Leave it blank on the create form and the server generates one under the Thing Type's prefix, like `CA-9KD-4PX`, when you save. To put codes on a batch of devices, create the records first and print their labels from the list. A code stencilled on the hardware (`DOOR-1`) is still the right one to type in. See [Generated codes](./thing-types.md#generated-codes).
-- **Type:** Frozen once set. The code prefix and the default subject are both derived from it, so a wrong type is fixed by deleting and recreating the Thing, ideally before it is provisioned. See [A type is frozen once set](./thing-types.md#a-type-is-frozen-once-set).
-- **Metadata:** Used to store device-specific state that doesn't change often, such as hardware revision, install date, or calibration offsets.
-- **Active:** An Owner/Admin switch for taking the device out of service without deleting its record and history. **Deactivating is a real decommission** — the device is signed out immediately, cannot sign in again, its NATS identity is suspended, and its Nebula certificate is blocklisted by every peer as their configs are redeployed. The detail view banners the state, and the list greys the row. Reactivating issues a *new* `.creds` file; the old one stays revoked. **Deactivate rather than delete:** deleting a Thing touches neither identity, so its credential keeps working and its certificate stays trusted with nothing left pointing at them. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+- **Identity:** Things are an auth collection, so a Thing can sign in to the
+  PocketBase API to fetch its own configuration. If the password is lost, an
+  Owner or Admin can set a new one in the **Authentication** card on the
+  Thing's edit form. Type it and save. The platform shows a Thing password only
+  once, when it generates one at creation.
+- **Thing code:** the same character rules as the Location code. It is used in
+  NATS subjects (for example `camera.CA-9KD-4PX`), as the join key for sibling
+  apps, and as the payload of the device's [QR label](#codes-and-qr-labels).
+  **You cannot change it once set.**
+  - Leave it blank on the create form, and the server generates one under the
+    Thing Type's prefix, such as `CA-9KD-4PX`.
+  - To code a batch of devices, create the records, then print their labels
+    from the list.
+  - If a code is already stencilled on the hardware (`DOOR-1`), type that code.
+  - See [Generated codes](./thing-types.md#generated-codes).
+- **Type:** frozen once set. The code prefix and the default subject come from
+  it. To fix a wrong type, delete and recreate the Thing, ideally before you
+  provision it. See [A type is frozen once set](./thing-types.md#a-type-is-frozen-once-set).
+- **Metadata:** device data that changes rarely, such as hardware revision,
+  install date or calibration offsets.
+- **Active:** an Owner/Admin switch that takes the device out of service and
+  keeps its record and history. **Deactivation is a real decommission.** The
+  device is signed out immediately and cannot sign in again. Its NATS identity
+  is suspended. Every peer blocklists its Nebula certificate when its config is
+  redeployed. The detail view shows a banner, and the list greys the row.
+  Reactivating issues a *new* `.creds` file, and the old one stays revoked.
+  - **Deactivate a Thing. Do not delete it.** A delete does not touch either
+    identity, so its credential keeps working and its certificate stays trusted.
+  - See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ### Infrastructure Binding
 
-Binding is what turns an inventory row into a participant on the fabric. It is **optional and reversible** — the console's create form offers three modes per identity (`auto` to mint a new one, `link` to attach an existing one, `none` to leave it unbound), and `POST /api/org/things` performs the Thing and both identities in a single transaction so you never end up with a half-provisioned device.
+Binding puts an inventory record on the bus. It is **optional and
+reversible**. The create form has three modes for each identity: `auto` (mint
+a new one), `link` (attach an existing one) and `none`.
+`POST /api/org/things` creates the Thing and both identities in one
+transaction, so a device is never half-provisioned.
 
-A Thing is typically linked to:
+A Thing usually links to:
 
-- **A Thing Type:** The contract that declares what subjects the Thing uses and what message shapes it exchanges. See [Thing Types](./thing-types.md).
-- **A NATS User:** To allow the device to publish telemetry. What it may publish or subscribe to comes from the `nats_roles` record assigned to that NATS user (plus any per-user overrides) — authored directly by an Owner or Admin, not derived from the Thing Type. See [Thing Types §5](./thing-types.md#5-relationship-to-nats-roles).
-- **A Nebula Host:** To allow secure, encrypted access to the device for maintenance or SSH.
+- **A Thing Type:** the contract that declares which subjects the Thing uses.
+  See [Thing Types](./thing-types.md).
+- **A NATS user:** so the device can publish telemetry. Its publish and
+  subscribe permissions come from the `nats_roles` record on that NATS user,
+  plus any per-user overrides. An Owner or Admin writes these. They do not come
+  from the Thing Type. See [Thing Types §5](./thing-types.md#5-relationship-to-nats-roles).
+- **A Nebula host:** for encrypted access to the device, such as maintenance or
+  SSH.
 
-Both relations are **Owner/Admin only**. A `member` may create and edit a Thing but cannot set or change its `nats_user` or `nebula_host` — otherwise a member could re-point a Thing at a privileged identity, authenticate as the Thing, and read credentials that were never theirs. In practice this means a member-created Thing sits un-provisioned until an Owner or Admin links its identities. See [Authorization §2](./authorization.md#2-capability-matrix).
+Only an Owner or Admin can set `nats_user` or `nebula_host`. Otherwise a member
+could point a Thing at a privileged identity, authenticate as the Thing, and
+read credentials that are not theirs. A Thing a member creates stays
+unprovisioned until an Owner or Admin links its identities. See
+[Authorization §2](./authorization.md#2-capability-matrix).
 
-The subjects a Thing publishes to become the inputs to your Layer 1 rules — picking a clean Thing Code and subject namespace pattern is the first step in building automation that's easy to reason about later. The Thing Type makes that pattern declarative rather than implicit: rather than hoping every camera publishes on a sensible subject, the camera Thing Type declares the contract once and every camera of that type follows it.
+A Thing's subjects are the inputs to your Layer 1 rules, so choose clean codes
+and subject patterns early. The Thing Type declares the pattern once, and every
+Thing of that type follows it.
 
 ---
 
-## 4. Types 
+## 4. Types
 
-Types provide a way to categorize your inventory and locations. They act as blueprints for classification and filtering. Location Types are purely for organization; Thing Types have grown into the platform's primary **contract layer** for describing what a participant does on the fabric.
+Types classify your inventory and locations.
 
-- **Location Types:** Categorize your sites (e.g., `Campus`, `Building`, `Room`, `Cabinet`).
-- **Thing Types:** The contract for a kind of participant on the fabric. A Thing Type declares a **subject prefix** (template like `camera.{thing}`, or blank for the default `{thing_type_code}.{thing}`), and a set of **operations** (shareable verbs — publish, subscribe, request, reply — each with a subject suffix). See [Thing Types](./thing-types.md) for the full model.
+- **Location Types** categorize sites, for example `Campus`, `Building`, `Room`
+  or `Cabinet`. They only classify.
+- **Thing Types** are the platform's **contract layer**. A Thing Type declares
+  a **subject prefix** (a template such as `camera.{thing}`, or blank for the
+  default `{thing_type_code}.{thing}`) and a set of **operations**. See
+  [Thing Types](./thing-types.md).
+- **Thing Operations** are shared records, one per verb (publish, subscribe,
+  request, reply), each with a subject suffix. One `heartbeat` operation is
+  usually linked from every Thing Type that sends heartbeats.
 
-Both kinds of type carry an optional **code prefix**, 1–4 capital letters (`CA`, `BLD`), copied into every code generated for a record of that type. Thing prefixes and Location prefixes are separate sets within an organization, so a generated Thing code never looks like a Location code. Changing a prefix affects future codes only.
+Both kinds of type have an optional **code prefix** of 1 to 4 capital letters
+(`CA`, `BLD`). The platform puts it at the start of every code it generates for
+a record of that type. Thing prefixes and Location prefixes are separate sets
+in an organization, so a generated Thing code never looks like a Location code.
+A prefix change applies to future codes only.
 
-Thing Types compose from one other collection that the UI also manages directly:
-
-- **Thing Operations:** Shareable records describing individual verbs on the fabric. A single `heartbeat` operation record is typically linked from every Thing Type that emits heartbeats.
-
-Both (Thing Types, Thing Operations) live under the **Types** menu group in the sidebar alongside Location Types. **Creating, editing, and deleting them is Owner/Admin only**, and so is the Types menu itself: the console has no read-only view of a type, so the group and its screens are shown to owners and admins only. The API *read* is open to every role in the organization — a member's Thing form and the Publisher widget resolve subjects against the contract — so a hidden menu is navigation, not a denied read.
+All three are in the **Types** menu in the sidebar. **Only Owners and Admins
+can create, edit and delete them**, and only they see the Types menu, because
+the console has no read-only view of a type. Every role in the organization can
+still *read* types through the API, because a member's Thing form and the
+Publisher widget resolve subjects from them.
 
 ---
 
 ## 5. The User Interface Features
 
-The UI is designed to be reactive and low-latency, connecting the Control Plane and Data Plane into a Single Pane of Glass.
+### The Dashboard
 
-### The Dashboard 
+The Dashboard is a grid where you build your own views.
 
-The Dashboard is a flexible grid system where you can build custom views:
-
-- **Widgets:** Add Gauges, Charts, Switches, and Maps.
-- **NATS-Native:** Most widgets subscribe directly to NATS subjects. Data never touches the database; it flows from the device to NATS to your browser.
-- **Variables:** Define dashboard variables (e.g., `{{building_id}}`) to create a single dashboard that can be "switched" to show data for different sites/things/etc.
-- **Thing Type-aware binding:** The Publisher widget can bind to a `Thing + Operation` pair. When bound, the subject auto-resolves from the Thing's context against the Thing Type's templates and renders read-only. The payload stays free text — the `message_schemas` collection that once drove a typed form was dropped, because nothing validated against it. See [Thing Types](./thing-types.md) for the contract model that powers this.
+- **Widgets:** gauges, charts, switches, maps and more.
+- **NATS-native:** most widgets subscribe to NATS subjects. The data goes from
+  the device to NATS to your browser, and never through the database.
+- **Variables:** dashboard variables (for example `{{building_id}}`) let one
+  dashboard switch between sites or things.
+- **Thing Type binding:** the Publisher widget can bind to a Thing and an
+  operation. The subject then resolves from the Thing Type's templates and is
+  read-only. The payload is free text. See [Thing Types](./thing-types.md).
 
 ### The Digital Twin
 
-Every Location and Thing with a valid **Code** gets a **Live State** panel on its detail view, showing the keys under `thing.<code>` or `location.<code>` in the organization's twin buckets. It is the same KV browser used for every other bucket, with a second bucket attached — so tree and flat views, filtering, revision history and the detail drawer all behave identically.
+Every Location and Thing with a valid **code** has a **Live State** panel on its
+detail view. It shows the keys under `thing.<code>` or `location.<code>` in the
+organization's twin buckets. It is the same KV browser as for other buckets,
+with tree and flat views, filters, revision history and a detail drawer.
 
-It has two tabs, because there are [two buckets](./architecture.md#41-two-buckets-one-writer-each):
+It has two tabs, one for each [bucket](./architecture.md#41-two-buckets-one-writer-each):
 
-- **Reported** (`twin`) is what the device says. It is **read-only** — the edge overwrites it, so an edit button here would be a lie: the value returns on the next sync.
-- **Desired** (`twin_desired`) is what you want. This is the writable half, and it is a console user's actual control. Setpoints and configuration belong here; commands like `reboot` do not (send those as a message on `cmd.>` — a durable "reboot now" is a bug), and neither do thresholds or alarm ranges (those are [rules](./automation.md) over reported state).
+- **Reported** (`twin`) is what the device says. It is **read-only**, because
+  the edge overwrites it on the next sync.
+- **Desired** (`twin_desired`) is what you want, and you can edit it. Put
+  setpoints and configuration here. Send commands such as `reboot` as a message
+  on `cmd.>` instead. Put thresholds and alarm ranges in
+  [rules](./automation.md) over reported state.
 
-Where the two disagree, the row shows the values themselves — `"auto" → "manual"` — rather than a status word, and the detail pane pairs them in adjacent columns. It says **differs**, never "pending": nothing in the platform pushes a desired value into a device, so a word implying a control loop in progress would be describing something that does not exist. `twin_desired` delivers the value to the edge's local KV; what acts on it is your firmware or your rules.
+Where the two differ, the row shows both values, for example
+`"auto" → "manual"`, and the detail pane shows them in adjacent columns. The
+console says **differs**, never "pending". Nothing in the platform pushes a
+desired value into a device. `twin_desired` delivers the value to the edge's
+local KV, and your firmware or rules act on it.
 
-Only the keys present in a desired value are compared, so extra fields a device reports are ignored. That is deliberate — full equality would flip every assertion you ever set to "differs" the day a device starts reporting one new field.
+Only the keys in a desired value are compared, so extra reported fields are
+ignored. With full equality, one new reported field would make every older
+desired value "differ".
 
-The same KV buckets are what Layer 1 rules read and write for stateful operations like alarm stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) for the full model, and [Automation](./automation.md) for the KV-state patterns.
+Layer 1 rules also read and write these buckets, for example for alarm
+stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state)
+and [Automation](./automation.md).
 
-> **The Control Plane does not create these buckets on its own.** The Control Plane holds the NATS Operator key but has no reach into an organization's own account, so it cannot provision them. Creation is the console's **Initialize** button, or the Agent at the edge — whichever gets there first defines the bucket, which is why the two retention configurations are kept in step deliberately.
+> **The Control Plane does not create these buckets.** It holds the NATS Operator key but cannot act inside an organization's own account. The console's **Initialize** button or the Agent at the edge creates them. Whichever runs first defines the bucket, so the two use the same retention settings.
 
 ### JetStream Streams and KV Buckets
 
-Owners and Admins can manage the org's JetStream resources directly from the UI without dropping to the `nats` CLI. These views connect over the same NATS WebSocket session the rest of the UI uses, so changes take effect immediately.
+Owners and Admins can manage the org's JetStream resources in the console,
+without the `nats` CLI. These views use the console's NATS WebSocket session,
+so changes apply immediately.
 
-- **Streams** (`/nats/streams`): create, edit, inspect, and delete JetStream streams. The form covers the common operational knobs — captured subjects, retention policy (`limits` / `interest` / `workqueue`), storage backend (`file` / `memory`), max-messages / max-bytes / max-age limits, replicas, discard policy, and duplicate window.
-- **KV Buckets** (`/nats/kv`): create, configure, and inspect Key-Value buckets. The form covers history depth, max bucket size, max value size, TTL, and replicas. The detail view embeds a **KV Dashboard** that lets you browse keys, view current values, and watch live updates as keys change.
+- **Streams** (`/nats/streams`): create, edit, inspect and delete streams. The
+  form has subjects, retention (`limits`, `interest`, `workqueue`), storage
+  (`file`, `memory`), message, byte and age limits, replicas, discard policy
+  and duplicate window.
+- **KV Buckets** (`/nats/kv`): create, configure and inspect buckets. The form
+  has history depth, bucket size, value size, TTL and replicas. The detail view
+  has a **KV Dashboard** to browse keys and watch live updates.
 
-Both views appear in the sidebar only when the browser is connected to NATS — the operations execute against the live cluster, not against PocketBase. What you can create is bounded by your NATS role's permissions and, in total, by the account's JetStream storage limits, which are set when the organization's account is provisioned. Layer 1 rules and stream processors consume the same streams and buckets you create here; the UI is a convenience surface, not a separate runtime.
+These views appear only when the browser is connected to NATS, because they act
+on the live cluster. Your NATS role's permissions limit what you can create.
+The account's JetStream storage limits, set when the account is provisioned,
+limit the total. Rules and stream processors use the same streams and buckets.
 
 ### Codes and QR Labels
 
-Any Location or Thing with a **Code** gets a **Label** button on its detail view, producing a QR label to print and stick on the equipment. A record with no code gets no button — the payload *is* the code.
+Every Location or Thing with a **code** has a **Label** button on its detail
+view. It makes a QR label to print and put on the equipment. A record with no
+code has no button, because the payload is the code.
 
-The Things and Locations **lists** have a Label button too, and it prints the **whole result set of the current filter**, not the current page — the search box is the selection mechanism, and the count rides in the button so the scope is visible before you click. Records in that set without a code are skipped and **named** above the preview: a silent drop is only discovered at the site.
+The Things and Locations **lists** also have a Label button. It prints **every
+record that matches the current filter**, not only the current page. The button
+shows the count. Records with no code are skipped and **listed** above the
+preview.
 
-- **The payload is the bare code.** Not a web address, not `org/kind/code` — just `DOOR-1`. A sticker on a wall in a public corridor is something a stranger can replace, and a payload containing a URL would let a forged label send a person to arbitrary content. A bare in-system identifier means the worst a forged label achieves is opening the wrong record inside an app you were already signed in to. It also buys error correction: a short code at the highest correction level is a 21×21 symbol where the URL form of the same identifier needs 41×41 — four times the modules on an identically sized sticker, all of it spent on surviving scratches and grease rather than on repeating a hostname.
-- **Scanning happens inside an app.** The [Scanner widget](./dashboards.md) reads these labels here; sibling apps read the *same* label with their own scanners and land on their own view of the record — a work-order history rather than a live state panel. Nothing ever fetches the decoded string as a destination, and there is deliberately no resolver service to look one up.
-- **Sized to real stock.** 2″ × 1″ and 4″ × 2″ plain thermal labels, in millimetres rather than pixels, so the artwork comes off the printer at the size of the stock. There is deliberately **no RFID inlay keep-out** — an earlier layout reserved one, at the cost of a third of the small label's text column, for media the platform has no encoder, reader or field to use. If RFID ever arrives it comes back measured against a real inlay's datasheet.
-- **Every label prints its code in readable text, sized to fit.** That is not decoration. The symbol will eventually be scratched, greasy, or in a closet too dark to focus in, and reading the code aloud or typing it into a scanner's manual field is a designed path, not a fallback. The code's point size is fitted per label to its column, so a short code prints large rather than every code printing at the size the longest one needs, and a code that cannot fit wraps at a hyphen rather than mid-token.
-- **Everything printed is the Organization's own data.** The top line is the organization's **code** (its name only if it has none), then the record's code and name; a Location's label adds a **Site** marker. The organization code is there because a Thing code is unique only within its organization, so `AHU-1` alone is ambiguous to a technician who services several customers — and the code is immutable, on a sticker that stays put for years. There is **no provider brand**: it is a deployment-wide setting and says nothing true about who owns or services a particular device. And no Type: the name already says what the thing is. (An earlier version did the reverse — printed the brand and left the tenant off as reconnaissance. A device on its owner's premises already tells a passer-by whose it is.)
+- **The payload is the bare code**, for example `DOOR-1`. It is not a URL and
+  not `org/kind/code`. Anyone can replace a sticker in a public corridor. With a
+  URL payload, a forged label could send a person to any content. With a bare
+  code, a forged label can at most open the wrong record in an app the person
+  is already signed in to. A short code is also a smaller symbol: 21×21 at the
+  highest error correction, where the URL form needs 41×41. On the same size
+  sticker, that gives larger modules that survive scratches and grease.
+- **You scan inside an app.** The [Scanner widget](./dashboards.md) reads these
+  labels. Sibling apps read the *same* label with their own scanners and open
+  their own view of the record, such as a work-order history. Nothing opens the
+  decoded string as a destination, and there is no resolver service.
+- **Sizes match real label stock:** 2″ × 1″ and 4″ × 2″ plain thermal labels,
+  laid out in millimetres, so the print is the size of the stock.
+- **Every label prints its code as text, sized to fit.** A scratched or dirty
+  symbol, or a dark closet, can stop a scan. Then you read the code aloud or
+  type it into the scanner's manual field. The font size is fitted to each
+  label, so a short code prints large. A code that does not fit wraps at a
+  hyphen.
+- **The label shows only the Organization's own data.** The top line is the
+  organization's **code** (or its name if it has no code), then the record's
+  code and name. A Location label adds a **Site** marker. A Thing code is unique
+  only within its organization, so `AHU-1` alone is ambiguous to a technician
+  who services several customers. There is **no provider brand**, because that
+  setting is per deployment and says nothing about who owns or services a
+  device. There is no type, because the name already says what the thing is.
 
-Because codes are unique only within an Organization, a scanner resolves a code **globally and then disambiguates** rather than assuming a tenant: `DOOR-1` is exactly the code every organization independently invents, so a match list with a picker is honest where a silent guess would be somebody else's door. See [ADR 0002](./decisions/0002-organization-code-namespace.md).
+Codes are unique only within an Organization. A scanner looks up a code in all
+organizations and, if there are several matches, asks you to pick one. See
+[ADR 0002](./decisions/0002-organization-code-namespace.md).
 
 ### The Activity Feed
 
-`/activity` answers "who on my team changed this device, and when" — **readable by every role in the organization** through the API, `dashboard` included, and shown in the console to every role except `dashboard`, whose only screen is the Visualizer. Each entry names the actor, the action, the record and the time. It stores no record *values*: this is not the audit log, which stays Platform-Operator-only and keeps before/after values for the collections that carry no credential (field names only for the rest). [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed) has the boundary between the two, and why the feed covers the five org-scoped inventory collections and not memberships, invites or the `nats_*` records.
+`/activity` shows who in the organization changed a record, and when. Every
+role can read it through the API, `dashboard` included. The console shows it to
+every role except `dashboard`, whose only screen is the Visualizer.
 
-Two things to know when reading it:
+Each entry has the actor, the action, the record and the time. It stores no
+record *values*. The audit log is separate: only Platform Operators can read
+it, and it keeps old and new values for collections with no credentials (field
+names only for the rest).
+[Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)
+explains the boundary, and why the feed covers the five org-scoped inventory
+collections but not memberships, invites or `nats_*` records.
 
-- **The record label in a row is a snapshot, not a live join.** A Thing renamed since the change shows the name it had at the time. The detail dialog on a row says so explicitly, because a reader who assumes otherwise reads an accurate feed as a stale one.
-- **"This record's history" is the loop it exists for.** The row dialog filters the whole feed to one `resource_id`, which is a different question from searching the label — a search would also catch every other record that happens to share that name. Thing and Location detail views, and the three type forms, carry matching **Created / Last updated** stamps so a record and the feed can be read side by side.
+- **The record label in a row is a snapshot.** If a Thing was renamed after the
+  change, the row shows the old name. The row's detail dialog says so.
+- **"This record's history"** in the row dialog filters the feed to one
+  `resource_id`. This differs from a label search, which also finds other
+  records with the same name. Thing and Location detail views, and the three
+  type forms, show **Created / Last updated** stamps to compare with the feed.
 
 ### Photos and File Fields
 
-Things and Locations each carry one **photo** — the install context that otherwise lives in one technician's head, captured while somebody is standing in front of the device. It appears beside the fields on the detail view and opens full size.
+Things and Locations each have one **photo** of the installation, taken while
+someone is at the device. It shows beside the fields on the detail view and
+opens full size.
 
-A Thing's photo is **edit-only**: creation goes through `POST /api/org/things`, a JSON provisioning route that cannot carry a multipart body. Create the Thing, then add the photo. On edit it is sent as its own request, separate from the rest of the form, because the ordinary Thing update is JSON on purpose: the member branch of `things.updateRule` requires `nats_user` and `nebula_host` to be unchanged, and a field left *out* of a JSON body counts as unchanged. A multipart body has no way to leave a field out — every value is a string and an empty one clears it — so sending the whole edit as a form would turn a member's ordinary inventory edit into a refusal. A Location's photo works on create too, since locations use the plain record API.
+You add a Thing's photo **on edit only**. Creation goes through
+`POST /api/org/things`, a JSON route that cannot carry a multipart body. Create
+the Thing, then add the photo. On edit, the photo is sent in its own request.
+The rest of the Thing update stays JSON, because the member branch of
+`things.updateRule` requires `nats_user` and `nebula_host` to be unchanged, and
+JSON can leave a field out. A multipart body cannot leave a field out, so a
+member's normal edit would be refused. A Location's photo also works on create,
+because Locations use the plain record API.
 
-::: warning Every file field is now protected — an unauthenticated URL will not work
-`photo`, a Location's `floorplan`, an Organization's `logo` and a user's `avatar` are all **protected** file fields. An unprotected PocketBase file URL is served to *anyone* with no auth and no expiry — the only obstacle is the random suffix on the stored filename, which makes the URL a non-revocable bearer credential that leaks through `Referer` headers, screenshots, proxy logs and support tickets for the life of the record. Protected, each request resolves a short-lived file token to an auth record and runs the collection's view rule. **The auth token is not a file token**; a URL built with one silently "worked" only while the field was unprotected. Anything you have integrated against a bare file URL needs to request a file token instead.
+::: warning File URLs need a file token
+`photo`, a Location's `floorplan`, an Organization's `logo` and a user's
+`avatar` are **protected** file fields. Each request needs a short-lived file
+token, and the server checks the collection's view rule. **An auth token is not
+a file token.** An integration that uses a bare file URL must request a file
+token first.
 :::
 
 ### CRUD & Management
 
-The platform provides a standard management interface for all entities. It uses a **Responsive List** pattern:
+Lists are responsive:
 
-- **Desktop:** High-density tables for bulk management.
-- **Mobile:** Card-based layouts for on-the-go status checks and emergency control.
+- **Desktop:** dense tables for bulk work.
+- **Mobile:** cards for status checks and urgent control on site.
 
-**Delete is not on list rows.** A row button is aimed by position, and position moves under sort, search and pagination — by the time the dialog names the record, the decision is already made. Delete lives in a **Danger Zone** at the foot of a record's detail view (or, for the three type collections, their edit form, which is their only detail surface). Invitations keep a row Delete: revoking an invite is cheap and reversible.
+**Delete is not on list rows.** Sort, search and paging move rows, so a row
+button is easy to aim at the wrong record. Delete is in a **Danger Zone** at the
+bottom of a record's detail view. For the three type collections, it is on the
+edit form, which is their only detail view. Invitations keep a Delete on the
+row, because revoking an invite is cheap and reversible.
 
-**Six deletes make you type the record's identifier first.** Thing, Location, Nebula host, NATS user and Organization ask for the record's code (its name where it has none), and a Nebula network for its name, before the confirm button opens. These are the deletes that re-creating the record does not undo. For a Thing in particular, deleting is almost never what you want — see **Active** in §3: the Thing's NATS credential and Nebula certificate survive the delete.
+**Six deletes ask you to type the record's identifier first.** Thing, Location,
+Nebula host, NATS user and Organization ask for the code (or the name if there
+is no code). A Nebula network asks for its name. Re-creating the record does
+not undo these deletes. For a Thing, deactivate instead (see **Active** in §3):
+the Thing's NATS credential and Nebula certificate survive a delete.
