@@ -1,0 +1,406 @@
+---
+path: rule-router/gateway
+nav_order: 20
+---
+# Gateway
+
+The gateway feature provides bidirectional HTTP↔NATS integration. Enable it with `features.gateway: true` or `RR_FEATURES_GATEWAY=true`. It runs alongside the router and scheduler in the same process when desired.
+
+The gateway handles these flows:
+
+| Flow | Trigger | Action | Use case |
+|------|---------|--------|----------|
+| **Inbound** | `http` | `nats` | Webhook ingestion (third-party → NATS event) |
+| **Outbound** | `nats` | `http` | NATS event → external API call |
+| **Synchronous response** | `http` | `respond` | Return an evaluated/enriched payload as the HTTP response |
+| **HTTP↔NATS bridge** | `http` | `nats` + `request: true` | Issue a NATS request and return the reply as the HTTP response |
+
+Both flows use the same rule format. The trigger and action types determine which direction a rule operates in. The last two flows are covered under [Request/reply](#requestreply-synchronous-responses-and-the-httpnats-bridge).
+
+## Inbound: HTTP → NATS
+
+An HTTP trigger evaluates an incoming HTTP request and publishes a NATS message if conditions pass.
+
+```yaml
+- trigger:
+    http:
+      path: "/webhooks/stripe"
+      method: "POST"          # Optional, defaults to all methods
+  conditions:
+    operator: and
+    items:
+      - field: "{type}"
+        operator: eq
+        value: "payment_intent.succeeded"
+  action:
+    nats:
+      subject: "payments.succeeded"
+      payload: '{"payment_id": "{data.object.id}"}'
+```
+
+### Fire-and-forget semantics
+
+Inbound webhooks return `200 OK` to the sender **as soon as the request is parsed**, before rule evaluation or NATS publishing. This guarantees the sender never waits on downstream processing and webhook providers won't retry due to slow responses.
+
+If a rule fails to evaluate or the NATS publish fails, the failure is logged but the sender has already received its `200`. Design rules with this in mind: do not assume the sender can be notified of a downstream failure. If the downstream publish absolutely must succeed before acknowledging, the gateway is the wrong tool — write a normal HTTP server.
+
+This fire-and-forget behavior is the default and applies to every `http`→`nats` webhook rule. The exception is **synchronous routes** — paths whose matched rule has a `respond` action or a `request: true` NATS action. Those are handled inline so they can return a real response; see [Request/reply](#requestreply-synchronous-responses-and-the-httpnats-bridge) below. A path is synchronous only because of the rule shape; ordinary webhook ingestion is unaffected.
+
+### HTTP context variables
+
+The full set is in [04 System Variables](./04-system-variables.md#http-context-gateway-feature-only). The common ones:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{@path}` | Full HTTP path | `/webhooks/tenant-a/events` |
+| `{@path.N}` | Path segment (zero-indexed) | `{@path.1}` → `tenant-a` |
+| `{@method}` | HTTP method | `POST` |
+| `{@header.HeaderName}` | Request header (case-insensitive) | `{@header.X-GitHub-Event}` |
+| `{@query.name}` | Query parameter (case-sensitive) | `{@query.tenant}` |
+
+Path segments are useful for multi-tenant webhooks: a path like `/webhooks/tenant-a/events` can route to per-tenant subjects via `{@path.1}`.
+
+Query parameters are read from the request URL into their own namespace — they are never merged into the message body, so a caller cannot append `?user_id=1` to shadow a body field. A repeated name keeps only its first value, and the query has no effect on which rule matches. See [Query parameters](./04-system-variables.md#query-parameters).
+
+### Request body formats
+
+The gateway decodes the request body based on `Content-Type`:
+
+| Content-Type | Handling |
+|--------------|----------|
+| `application/json` (or anything unrecognized) | Parsed as JSON. Numbers keep full precision. Valid-UTF-8 text that isn't JSON becomes a raw string reachable as `{@value}`. |
+| `application/x-www-form-urlencoded` | Parsed as a URL-encoded form. Each field becomes a top-level message field. |
+
+Form bodies are what HTML form posts and many embedded/industrial devices send. A form field is addressed exactly like a JSON field:
+
+```yaml
+# POST body: device_id=9876&user_id=42&confidence=93
+- trigger:
+    http:
+      path: "/new_user_identified.fcgi"
+      method: "POST"
+  conditions:
+    operator: and
+    items:
+      - field: "{confidence}"
+        operator: gte
+        value: 80
+  action:
+    nats:
+      subject: "access.{device_id}.identified"
+      payload: '{"userId": {user_id}, "confidence": "{confidence}"}'
+```
+
+Four things to know about form bodies:
+
+1. **Every value is a string.** Types are not inferred, because inferring them corrupts data — a PIN of `007` would become `7`. Conditions coerce transparently, so `gte: 80` above works against the string `"93"`.
+2. **Quote optional fields in payload templates.** An unresolved variable renders as an empty string, so `"card": {card_value}` on a request that omits `card_value` produces invalid JSON. Write `"card": "{card_value}"` for anything the sender may leave out.
+3. **A repeated field becomes an array,** reachable as `{tag.0}` or via `forEach`.
+4. **A malformed body is rejected** rather than partially parsed. This is stricter than the JSON path on purpose: a silently dropped field reads as absent and can flip a condition instead of raising an error.
+
+The `Content-Type` header must be present for form decoding — a form body sent without it is treated as a raw string. Test either shape with `rule-cli check --header 'Content-Type: application/x-www-form-urlencoded'`.
+
+### Conditional ingestion
+
+Conditions can filter by header, body, or path. Common shapes:
+
+```yaml
+# Filter by GitHub event type header
+- field: "{@header.X-GitHub-Event}"
+  operator: eq
+  value: "pull_request"
+
+# Multi-tenant by path
+- field: "{@path.1}"
+  operator: in
+  value: ["tenant-a", "tenant-b"]
+
+# Require a signature header
+- field: "{@header.X-Webhook-Signature}"
+  operator: exists
+```
+
+> The `exists` check above only proves a header is *present* — it authenticates nothing. For real authentication, verify the signature with an `hmac` block (next).
+
+### Verifying webhook signatures (HMAC)
+
+Most providers (GitHub, Shopify, …) authenticate webhooks with an **HMAC of the raw body** under a shared secret, carried in a header. Declare an `hmac` block on the HTTP trigger and the gateway verifies it as a **fail-closed gate** — *before* the rule fires. A bad, missing, or unverifiable signature is rejected with **`401 Unauthorized`** and the rule never evaluates (this applies to fire-and-forget and synchronous routes alike).
+
+```yaml
+- trigger:
+    http:
+      path: "/webhooks/github/push"
+      method: "POST"
+      hmac:
+        header: "X-Hub-Signature-256"        # header carrying the signature (required)
+        secret: "${GITHUB_WEBHOOK_SECRET}"    # required; secret forms below
+        algorithm: "sha256"                   # sha256 (default) | sha1
+        encoding: "hex"                       # hex (default) | base64
+        prefix: "sha256="                     # optional; stripped before decoding
+  action:
+    nats:
+      subject: "github.push.{repository.name}"
+      passthrough: true
+```
+
+The HMAC is computed over the **exact received bytes**, before any JSON parsing. This is transport authentication, not a rule condition — you do **not** write a `{@hmac.valid}` check; declaring the block enforces it.
+
+**Secret forms** — one `secret` field, three forms, all existing syntax:
+
+| Form | Example | Resolved |
+|------|---------|----------|
+| Literal | `secret: "s3cr3t"` | as-is (discouraged — keeps the secret in the rule file) |
+| Env var | `secret: "${GITHUB_WEBHOOK_SECRET}"` | at load time from the process environment |
+| KV ref | `secret: "{@kv.secrets.github}"` | per request from a NATS KV bucket |
+
+An unset env var or unresolvable KV reference yields an empty secret, which **fails closed** (every request → `401`) rather than silently accepting unverified payloads.
+
+**Provider coverage.** The generic scheme covers GitHub (`X-Hub-Signature-256`, `sha256=` prefix, hex), Shopify (`X-Shopify-Hmac-Sha256`, base64), and most HMAC webhooks. Providers that sign a timestamp along with the body use a named scheme (next).
+
+#### Timestamped schemes (Stripe, Slack, Standard Webhooks)
+
+Some providers sign `timestamp + body` so a captured request can't be replayed later. Set `scheme` and the gateway uses that vendor's exact format. The only other field is `secret`. Setting `header`, `algorithm`, `encoding`, or `prefix` alongside `scheme` is a load error.
+
+```yaml
+# Stripe — Stripe-Signature: t=…,v1=…
+hmac:
+  scheme: stripe
+  secret: "${STRIPE_WEBHOOK_SECRET}"     # the whsec_… value, used as-is
+
+# Slack — X-Slack-Request-Timestamp + X-Slack-Signature: v0=…
+hmac:
+  scheme: slack
+  secret: "${SLACK_SIGNING_SECRET}"
+
+# Standard Webhooks (Svix, Clerk, Resend, OpenAI, …) — webhook-id / webhook-timestamp / webhook-signature
+hmac:
+  scheme: standardwebhooks
+  secret: "${WEBHOOK_SECRET}"            # the whsec_<base64> value
+```
+
+| `scheme` | Signed content | Notes |
+|----------|----------------|-------|
+| `stripe` | `{t}.{body}` | Any `v1` signature may match (Stripe sends several while a secret is being rolled). `v0` test signatures are ignored. |
+| `slack` | `v0:{ts}:{body}` | Slash commands and interactivity send form-encoded bodies; the signature is checked over the raw bytes before decoding, so they work. |
+| `standardwebhooks` | `{id}.{ts}.{body}` | Any `v1,` signature may match. The secret is base64-decoded after stripping `whsec_`. |
+
+All three reject a timestamp more than **5 minutes** from the gateway's clock, in either direction. This bounds replays to a 5-minute window; it doesn't prevent a replay inside that window. Keep the server clock NTP-synced — a clock more than 5 minutes off rejects every request, visible as `result="expired"`.
+
+Slack's `url_verification` challenge is signed too, so it passes the gate; answer it with a synchronous `respond` rule that returns `{challenge}`.
+
+Outcomes are exported as `webhook_hmac_verifications_total{result}` (`valid`/`invalid`/`missing`/`expired`/`error`); rejections also appear as `http_inbound_requests_total{status="401"}`. See [Observability](./12-observability.md#http-gateway-inbound).
+
+## Outbound: NATS → HTTP
+
+A NATS trigger with an HTTP action calls an external API in response to an internal event.
+
+```yaml
+- trigger:
+    nats:
+      subject: "alerts.critical.>"
+  conditions:
+    operator: and
+    items:
+      - field: "{severity}"
+        operator: gte
+        value: 9
+  action:
+    http:
+      url: "https://events.pagerduty.com/v2/enqueue"
+      method: "POST"
+      headers:
+        Authorization: "Token ${PAGERDUTY_TOKEN}"
+      payload: |
+        {
+          "routing_key": "...",
+          "event_action": "trigger",
+          "payload": {"summary": "{message}"}
+        }
+      retry:
+        maxAttempts: 3
+        initialDelay: "1s"
+        maxDelay: "30s"
+```
+
+### ACK-on-success semantics
+
+Outbound HTTP actions are ACKed back to JetStream **only on a successful HTTP response** (2xx). Non-2xx responses trigger the retry policy; if all retries are exhausted, the message is NACKed and JetStream redelivers per the stream's policy.
+
+This means an unreachable external API does not silently drop events — JetStream keeps them queued until they succeed or the stream's retention limit is reached. This is the inverse of inbound's fire-and-forget guarantee: outbound trades delivery latency for delivery durability.
+
+### Retry configuration
+
+Full reference is in [01 Core Concepts](./01-core-concepts.md). Short version:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `maxAttempts` | 1 | Total including the first. Set `>1` to enable retry. Off by default — retrying POST/PATCH can double-write if a failed request actually reached the server. |
+| `initialDelay` | `"1s"` | Delay before second attempt. |
+| `maxDelay` | `"30s"` | Cap on the backoff. |
+
+Backoff doubles each attempt with ≤100ms jitter. In-flight retries are cancelled on graceful shutdown.
+
+### Payload modes
+
+| Mode | Field | Use when |
+|------|-------|----------|
+| **Templated** (default) | `payload: "..."` | You need a different shape for the external API |
+| **Passthrough** | `passthrough: true` | The external API accepts the message as-is |
+| **Merge** | `merge: true` + `payload: "..."` | Add a few fields to the original message |
+
+### publishResponse: capture HTTP responses back into NATS
+
+A successful HTTP response can be published to a NATS subject for downstream rules to react to:
+
+```yaml
+action:
+  http:
+    url: "https://api.example.com/devices/{device_id}/status"
+    method: GET
+    publishResponse:
+      subject: "poll.devices.{device_id}.status"
+```
+
+The response body is published on 2xx (capped at 1 MB). Non-2xx responses retry per `retry` config and never publish. The subject is templated against the trigger context only — response fields are not available in the subject. See [09 Patterns — Polling-to-eventing bridge](./09-patterns.md#13-polling-to-eventing-bridge) for the full recipe.
+
+## Request/reply: synchronous responses and the HTTP↔NATS bridge
+
+The flows above are fire-and-forget. Two opt-in shapes let an HTTP request receive a real, evaluated response. Conceptual overview (including the NATS-side responder) is in [01 Core Concepts — Request/Reply & responses](./01-core-concepts.md#requestreply-responses); this section covers the HTTP specifics.
+
+### Synchronous response (`respond` action)
+
+An HTTP-triggered rule with a `respond` action returns the evaluated payload directly — no NATS round trip. Use it for lookups, enrichment endpoints, computed acknowledgments, or any "programmable endpoint" where the rule *is* the handler.
+
+```yaml
+- trigger:
+    http:
+      path: "/api/quote"
+      method: "POST"
+  conditions:
+    operator: and
+    items:
+      - field: "{@header.Content-Type}"
+        operator: eq
+        value: "application/json"
+  action:
+    respond:
+      statusCode: 200                 # optional; defaults to 200
+      headers:
+        Content-Type: "application/json"
+      payload: |
+        {
+          "symbol": "{symbol}",
+          "price": {@kv.prices.{symbol}:last},
+          "quoteId": "{@uuid7()}"
+        }
+```
+
+`statusCode` defaults to 200. If no `Content-Type` header is set, `application/json` is assumed. Passthrough/merge payload modes work the same as other actions.
+
+### HTTP↔NATS bridge (`request: true`)
+
+An HTTP-triggered rule with `action.nats` and `request: true` turns the request into a NATS request (`nc.Request`): the gateway waits for a responder and returns the reply as the HTTP response body. This exposes any NATS request/reply service — including a [NATS responder rule](./01-core-concepts.md#requestreply-responses) running under the `router` feature — as an HTTP endpoint.
+
+```yaml
+- trigger:
+    http:
+      path: "/api/geocode"
+      method: "POST"
+  action:
+    nats:
+      subject: "services.geocode"
+      request: true
+      timeout: "3s"          # optional; defaults to 5s
+```
+
+`request: true` is honored **only on HTTP triggers**. The subject, payload, and headers are templated exactly like a normal NATS action before the request is sent.
+
+### Synchronous handling and semantics
+
+- **Inline, not queued.** A path is treated as synchronous when its matched rule has a `respond` or `request: true` action. Such requests are handled inline in the request goroutine with a context deadline — they bypass the fire-and-forget worker queue (which exists to absorb webhook bursts and return `200` immediately). Ordinary webhook routes are unaffected.
+- **First match wins.** If multiple rules match, the first (in load order) with a respond/request action produces the single HTTP response; other matching rules' plain NATS publishes still fire as side-effects.
+- **No match this time.** If the path has a synchronous rule but conditions don't match on this request (so no respond/request action fires), the gateway returns `404 Not Found`.
+- **Status mapping for the bridge:** a successful reply → `200` with the reply body; no responder on the subject → `503 Service Unavailable`; timeout (per `timeout`, default `5s`) → `504 Gateway Timeout`.
+
+> **Deployment note:** the HTTP server's `writeTimeout` must exceed the bridge `timeout`, or a slow responder's reply can be cut off before it is written. Size `http.server.writeTimeout` accordingly.
+
+## Authentication
+
+Environment variables work for static tokens:
+
+```yaml
+headers:
+  Authorization: "Bearer ${API_TOKEN}"
+```
+
+For tokens that refresh (OAuth2, time-limited API keys), pair with the `nats-auth-manager` companion binary. It manages token refresh, stores them in NATS KV, and rules read them with `{@kv.tokens.<provider>:access_token}`. See the [nats-auth-manager README](../README.md) for setup.
+
+## TLS / HTTPS termination
+
+The inbound HTTP server speaks **plain HTTP only** — there is no TLS configuration on the gateway by design. **Terminate TLS at a reverse proxy or load balancer in front of the gateway** (nginx, Caddy, Envoy, an AWS ALB/NLB, a Kubernetes ingress controller, etc.).
+
+This is the standard deployment shape for a webhook receiver: the proxy owns certificates, renewals, and TLS policy, and forwards plain HTTP to the gateway on the internal network. It keeps certificate management out of the application and lets you reuse the same TLS infrastructure you already run for other services.
+
+```
+Internet ──TLS──▶ proxy / load balancer ──HTTP──▶ rule-router gateway (:8080)
+```
+
+A minimal nginx example:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name webhooks.example.com;
+
+    ssl_certificate     /etc/ssl/certs/webhooks.pem;
+    ssl_certificate_key /etc/ssl/private/webhooks.key;
+
+    location / {
+        proxy_pass http://rule-router:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Notes:
+- The same applies to the metrics endpoint (`:2112`) and the health endpoints — all plain HTTP. Keep them on an internal interface or behind the same proxy/network policy.
+- The **outbound** HTTP client (NATS→HTTP actions) does support TLS settings — see [`http.client.tls`](./11-configuration.md#httpclient-outbound-http-client-gateway-scheduler). That is unrelated to inbound TLS termination.
+
+## Path matching
+
+Inbound requests flow through a single catch-all handler that delegates path matching to the rule engine. This applies uniformly to file-loaded and KV-loaded rules: a new rule path becomes live on the next KV update (or process restart for file-loaded rules) with no `ServeMux` re-registration.
+
+Paths can be exact or contain NATS-style wildcards:
+
+| Syntax | Matches | Example |
+|--------|---------|---------|
+| Exact | The path verbatim | `/webhooks/github` matches only `/webhooks/github` |
+| `*` | Exactly one path segment | `/webhooks/*/events` matches `/webhooks/github/events`, not `/webhooks/github/pr/events` |
+| `>` | One or more trailing segments (must be the last segment) | `/api/>` matches `/api/v1`, `/api/v1/users/42`, etc. |
+
+Wildcards may appear in any segment except `>`, which must be terminal. `/api/*/>` is valid; `/api/>/legacy` is rejected at load time.
+
+When both an exact rule and a wildcard rule match the same request, **both fire**. Method filtering applies uniformly after matching — a `POST`-only wildcard will not match a `GET` request even if the path matches.
+
+Wildcards play directly with the `{@path.N}` template variables: a rule on `/webhooks/*/events` can publish to `tenants.{@path.1}.events` to route per-tenant.
+
+```yaml
+- trigger:
+    http:
+      path: "/webhooks/*/events"
+      method: "POST"
+  action:
+    nats:
+      subject: "tenants.{@path.1}.events"
+      payload: "{@passthrough}"
+```
+
+### Unknown paths and metric cardinality
+
+Requests with no matching rule receive `404 Not Found`. The path-existence check happens **before** the request body is read or enqueued, so path-scan traffic does not consume queue capacity or worker time.
+
+To bound Prometheus metric cardinality under path-scan traffic, 404 responses are recorded with the sentinel path label `_unknown_` rather than the actual request path. Matched responses (2xx, 503) use the real request path, so wildcard rules that match high-cardinality URLs (e.g. UUIDs in segments) can grow metric series — use wildcards judiciously or scope them tightly.
+
+Outbound rules (NATS trigger + HTTP action) benefit from KV mode similarly: a new NATS trigger gets its JetStream consumer created automatically on KV update, no restart required. See [08 KV Rule Store](./08-kv-rule-store.md) for the full reload mechanics.

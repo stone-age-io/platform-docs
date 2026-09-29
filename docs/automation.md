@@ -71,7 +71,7 @@ from) and the available **actions**.
 Turn features on in the binary's config file or with environment variables
 (for example `RR_FEATURES_GATEWAY=true`). You can run any combination in one
 process, or split them across processes. See the
-[rule-router documentation](https://github.com/skeeeon/rule-router) for each
+[rule-router documentation](./vendor/rule-router/README.md) for each
 feature's configuration.
 
 ### The TCA Pattern
@@ -100,7 +100,7 @@ Every rule has the same **Trigger, Condition, Action** structure:
 
 For the full YAML syntax, variables and functions, `forEach` over arrays,
 payload modes (`passthrough`, `merge`) and signature verification, see the
-[rule-router documentation](https://github.com/skeeeon/rule-router). This page
+[rule-router documentation](./vendor/rule-router/README.md). This page
 describes rule-router **v0.19.0**.
 
 ---

@@ -61,9 +61,10 @@ Install the Agent as a service with `agent -service install`. It uses systemd,
 a Windows service or rc.d, so you do not write unit files. `agent -version`
 shows the installed version without starting it.
 
-The guides in the agent repository (`docs/linux.md`, `docs/windows.md`,
-`docs/freebsd.md`) cover directory layout, permissions and service
-registration.
+The [Linux](./vendor/agent/docs/linux.md), [Windows](./vendor/agent/docs/windows.md)
+and [FreeBSD](./vendor/agent/docs/freebsd.md) guides in the
+[Agent docs](./vendor/agent/README.md) cover directory layout, permissions and
+service registration.
 
 ---
 
@@ -425,8 +426,8 @@ A site gateway adds `nats.server_config`, a `sync:` block, or both, to the same
 file. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow). `observability` and
 `nebula` are not gateway keys, and you can set them on any device.
 
-The Agent repository's `docs/credentials.md` explains how to set
-`AGENT_PLATFORM_PASSWORD` under systemd, Windows services and rc.d.
+The [Platform Credentials Guide](./vendor/agent/docs/credentials.md) explains
+how to set `AGENT_PLATFORM_PASSWORD` under systemd, Windows services and rc.d.
 
 ---
 

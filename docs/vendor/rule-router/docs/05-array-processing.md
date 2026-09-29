@@ -1,0 +1,407 @@
+---
+path: rule-router/array-processing
+nav_order: 50
+---
+# Array Processing
+
+The rule engine provides array processing capabilities for handling batch messages. This is essential when third-party systems send multiple events in a single message, or when you need to check if any element in an array matches specific criteria.
+
+## Array Operators in Conditions
+
+Use array operators to check if a message is relevant by inspecting array contents. The full operator reference is in [04 System Variables](./04-system-variables.md#condition-operators); the operators specific to array iteration are:
+
+- `any`: At least one array element matches nested conditions
+- `all`: All array elements match nested conditions
+- `none`: No array elements match nested conditions
+
+**Example**: Check if any notification is critical
+```yaml
+conditions:
+  operator: and
+  items:
+    - field: "{type}"
+      operator: eq
+      value: "BATCH_NOTIFICATION"
+    
+    # Check if ANY notification in the array is critical
+    - field: "{notifications}"
+      operator: any
+      conditions:
+        operator: and
+        items:
+          - field: "{severity}"
+            operator: eq
+            value: "critical"
+```
+
+**How it works:**
+- Iterates through the `notifications` array
+- Evaluates nested conditions against each element
+- Short-circuits on first match for `any` (performance optimization)
+- Returns `true` if the operator condition is satisfied
+
+## ForEach Actions
+
+Generate **one action per array element** using `forEach`. This is the key feature for batch processing.
+
+**Basic Syntax:**
+```yaml
+action:
+  nats:
+    forEach: "{notifications}"
+    subject: "alerts.{id}"
+    payload: '{"id": "{id}", "message": "{message}"}'
+```
+
+**With Filter** (recommended):
+```yaml
+action:
+  nats:
+    forEach: "{notifications}"
+    filter:                              # Only process elements matching these conditions
+      operator: and
+      items:
+        - field: "{severity}"
+          operator: eq
+          value: "critical"
+    subject: "alerts.critical.{id}"
+    payload: |
+      {
+        "id": "{id}",
+        "message": "{message}",
+        "severity": "{severity}"
+      }
+```
+
+**What happens:**
+1. Extracts the `notifications` array from the message
+2. Applies `filter` conditions to each element (if specified)
+3. For each matching element, generates one action
+4. Templates subject/payload using fields from that element
+
+**With Merge** (enrich each element):
+```yaml
+action:
+  nats:
+    forEach: "{notifications}"
+    subject: "enriched.{id}"
+    merge: true
+    payload: |
+      {
+        "processed": true,
+        "batch_id": "{@msg.batchId}"
+      }
+```
+
+When `merge: true` is used with `forEach`, each array element is the merge base. The overlay is merged onto the element, preserving all element fields and adding the overlay fields. Use `{@msg.field}` in the overlay to pull values from the root message.
+
+## Template Context: The `@msg` Prefix
+
+When using `forEach`, template variables can refer to either:
+- **Array element fields**: Use `{fieldName}` directly
+- **Root message fields**: Use `{@msg.fieldName}` explicitly
+
+| Context | `{field}` resolves to | `{@msg.field}` resolves to |
+|---------|----------------------|---------------------------|
+| Normal action (no forEach) | Root message field | Root message field (explicit) |
+| ForEach action | Current array element field | Root message field |
+
+**Example:**
+```yaml
+action:
+  nats:
+    forEach: "{alerts}"
+    subject: "alerts.{alertId}"
+    payload: |
+      {
+        "alertId": "{alertId}",              # From alerts[i]
+        "severity": "{severity}",            # From alerts[i]
+        "deviceId": "{@msg.deviceId}",       # From root message
+        "timestamp": "{@msg.receivedAt}",    # From root message
+        "processedAt": "{@timestamp()}"      # System function
+      }
+```
+
+## ForEach with Variable Comparisons
+
+Filters can compare element fields to root message fields, KV values, or system variables:
+
+```yaml
+# Message: {"min_value": 50, "readings": [{"value": 30}, {"value": 75}, {"value": 90}]}
+action:
+  nats:
+    forEach: "{readings}"
+    filter:
+      operator: and
+      items:
+        - field: "{value}"               # Element field
+          operator: gt
+          value: "{@msg.min_value}"      # Root message field
+    subject: "sensors.high-reading.{@uuid7()}"
+    payload: |
+      {
+        "value": {value},
+        "threshold": "{@msg.min_value}"
+      }
+```
+
+**With KV Lookups:**
+```yaml
+# KV: thresholds["sensor-batch"] = {"min": 10, "max": 100}
+action:
+  nats:
+    forEach: "{readings}"
+    filter:
+      operator: and
+      items:
+        - field: "{value}"
+          operator: gte
+          value: "{@kv.thresholds.{@msg.sensor_type}:min}"
+        - field: "{value}"
+          operator: lte
+          value: "{@kv.thresholds.{@msg.sensor_type}:max}"
+    subject: "sensors.valid-reading.{@uuid7()}"
+    payload: '...'
+```
+
+## Complete Example: Batch Notification Processing
+
+**Scenario**: Security system sends batch motion alerts. Generate one alert per camera.
+
+```yaml
+- trigger:
+    nats:
+      subject: security.notifications
+    
+  conditions:
+    operator: and
+    items:
+      - field: "{type}"
+        operator: eq
+        value: "MOTION_BATCH"
+      
+      # Check if ANY alert is from a camera we care about
+      - field: "{alerts}"
+        operator: any
+        conditions:
+          operator: and
+          items:
+            - field: "{deviceType}"
+              operator: eq
+              value: "camera"
+  
+  action:
+    nats:
+      forEach: "{alerts}"
+      filter:
+        operator: and
+        items:
+          - field: "{deviceType}"
+            operator: eq
+            value: "camera"
+          - field: "{motionDetected}"
+            operator: eq
+            value: true
+      subject: "alerts.motion.{buildingId}.{cameraId}"
+      payload: |
+        {
+          "cameraId": "{cameraId}",
+          "location": "{location}",
+          "motionDetected": true,
+          "timestamp": "{timestamp}",
+          "buildingId": "{@msg.buildingId}",
+          "batchId": "{@msg.batchId}",
+          "processedAt": "{@timestamp()}"
+        }
+      headers:
+        X-Alert-Type: "motion"
+        X-Building-Id: "{@msg.buildingId}"
+```
+
+## Primitive Array Elements
+
+ForEach works with primitive arrays (strings, numbers) using the `{@value}` accessor:
+
+**String Array:**
+```yaml
+# Message: {"action": "provision", "device_ids": ["device-001", "device-002"]}
+action:
+  nats:
+    forEach: "{device_ids}"
+    subject: "devices.provision.{@value}"
+    payload: |
+      {
+        "device_id": "{@value}",
+        "action": "{@msg.action}",
+        "timestamp": "{@timestamp()}"
+      }
+```
+
+**Number Array with Filter:**
+```yaml
+# Message: {"sensor_id": "temp-001", "readings": [23.5, 24.1, 25.3, 26.0]}
+action:
+  nats:
+    forEach: "{readings}"
+    filter:
+      operator: and
+      items:
+        - field: "{@value}"              # Access primitive with @value
+          operator: gt
+          value: 25
+    subject: "sensors.high-reading.{@msg.sensor_id}"
+    payload: |
+      {
+        "sensor_id": "{@msg.sensor_id}",
+        "reading": {@value},
+        "timestamp": "{@timestamp()}"
+      }
+```
+
+## Nested Array Paths
+
+ForEach supports deeply nested array paths:
+
+```yaml
+# Message: {"data": {"sensors": {"readings": [{"value": 10}]}}}
+action:
+  nats:
+    forEach: "{data.sensors.readings}"
+    subject: "sensors.reading.{@uuid7()}"
+    payload: '{"value": {value}}'
+```
+
+## Root Array (@items)
+
+When the entire message is an array:
+
+```yaml
+# Message: [{"device": "dev1"}, {"device": "dev2"}]
+action:
+  nats:
+    forEach: "{@items}"
+    subject: "devices.{device}.status"
+    payload: '{"device": "{device}"}'
+```
+
+## KV-Sourced Arrays
+
+ForEach can source its array from a NATS KV store instead of the message payload. This enables **fan-out patterns** — especially useful for the scheduler feature, where there is no incoming message.
+
+**Syntax:** Use `{@kv.bucket.key}` as the forEach field. The KV value must be a JSON array.
+
+### Schedule Fan-Out Example
+
+Unlock all doors from a KV-managed list every weekday morning:
+
+```yaml
+# KV: config["door_list"] = [{"id": "front", "zone": "main"}, {"id": "back", "zone": "service"}]
+- trigger:
+    schedule:
+      cron: "0 8 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      forEach: "{@kv.config.door_list}"
+      subject: "access.door.{id}.command"
+      payload: |
+        {
+          "command": "unlock",
+          "zone": "{zone}",
+          "source": "rule-scheduler",
+          "id": "{@uuid7()}"
+        }
+```
+
+Adding or removing doors only requires updating the KV entry — no rule file changes or reloads needed.
+
+### With JSON Path
+
+Use the colon delimiter to reach a nested array inside a KV value:
+
+```yaml
+# KV: config["building"] = {"name": "HQ", "doors": [{"id": "front"}, {"id": "back"}]}
+action:
+  nats:
+    forEach: "{@kv.config.building:doors}"
+    subject: "access.{id}.command"
+    payload: '{"door": "{id}", "command": "unlock"}'
+```
+
+### With Filter
+
+Combine KV-sourced arrays with filters to conditionally process elements:
+
+```yaml
+# KV: config["doors"] = [{"id": "front", "enabled": true}, {"id": "storage", "enabled": false}]
+action:
+  nats:
+    forEach: "{@kv.config.doors}"
+    filter:
+      operator: and
+      items:
+        - field: "{enabled}"
+          operator: eq
+          value: true
+    subject: "access.{id}.command"
+    payload: '{"door": "{id}", "command": "unlock"}'
+```
+
+### NATS/HTTP Rules with KV Arrays
+
+KV-sourced forEach also works with NATS and HTTP triggers. This is useful when the set of targets is managed in KV rather than embedded in each message:
+
+```yaml
+- trigger:
+    nats:
+      subject: "commands.broadcast"
+  action:
+    nats:
+      forEach: "{@kv.config.endpoints}"
+      subject: "commands.{endpoint_id}"
+      payload: |
+        {
+          "endpoint": "{endpoint_id}",
+          "original_command": "{@msg.command}"
+        }
+```
+
+## Performance & Limits
+
+**Default Limits:**
+- Maximum 100 iterations per forEach (configurable)
+- Prevents resource exhaustion from malicious/malformed messages
+- Configure via the top-level `forEach.maxIterations` block in the application config (not in the rule file)
+
+**Configuration:**
+```yaml
+# rule-router.yaml (top level, alongside features/nats/metrics)
+forEach:
+  maxIterations: 100  # Maximum array elements to process per forEach action.
+                      # Set to 0 for unlimited (use with caution).
+                      # Hard ceiling enforced at config load: 10000.
+```
+
+When an array exceeds the limit, processing stops at the limit and the remaining elements are silently dropped. The `foreach_iterations_total` metric reflects what was actually processed; pair it with the input size in your application logs if you need to detect truncation.
+
+**Per-forEach observability:**
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `foreach_iterations_total` | `rule_file` | Array elements visited (after `maxIterations` cap) |
+| `foreach_filtered_total` | `rule_file` | Elements dropped by the `filter` block |
+| `foreach_actions_generated_total` | `rule_file` | Actions actually emitted (visited − filtered − errors) |
+
+## Best Practices
+
+**DO:**
+- Use `filter` to limit iterations
+- Use array operators in conditions to pre-filter messages
+- Use `{@msg}` prefix explicitly when accessing root message fields in forEach
+- Test with empty arrays and non-matching elements
+
+**DON'T:**
+- Process unbounded arrays without limits
+- Duplicate logic between array operators and forEach filters
+- Assume all array elements are objects (primitives need `{@value}`)
+- Forget that `{field}` resolves to array element in forEach context

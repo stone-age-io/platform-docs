@@ -1,0 +1,619 @@
+---
+path: agent/freebsd
+nav_order: 40
+---
+# FreeBSD Installation Guide
+
+Complete guide for installing and configuring the agent on FreeBSD systems.
+
+## Prerequisites
+
+- **Operating System**: FreeBSD 13.0 or later (tested on 14.0+)
+- **Architecture**: amd64 (x86_64)
+- **Privileges**: root access required
+- **Network**: Access to NATS server (default: port 4222)
+
+---
+
+## Installation Steps
+
+### 1. Install Agent
+
+```bash
+# Download and extract the release archive (set VERSION to the latest release)
+cd /tmp
+VERSION=0.1.0
+fetch https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_freebsd_amd64.tar.gz
+tar xzf agent_${VERSION}_freebsd_amd64.tar.gz
+
+# Install binary. The archive also carries LICENSE, README.md, the per-OS
+# example configs under configs/, and these guides under docs/.
+sudo mv agent /usr/local/bin/agent
+sudo chmod +x /usr/local/bin/agent
+
+# Create directories
+sudo mkdir -p /usr/local/etc/agent
+sudo mkdir -p /usr/local/etc/agent/scripts
+sudo mkdir -p /var/log/agent
+
+# Set permissions
+sudo chmod 755 /usr/local/etc/agent
+sudo chmod 755 /usr/local/etc/agent/scripts
+sudo chmod 755 /var/log/agent
+```
+
+---
+
+### 2. Configure Agent
+
+Create configuration file:
+
+```bash
+sudo tee /usr/local/etc/agent/config.yaml > /dev/null <<'EOF'
+# Agent Configuration for FreeBSD
+
+# Agent identity: code is the NATS subject token (legacy key: device_id),
+# location is optional and carried in heartbeat/telemetry payloads
+code: "freebsd-server-01"
+location: "hq"
+
+# NATS subject prefix (optional)
+subject_prefix: "agents"
+
+# NATS Connection
+nats:
+  urls: 
+    - "nats://nats.example.com:4222"
+  
+  # Authentication (choose one method)
+  auth:
+    type: "creds"
+    creds_file: "/usr/local/etc/agent/device.creds"
+  
+  # TLS Configuration (optional)
+  tls:
+    enabled: false
+    cert_file: "/usr/local/etc/agent/client-cert.pem"
+    key_file: "/usr/local/etc/agent/client-key.pem"
+    ca_file: "/usr/local/etc/agent/ca-cert.pem"
+  
+  max_reconnects: -1
+  reconnect_wait: "2s"
+  drain_timeout: "30s"
+
+# Scheduled Tasks
+tasks:
+  heartbeat:
+    enabled: true
+    interval: "1m"
+  
+  system_metrics:
+    enabled: true
+    interval: "5m"
+    # Built-in (gopsutil). You can still run node_exporter for Prometheus to
+    # scrape directly; the agent does not read it. Its port, 9100, is also the
+    # default observability.addr, so move one of them.
+  
+  service_check:
+    enabled: true
+    interval: "1m"
+    services:
+      - "nginx"
+      - "postgresql"
+      - "redis"
+  
+  inventory:
+    enabled: true
+    interval: "24h"
+
+# Command Execution
+commands:
+  scripts_directory: "/usr/local/etc/agent/scripts"
+  
+  allowed_services:
+    - "nginx"
+    - "postgresql"
+    - "redis"
+  
+  allowed_commands:
+    - "df -h | grep -E '^/dev/'"
+    - "uptime"
+    - "top -b | head -20"
+  
+  allowed_log_paths:
+    - "/var/log/nginx/*.log"
+    - "/usr/local/www/app/*.log"
+  
+  timeout: "30s"
+
+# Logging
+logging:
+  level: "info"
+  file: "/var/log/agent/agent.log"
+  max_size_mb: 100
+  max_backups: 3
+EOF
+```
+
+**Edit configuration:**
+
+```bash
+sudo ee /usr/local/etc/agent/config.yaml
+# Or: sudo vi /usr/local/etc/agent/config.yaml
+```
+
+**Required changes:**
+1. Set unique `code` (and optionally `location`)
+2. Update `nats.urls` with your NATS server
+3. Configure authentication (credentials file, stone-age.io platform, token, or userpass)
+4. Adjust monitored services in `tasks.service_check.services`
+
+**Copy NATS credentials (if using creds auth):**
+
+```bash
+sudo cp /path/to/device.creds /usr/local/etc/agent/device.creds
+sudo chmod 600 /usr/local/etc/agent/device.creds
+```
+
+**Or let the stone-age.io platform manage credentials — the agent logs in as its Thing record, pulls creds from its nats_user relation, and keeps them current:**
+
+```yaml
+platform:
+  url: "https://platform.example.com"
+  identity: "thing@example.com"              # the thing's login email
+  password_env: "AGENT_PLATFORM_PASSWORD"
+
+nats:
+  auth:
+    type: "platform"
+    creds_file: "/usr/local/etc/agent/device.creds"
+```
+
+The `platform:` block is top level because three subsystems read it: this
+credential lifecycle, the [Nebula config source](nebula.md), and the
+[leaf bootstrap](leaf-node.md).
+
+Set the environment variable before starting the agent:
+```bash
+# Add to /etc/rc.conf or service environment
+sudo sysrc agent_env="AGENT_PLATFORM_PASSWORD=your-password"
+```
+
+See **[Platform Credentials Guide](credentials.md)** for full setup details, including removing the password after the first boot.
+
+---
+
+### 3. Install as rc.d Service
+
+```bash
+# Install service (kardianos/service handles rc.d setup)
+sudo /usr/local/bin/agent -service install
+
+# Verify rc.d script was created
+ls -la /usr/local/etc/rc.d/agent
+
+# Enable on boot
+sudo sysrc agent_enable="YES"
+
+# Start service
+sudo service agent start
+
+# Check status
+sudo service agent status
+```
+
+---
+
+### 4. Verify Installation
+
+#### Check Service Status
+
+```bash
+# View service status
+sudo service agent status
+
+# View process
+ps aux | grep agent
+
+# Check if it's running
+sockstat -l | grep 4222  # Should show NATS connection
+```
+
+#### Check Agent Logs
+
+```bash
+# View agent log file
+sudo tail -f /var/log/agent/agent.log
+
+# Check for errors
+sudo grep ERROR /var/log/agent/agent.log
+
+# View last 50 lines
+sudo tail -50 /var/log/agent/agent.log
+```
+
+#### Test NATS Communication
+
+From a machine with NATS CLI installed:
+
+```bash
+# Test ping
+nats request "agents.freebsd-server-01.cmd.ping" '{}'
+
+# Expected response:
+# {"status":"pong","ts":"2026-..."}
+
+# Check health
+nats request "agents.freebsd-server-01.cmd.health" '{}'
+
+# Subscribe to telemetry
+nats sub "agents.freebsd-server-01.>"
+```
+
+---
+
+## Configuration Options
+
+### Monitored Services
+
+Add or remove services to monitor:
+
+```yaml
+tasks:
+  service_check:
+    services:
+      - "nginx"
+      - "postgresql"
+      - "redis"
+      - "sshd"
+```
+
+**Find service names:**
+```bash
+service -e  # List enabled services
+service -l  # List all services
+```
+
+### Allowed Commands
+
+Whitelist commands for remote execution:
+
+```yaml
+commands:
+  allowed_commands:
+    - "df -h | grep -E '^/dev/'"
+    - "uptime"
+    - "ps aux | sort -rk %cpu | head -10"
+    - "zpool status"  # ZFS pool status
+```
+
+**Security note**: Only exact matches are allowed. Be specific!
+
+Allowlisted commands run through FreeBSD's `/bin/sh`, so write them in `sh`
+syntax. Bash isn't part of the base system, and the agent doesn't need it.
+Scripts are different: each script runs with whatever interpreter its own
+`#!` line names.
+
+### Log File Paths
+
+Configure which log files can be retrieved:
+
+```yaml
+commands:
+  allowed_log_paths:
+    - "/var/log/nginx/*.log"
+    - "/usr/local/www/app/*.log"
+    - "/var/log/messages"
+```
+
+Patterns use Go's `filepath.Glob`: `*` and `?` match within one path element
+and `[...]` matches a character class. There is no recursive `**`. The
+allowlist is the only check. If a path matches a pattern, it can be read.
+
+---
+
+## Example Scripts
+
+Create custom scripts in `/usr/local/etc/agent/scripts/`:
+
+### System Information Script
+
+```bash
+sudo tee /usr/local/etc/agent/scripts/get-system-info.sh > /dev/null <<'EOF'
+#!/bin/sh
+# Get comprehensive system information
+
+echo "{"
+echo "  \"hostname\": \"$(hostname)\","
+echo "  \"uptime\": \"$(uptime | awk '{print $3, $4, $5}')\","
+echo "  \"kernel\": \"$(uname -r)\","
+echo "  \"arch\": \"$(uname -m)\","
+echo "  \"users\": $(who | wc -l | tr -d ' '),"
+echo "  \"load_avg\": \"$(uptime | awk -F'load average:' '{print $2}')\","
+echo "  \"memory_percent\": $(sysctl -n vm.stats.vm.v_page_count vm.stats.vm.v_free_count | awk 'NR==1{t=$1}NR==2{printf "%.1f", (1-$1/t)*100}')"
+echo "}"
+EOF
+
+sudo chmod +x /usr/local/etc/agent/scripts/get-system-info.sh
+```
+
+### ZFS Pool Status Script
+
+```bash
+sudo tee /usr/local/etc/agent/scripts/get-zfs-status.sh > /dev/null <<'EOF'
+#!/bin/sh
+# Get ZFS pool status in JSON format
+
+zpool list -H | awk 'BEGIN {print "["} 
+NR>1 {print ","} 
+{printf "{\"pool\":\"%s\",\"size\":\"%s\",\"alloc\":\"%s\",\"free\":\"%s\",\"frag\":\"%s\",\"cap\":\"%s\",\"health\":\"%s\"}", $1,$2,$3,$4,$6,$7,$10} 
+END {print "]"}' | tr -d '\n' | sed 's/,\[/[/'
+EOF
+
+sudo chmod +x /usr/local/etc/agent/scripts/get-zfs-status.sh
+```
+
+### Network Statistics Script
+
+```bash
+sudo tee /usr/local/etc/agent/scripts/get-network-stats.sh > /dev/null <<'EOF'
+#!/bin/sh
+# Get network interface statistics
+
+netstat -ibn | awk 'NR>1 && $1 !~ /lo/ {print $1, $7, $10}' | \
+awk 'BEGIN {print "["} 
+NR>1 {print ","} 
+{printf "{\"interface\":\"%s\",\"in_bytes\":%s,\"out_bytes\":%s}", $1,$2,$3} 
+END {print "]"}' | tr -d '\n' | sed 's/,\[/[/'
+EOF
+
+sudo chmod +x /usr/local/etc/agent/scripts/get-network-stats.sh
+```
+
+**Test scripts locally:**
+```bash
+/usr/local/etc/agent/scripts/get-system-info.sh
+/usr/local/etc/agent/scripts/get-zfs-status.sh
+/usr/local/etc/agent/scripts/get-network-stats.sh
+```
+
+---
+
+## Service Management
+
+### Start/Stop/Restart
+
+```bash
+sudo service agent start
+sudo service agent stop
+sudo service agent restart
+```
+
+### Enable/Disable on Boot
+
+```bash
+# Enable
+sudo sysrc agent_enable="YES"
+
+# Disable
+sudo sysrc agent_enable="NO"
+
+# Check status
+sysrc agent_enable
+```
+
+### Check Service Status
+
+```bash
+# Status
+sudo service agent status
+
+# Process info
+ps aux | grep agent
+
+# Network connections
+sockstat -4 | grep agent
+```
+
+---
+
+## Troubleshooting
+
+### Agent Won't Start
+
+**Check service status:**
+```bash
+sudo service agent status
+```
+
+**Check logs:**
+```bash
+sudo tail -50 /var/log/agent/agent.log
+```
+
+**Common issues:**
+
+1. **Config file errors**
+   ```bash
+   # Test config manually
+   /usr/local/bin/agent -config /usr/local/etc/agent/config.yaml
+   ```
+
+2. **Permission errors**
+   ```bash
+   # Check file permissions
+   ls -la /usr/local/etc/agent/config.yaml
+   ls -la /var/log/agent/
+   
+   # Fix permissions
+   sudo chmod 644 /usr/local/etc/agent/config.yaml
+   sudo chmod 755 /var/log/agent
+   ```
+
+3. **NATS connection failed**
+   ```bash
+   # Test NATS connectivity
+   nc -zv nats.example.com 4222
+   
+   # Check credentials file
+   ls -la /usr/local/etc/agent/device.creds
+   ```
+
+### No Metrics Being Published
+
+**Check agent logs:**
+```bash
+sudo grep metrics /var/log/agent/agent.log
+```
+
+### Service Control Not Working
+
+**Check allowed services:**
+```bash
+grep -A 5 "allowed_services:" /usr/local/etc/agent/config.yaml
+```
+
+**Verify service exists:**
+```bash
+service nginx status
+```
+
+**Check agent logs:**
+```bash
+sudo grep service /var/log/agent/agent.log
+```
+
+---
+
+## Upgrading
+
+### Upgrade Agent Binary
+
+```bash
+# Stop service
+sudo service agent stop
+
+# Backup current binary
+sudo cp /usr/local/bin/agent /usr/local/bin/agent.backup
+
+# Download new version
+cd /tmp
+fetch https://github.com/stone-age-io/agent/releases/download/v1.1.0/agent-freebsd-amd64
+
+# Install new binary
+sudo mv agent-freebsd-amd64 /usr/local/bin/agent
+sudo chmod +x /usr/local/bin/agent
+
+# Start service
+sudo service agent start
+
+# Verify version (check logs)
+sudo tail -20 /var/log/agent/agent.log | grep version
+```
+
+---
+
+## Uninstallation
+
+### Remove Agent
+
+```bash
+# Stop service
+sudo service agent stop
+
+# Disable service
+sudo sysrc agent_enable="NO"
+
+# Uninstall service
+sudo /usr/local/bin/agent -service uninstall
+
+# Remove files
+sudo rm /usr/local/bin/agent
+sudo rm -rf /usr/local/etc/agent
+sudo rm -rf /var/log/agent
+sudo rm /usr/local/etc/rc.d/agent
+```
+
+---
+
+## FreeBSD-Specific Features
+
+### ZFS Integration
+
+Monitor ZFS pools with custom scripts:
+
+```bash
+# Add to allowed commands
+commands:
+  allowed_commands:
+    - "zpool status"
+    - "zpool list"
+    - "zfs list"
+```
+
+### Jail Management
+
+Monitor jails if using FreeBSD jails:
+
+```bash
+# Add to allowed commands
+commands:
+  allowed_commands:
+    - "jls"
+    - "jexec <jailname> ps aux"
+```
+
+### Package Management
+
+Check installed packages:
+
+```bash
+# Add to allowed commands
+commands:
+  allowed_commands:
+    - "pkg info"
+    - "pkg version"
+```
+
+---
+
+## Security Best Practices
+
+1. **Credentials**: Store NATS credentials with restrictive permissions
+   ```bash
+   sudo chmod 600 /usr/local/etc/agent/device.creds
+   ```
+
+2. **Scripts**: Only allow trusted scripts
+   ```bash
+   sudo chmod 755 /usr/local/etc/agent/scripts
+   sudo chmod 700 /usr/local/etc/agent/scripts/*.sh
+   ```
+
+3. **Firewall**: Use ipfw or pf to restrict connections
+   ```bash
+   # Telemetry and commands: outbound NATS only.
+   # Credentials, Nebula config and leaf bootstrap: outbound HTTPS (443) to the
+   # Control Plane, when the `platform:` block is set.
+   #
+   # Inbound: none by default -- /ready and /metrics bind 127.0.0.1:9100, which
+   # is not reachable off the box. A SITE GATEWAY is the exception: local
+   # devices connect in to the nats-server it hosts (4222 by default).
+   ```
+
+4. **Updates**: Keep FreeBSD and the agent updated
+   ```bash
+   sudo freebsd-update fetch install
+   sudo pkg upgrade
+   ```
+
+---
+
+## Next Steps
+
+- **[Architecture Overview](architecture.md)** - Understand the system design
+- **[Script Development Guide](script-development.md)** - Write custom scripts
+
+---
+
+**Need help?** Open an issue on [GitHub](https://github.com/stone-age-io/agent/issues)
