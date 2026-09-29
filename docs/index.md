@@ -3,7 +3,7 @@ path: platform
 nav_order: 10
 access: public
 ---
-# Stone-Age.io Docs
+# Platform
 
 **Every site you manage, on one screen.**
 
