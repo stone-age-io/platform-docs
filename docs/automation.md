@@ -101,7 +101,7 @@ Every rule has the same **Trigger, Condition, Action** structure:
 For the full YAML syntax, variables and functions, `forEach` over arrays,
 payload modes (`passthrough`, `merge`) and signature verification, see the
 [rule-router documentation](./vendor/rule-router/README.md). This page
-describes rule-router **v0.19.0**.
+describes rule-router **v0.20.0**.
 
 ---
 
@@ -176,9 +176,10 @@ Two options change this:
 - **Signature verification.** An HTTP trigger can have an `hmac` block (header,
   secret, algorithm, encoding, optional prefix). If the signature is missing or
   wrong, the gateway returns `401` and does not evaluate the rule. This covers
-  GitHub, Shopify and most generic HMAC webhooks. Named `scheme`s for providers
-  that sign a timestamp with the body (Stripe, Slack, Standard Webhooks) are on
-  rule-router's main branch and not released yet. Put signature verification on
+  GitHub, Shopify and most generic HMAC webhooks. For providers that sign a
+  timestamp with the body, set `scheme: stripe`, `slack` or `standardwebhooks`
+  (Svix, Clerk, Resend and others) and only a `secret`. A timestamp more than
+  five minutes old is rejected. Put signature verification on
   every endpoint the internet can reach. Without it, anyone who learns the path
   can publish into your bus.
 - **Synchronous routes.** A rule with a `respond` action returns its result as
@@ -262,6 +263,8 @@ graceful shutdown.
 
 The scheduler fires on cron expressions, not on messages. Use it for periodic
 publishes: batch commands, reports, cache warming, or fan-out over a list in KV.
+An expression has five fields, or six with a leading seconds field for
+intervals under a minute.
 
 ### Example: Weekday Morning Door Unlock Fan-Out
 
@@ -344,16 +347,19 @@ KV. This gives you stateful behavior with no separate state store.
 A sensor that flickers around a threshold can send 100 alerts. To prevent this,
 keep the alarm state in a KV bucket:
 
-1. **Threshold hit:** a rule checks whether `alarms.device_01.high_temp`
-   already exists in KV.
-2. **State check:** if the key does not exist, the rule writes the alarm state.
-   A write is a normal publish to the bucket's subject,
-   `$KV.alarms.device_01.high_temp`, with the value as the body.
+1. **Threshold hit:** a rule fires on the reading only if no alarm is active:
+   an `or` group of `{@kv.alarms.device_01.high_temp}` with `not_exists` (no
+   alarm yet) and `{@kv.alarms.device_01.high_temp:state}` `eq` `cleared`.
+   Only `not_exists` matches a missing key. `neq` `active` is `false` on a
+   missing key, so it would never raise the first alarm.
+2. **Write state:** the rule's action writes the alarm state. A write is a
+   normal publish to the bucket's subject, `$KV.alarms.device_01.high_temp`,
+   with the value as the body.
 3. **Notify:** a rule has one action, so a second rule sends the notification.
    It triggers on the write (`$KV.alarms.>`) or on the same threshold
    condition.
-4. **Deduplication:** if the key *already* exists, the administrator was
-   already notified, and the rules do nothing.
+4. **Deduplication:** once the key holds an active alarm, neither condition
+   passes. The administrator was already notified, and the rules do nothing.
 5. **Auto-clear:** when the temperature is normal again, another rule
    overwrites the key with a cleared state. A recovery notification can trigger
    on that write in the same way.
@@ -385,8 +391,9 @@ Put the throttle on the **action**, not the trigger. A trigger throttle skips
 evaluation, so a normal reading can use up the window and the engine never
 evaluates the alarming reading after it. The windows are in the instance's
 memory (§1). A restart or reload resets them, and a trailing value that is
-waiting at a crash is lost. If suppression must survive a restart, check a KV
-key with `exists` and let the bucket's TTL expire it.
+waiting at a crash is lost. If suppression must survive a restart, gate the rule
+on a KV key with `not_exists`, have its action write that key, and let the
+bucket's TTL expire it.
 
 ---
 

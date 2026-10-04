@@ -67,15 +67,27 @@ pages | while IFS='|' read -r repo src gh file path order extra; do
     [ -n "$extra" ] && printf '%s\n' "$extra"
     printf -- '---\n'
     # pb-wiki renders no raw HTML, so a <details> block becomes a plain
-    # heading, and a link to the repo's LICENSE file points at GitHub.
+    # heading. Only .md links become wiki links, so a relative link to any
+    # other repo file (LICENSE, an example rule) points at GitHub instead.
     # GitHub keeps a double hyphen in an anchor where a heading had " & "
     # or " / " (#requestreply--responses); pb-wiki's heading ids have one.
     sed -e 's/\r$//' \
         -e '/^<\/\{0,1\}details>$/d' \
         -e 's|^<summary><b>\(.*\)</b></summary>$|### \1|' \
-        -e "s|](\(\./\)\{0,1\}LICENSE)|](https://github.com/$gh/blob/main/LICENSE)|g" \
         "$src/$file" |
-      perl -pe 's{\]\(([^)\s#]*)#([^)\s]+)\)}{my ($p, $a) = ($1, $2); $a =~ s/-{2,}/-/g; "]($p#$a)"}ge'
+      GH=$gh DIR=$(dirname "$file") perl -pe '
+        s{\]\((?![a-z]+:|[#/])([^)\s#]+)\)}{
+          my $p = $1;
+          if ($p =~ /\.md$/) { "]($p)" } else {
+            my @out;
+            for (split m{/}, "$ENV{DIR}/$p") {
+              next if $_ eq "" || $_ eq ".";
+              $_ eq ".." ? pop @out : push @out, $_;
+            }
+            "](https://github.com/$ENV{GH}/blob/main/" . join("/", @out) . ")";
+          }
+        }ge;
+        s{\]\(([^)\s#]*)#([^)\s]+)\)}{my ($p, $a) = ($1, $2); $a =~ s/-{2,}/-/g; "]($p#$a)"}ge'
   } > "$dest"
 done
 
