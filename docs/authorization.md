@@ -321,6 +321,13 @@ suspended identity with a new `.creds`). On the NATS user, `active` is a real
 control: true to false revokes and issues nothing, and false to true mints a
 credential issued after the cutoff.
 
+**A deactivated Thing's identities stay down until the Thing is reactivated.**
+While the Thing is deactivated, the server refuses to make its NATS user or
+Nebula host active. It also refuses `regenerate`, `revoke` and `renew` on them,
+because each of those issues a working credential even for an inactive
+identity. The response is a `400` that names the Thing. Re-enable and the Nebula
+host's Active toggle are therefore for identities that no Thing holds.
+
 ### 4.3 Rolling a Nebula CA
 
 ```
