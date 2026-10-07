@@ -61,6 +61,21 @@ Role** (`nats_roles`) with optional per-user overrides. Permissions are publish
 and subscribe allow and deny patterns. Deny is evaluated after allow, so with
 wildcards you can express complex cases.
 
+**An empty allow list grants nothing.** The role's lists and the user's own
+lists are combined. If together they allow no subject in one direction, the
+signed JWT denies everything in that direction. To allow everything in the
+account, write `>` explicitly. Publish and subscribe are separate, so a role
+with only subscribe subjects gives a subscribe-only user. Two request/reply
+details follow from this:
+
+- A user that **sends** requests needs `_INBOX.>` on subscribe to receive the
+  replies. It is not added for you.
+- A user that **answers** requests needs either *Response Permissions* on its
+  role, or `_INBOX.>` on publish.
+
+Before pb-nats v0.3.0 an empty list granted *everything* in the account
+instead, so roles created earlier may need a second look.
+
 > **A NATS role is not a membership role.** `nats_roles` records are Data Plane permission sets for NATS users. The five **membership** roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) control who can read or write platform records. Only Owners and Admins can read or write `nats_roles`, because the platform copies a role's permission fields **exactly** into the user JWT it signs. See [Authorization](./authorization.md).
 
 ### JetStream
