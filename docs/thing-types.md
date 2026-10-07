@@ -53,7 +53,7 @@ The contract record for a kind of participant.
 | `prefix` | Optional, 1 to 4 capital letters (`^[A-Z]{1,4}$`), for example `CA`. The platform puts it at the start of every code it generates for a Thing of this type (`CA-9KD-4PX`). See [Generated codes](#generated-codes). Unique in the organization, and never the same as a Location Type's prefix. You can change it, and the change applies to future codes only. |
 | `subject_prefix` | A template such as `camera.{thing}`, stored as typed. If empty, consumers use `{thing_type_code}.{thing}`. |
 | `operations` | Relations to `thing_type_operations`: the verbs this type declares. |
-| `metadata_schema` | A JSON Schema for the inventory fields in a Thing's `metadata`. The Thing form renders it (§7). It is not a message contract, and nothing validates a payload against it. |
+| `metadata_schema` | A JSON Schema for the inventory fields usually tracked in a Thing's `metadata`. The Thing form renders it (§7). It is a **form hint**: nothing validates `metadata` against it, a Thing may carry keys it does not list, and the form never blocks a save on it. It is not a message contract either, and nothing validates a payload against it. |
 
 ### `thing_type_operations`
 
@@ -398,7 +398,10 @@ widget.
   code, code prefix (uppercased as you type), subject prefix, an operations
   multi-select with a quick-add dialog for new operations, and the inventory
   schema (`metadata_schema`). **"Infer from sample"** takes one example record
-  and makes a typed field from each key, for you to review.
+  and makes a typed field from each key, for you to review. On the Thing form,
+  the schema's fields come first and an **Other fields** list below them holds
+  any key the schema does not name. Required fields are marked and ranges are
+  shown, but neither stops a save.
 - **Thing Operations:** list and edit the shared operations. The form enforces
   the `^[a-z0-9_]+$` name pattern and requires `capability` and
   `subject_suffix`.
