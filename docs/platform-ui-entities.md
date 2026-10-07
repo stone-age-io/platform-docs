@@ -440,7 +440,13 @@ collections but not memberships, invites or `nats_*` records.
 
 Things and Locations each have one **photo** of the installation, taken while
 someone is at the device. It shows beside the fields on the detail view and
-opens full size.
+opens full size. The edit form shows it in the same place, beside Name and
+Description.
+
+With no photo yet, anyone who can edit inventory sees an **Add photo** plate in
+that spot on the detail view. It uploads and saves the photo at once, without
+the edit form. Viewers see nothing there. To replace or remove a photo, use the
+edit form.
 
 You add a Thing's photo **on edit only**. Creation goes through
 `POST /api/org/things`, a JSON route that cannot carry a multipart body. Create
