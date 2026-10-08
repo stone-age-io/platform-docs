@@ -72,6 +72,8 @@ details follow from this:
   replies. It is not added for you.
 - A user that **answers** requests needs either *Response Permissions* on its
   role, or `_INBOX.>` on publish.
+- A NATS micro service that should be **discoverable** needs `$SRV.>` on
+  subscribe. The Agent is one ([The Agent §3E](./agent.md#e-service-discovery)).
 
 Before pb-nats v0.3.0 an empty list granted *everything* in the account
 instead, so roles created earlier may need a second look.
