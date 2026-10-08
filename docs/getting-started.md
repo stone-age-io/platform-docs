@@ -250,7 +250,8 @@ the fleet size on a later run.
 `--confirm` is required and is the only safety check. The command is in the
 production binary and writes real signed credentials. Use a throwaway database.
 
-It seeds the same three sites, with the same codes, as the access-control app.
+It seeds the same three sites, with the same codes, as the
+[access-control](./vendor/access-control/README.md) app.
 If you run both, a door in one and a Thing in the other are the same door. See
 [ADR 0002](./decisions/0002-organization-code-namespace.md).
 

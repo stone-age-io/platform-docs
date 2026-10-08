@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Copy the agent, rule-router and helpdesk repository docs into docs/vendor/
-# as wiki pages, each under its own top-level wiki section.
+# Copy the agent, rule-router, helpdesk and access-control repository docs into
+# docs/vendor/ as wiki pages, each under its own top-level wiki section.
 #
-#   scripts/vendor-docs.sh [agent-checkout] [rule-router-checkout] [helpdesk-checkout]
+#   scripts/vendor-docs.sh [agent-checkout] [rule-router-checkout] \
+#     [helpdesk-checkout] [access-control-checkout]
 #
-# The checkouts default to ../agent, ../rule-router and ../helpdesk beside this
-# repo. The
-# script replaces docs/vendor/<repo>/ completely, so a page deleted upstream
-# goes away here too. Files keep their repository layout, which keeps the
+# The checkouts default to ../agent, ../rule-router, ../helpdesk and
+# ../access-control beside this repo. The script replaces docs/vendor/<repo>/
+# completely, so a page deleted upstream goes away here too. Files keep their repository layout, which keeps the
 # docs' own relative links working; `pb-wiki import` turns them into wiki
 # links. Do not edit the copies: change the docs upstream, then run this again.
 set -euo pipefail
@@ -16,6 +16,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 agent_src=${1:-$here/../agent}
 rr_src=${2:-$here/../rule-router}
 hd_src=${3:-$here/../helpdesk}
+ac_src=${4:-$here/../access-control}
 
 # repo -> "checkout|GitHub repo"
 source_of() {
@@ -23,6 +24,7 @@ source_of() {
     agent) echo "$agent_src|stone-age-io/agent" ;;
     rule-router) echo "$rr_src|skeeeon/rule-router" ;;
     helpdesk) echo "$hd_src|stone-age-io/helpdesk" ;;
+    access-control) echo "$ac_src|stone-age-io/access-control" ;;
   esac
 }
 
@@ -67,11 +69,18 @@ helpdesk|$hd_src|stone-age-io/helpdesk|docs/configuration.md|helpdesk/configurat
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/plan.md|helpdesk/plan|70|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/service-delivery-plan.md|helpdesk/service-delivery-plan|80|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/nats-notifications-plan.md|helpdesk/nats-notifications-plan|90|
+access-control|$ac_src|stone-age-io/access-control|README.md|access-control|50|access: public\ntitle: Access Control
+access-control|$ac_src|stone-age-io/access-control|docs/protocol.md|access-control/protocol|10|
+access-control|$ac_src|stone-age-io/access-control|docs/configuration.md|access-control/configuration|20|
+access-control|$ac_src|stone-age-io/access-control|docs/operators.md|access-control/operators|30|
+access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-control/hardware|40|
+access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|50|
+access-control|$ac_src|stone-age-io/access-control|docs/plan-events.md|access-control/plan-events|60|
 EOF
 }
 
 # Start each repo's copy from empty, and note which commit it came from.
-for repo in agent rule-router helpdesk; do
+for repo in agent rule-router helpdesk access-control; do
   IFS='|' read -r src gh <<<"$(source_of "$repo")"
   rm -rf "$here/docs/vendor/$repo"
   mkdir -p "$here/docs/vendor/$repo"
@@ -84,7 +93,7 @@ pages | while IFS='|' read -r repo src gh file path order extra; do
   mkdir -p "$(dirname "$dest")"
   {
     printf -- '---\npath: %s\nnav_order: %s\n' "$path" "$order"
-    [ -n "$extra" ] && printf '%s\n' "$extra"
+    [ -n "$extra" ] && printf '%b\n' "$extra"  # %b: \n separates several keys
     printf -- '---\n'
     # pb-wiki renders no raw HTML, so a <details> block becomes a plain
     # heading. Only a link to another vendored page becomes a wiki link, so a
