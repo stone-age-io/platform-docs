@@ -42,7 +42,7 @@ leaves room for `comment` / `resolve` later without a subject migration.
   "title": "pump fault on line 3",          // required
   "body": "vibration sensor overcurrent",   // optional
   "priority": "high",                       // optional: low|normal|high|urgent (else normal)
-  "dedupe_key": "pump-7-overcurrent",       // optional: idempotency key, unique across ALL customers
+  "dedupe_key": "pump-7-overcurrent",       // optional: idempotency key, unique per customer
   "thing": "pump-7",                        // optional: free-text, stored as thing_note
   "thing_code": "PUMP-7",                   // optional: resolves to a things row (this customer)
   "location": "line-3",                     // optional: free-text, stored as location_note
@@ -59,10 +59,10 @@ Behavior:
   replayed.
 - **`dedupe_key`**: if a ticket with the same key exists, the event is
   acked without creating a second ticket. Publishers should stamp a stable
-  key for retry loops and flapping sources. The key space is **global**
-  (`tickets.dedupe_key` is one partial unique index, not per customer), so a
-  key another customer — or the webhook, or an email `Message-ID` — already
-  used swallows this event too; namespace keys (e.g. prefix the device or org).
+  key for retry loops and flapping sources. The key is unique **per customer**
+  (`(customer, dedupe_key)`, migration `1830000000`), so publishers in different
+  tenants can't collide; within one customer the key space is shared with that
+  customer's webhook calls and email `Message-ID`s.
 - **`thing`** and **`location`** are free text, stored as `thing_note` and
   `location_note`. **`thing_code`** and **`location_code`** are the platform
   join keys: each resolves against this customer's `things` / `locations` rows
@@ -229,7 +229,7 @@ providers do **not** use this route — they have their own, below.
   "body": "3rd floor copy room",         // optional
   "priority": "urgent",                  // optional: low|normal|high|urgent (else normal)
   "requester_email": "rita@acme.com",    // optional: links an existing portal account
-  "dedupe_key": "alarm-1234",            // optional: idempotency key (global key space)
+  "dedupe_key": "alarm-1234",            // optional: idempotency key (per customer)
   "category": "hardware",                // optional: a ticket_categories key (unknown ignored)
   "thing": "printer-3f",                 // optional: free-text (thing_note)
   "thing_code": "HQ-PRN-3",              // optional: resolves to a things row (this customer)
@@ -242,8 +242,9 @@ providers do **not** use this route — they have their own, below.
 
 - `201` `{"id": "...", "number": 17, "duplicate": false}` — ticket created
   (`source = webhook`).
-- `200` `{"id": "...", "number": 17, "duplicate": true}` — a ticket with
-  this `dedupe_key` already exists; its identifiers are returned.
+- `200` `{"id": "...", "number": 17, "duplicate": true}` — a ticket of this
+  customer with this `dedupe_key` already exists (including one a concurrent
+  delivery created a moment earlier); its identifiers are returned.
 - `400` — missing/invalid title or malformed JSON.
 - `404` — unknown token (same shape for an inactive customer; the route is
   not an oracle).
@@ -262,9 +263,9 @@ The free-text thing field is spelled **`thing`**, matching the NATS contract —
 it was `asset` before the `things` collection existed.
 
 As on NATS, the ticket lands as `type = reactive` and the staff triage fields
-are not accepted (unknown JSON fields are ignored). `dedupe_key` shares the one
-global key space with NATS and email (see above), and the duplicate lookup is
-not customer-scoped — namespace your keys.
+are not accepted (unknown JSON fields are ignored). `dedupe_key` is scoped to the
+token's customer and shares that customer's key space with NATS and email (see
+above).
 
 ## HTTP inbound (email provider)
 
@@ -293,16 +294,18 @@ wire contract:
   text-only; attachments are ignored (a non-goal — see `email-ingestion.md`).
   DKIM is log-only: a `dkim=fail` verdict is logged, never enforced.
 - **Threading:** a `[#N]` token in the subject routes a reply onto ticket N as a
-  public comment (reopening it if `resolved` and the sender is a registered user
-  of that ticket's customer; a `closed` ticket instead spawns a new one). No
-  token, or no ticket N ⇒ a new ticket, `source = email`.
+  comment — public when the sender belongs to that ticket's customer (a
+  registered user of it, reopening it if `resolved`, or an address at its
+  `email_domain`), otherwise **internal**, held for staff. A `closed` ticket
+  instead spawns a new one. No token, or no ticket N ⇒ a new ticket,
+  `source = email`.
 - **Tenant (new tickets):** the sender resolves to a customer by exact
   `users.email`, else by an active customer's `customers.email_domain` (never a
   shared provider like gmail.com). Unresolvable ⇒ the message is acked and
   dropped, not funneled to a catch-all. A threaded reply skips this step — the
   ticket picks the tenant.
-- **Idempotency:** the email `Message-ID` dedupes both paths (`tickets.dedupe_key`
-  and the hidden `ticket_comments.source_message_id`, each unique). A message
+- **Idempotency:** the email `Message-ID` dedupes both paths (`tickets.dedupe_key`,
+  unique per customer, and the hidden `ticket_comments.source_message_id`, unique). A message
   with no Message-ID is not deduped.
 
 ### Responses

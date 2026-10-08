@@ -114,18 +114,22 @@ is tested directly with no broker). Order matters:
    resolves to a ticket (looked up by `number` alone):
    - **`closed`** → do *not* comment. Mirror the portal / migration `1822000000`
      ("a closed ticket is final; open a new one"): fall through to step 4, prefixing
-     the body with a `Reply to closed ticket #N` breadcrumb.
+     the body with a `Reply to closed ticket #N` breadcrumb — only when the sender
+     resolves to that ticket's own customer, so a new ticket never names another
+     tenant's.
    - **otherwise** → if a comment already has `source_message_id == MessageID`,
      return `duplicate`; else create a `ticket_comments` row (see below).
    An `N` that matches no ticket falls through to step 4 with no breadcrumb.
 4. **New ticket.** Resolve the customer (ladder below), normalize into the existing
    `inbound.Payload` (title = subject, or `(no subject)`; `RequesterEmail` = sender;
    `DedupeKey` = `MessageID`), and call `CreateTicket`. `source = "email"`. A
-   ticket that already has `dedupe_key == MessageID` comes back as `duplicate`.
+   ticket of that customer that already has `dedupe_key == MessageID` comes back as
+   `duplicate`.
 
 Idempotency is therefore per path, not a separate up-front step: providers retry
 on non-2xx, and each path absorbs its own redelivery. (Unique indexes are the
-real backstop — same pattern as `tickets.number` / `tickets.dedupe_key`.) An
+real backstop — same pattern as `tickets.number` / `tickets.dedupe_key`, the
+latter unique per customer.) An
 empty `MessageID` disables both checks.
 
 Returns a `Result` the adapter turns into a response (`created` / `commented` /
@@ -133,14 +137,14 @@ Returns a `Result` the adapter turns into a response (`created` / `commented` /
 
 ### Creating the comment (why replies are nearly free)
 
-A reply becomes a **public** `ticket_comments` row:
+A reply becomes a `ticket_comments` row:
 
 | field               | value                                                              |
 |---------------------|--------------------------------------------------------------------|
 | `ticket`            | the resolved ticket id                                             |
 | `author_user`       | user whose `email` matches `From` **within the ticket's customer** (may be empty) |
 | `body`              | `msg.Body`, prefixed with a `From: name <email>` provenance line   |
-| `internal`          | `false`                                                            |
+| `internal`          | `false` when the sender belongs to the ticket's customer, else `true` (below) |
 | `source_message_id` | `msg.MessageID` (new hidden field, unique index)                   |
 
 Written server-side via `app.Save` (bypasses collection rules, like the activity
@@ -151,11 +155,23 @@ rest — a public comment with `author_user` set runs `handleRequesterReply`, wh
 the reopen to that user with `activity.SetActor`) and clears `awaiting_requester`.
 Email threading and the two-stage lifecycle compose with **zero new lifecycle code**.
 
-Edge case — **unmatched sender on a reply**: if `From` matches no user of that
-customer, still record the public comment but leave `author_user` empty (so the hook
-does *not* auto-reopen — we won't let an unverified/spoofed sender silently reopen or
-impersonate) and log it. Staff see it in the timeline, with the real sender in the
-provenance line, and act manually.
+**Who may reply.** Ticket numbers are global and sequential, so `[#N]` identifies
+a ticket and says nothing about who may write on it. The sender is checked against
+the **ticket's** customer by the same two rungs the new-ticket ladder uses
+(`senderBelongsTo`):
+
+- **a registered user of that customer** → public, attributed; the hook reopens
+  and clears `awaiting_requester` as above.
+- **an address at that customer's `email_domain`** → public but unattributed, so
+  the hook does *not* auto-reopen on the say-so of someone with no account.
+- **anyone else** — another tenant's user, a stranger, the requester writing from
+  a personal address, a CC'd vendor → an **internal** comment, its body opening
+  with "Held for review — the sender is not on this customer's account." It never
+  reaches the portal, never reopens, and (internal notes never send) emails nobody;
+  the event is logged. Held rather than dropped because two of those four are
+  legitimate: staff see it in the timeline with the real sender in the provenance
+  line and can repost it. What a guessed `[#N]` can no longer do is put text in
+  front of another tenant's requesters.
 
 ### Customer resolution ladder (new tickets)
 
@@ -177,10 +193,10 @@ The resulting model is deliberate:
   that knows its contacts, but operators should know a brand-new unregistered contact
   at a domain-less customer is silently dropped (logged), not queued.
 
-Customer scoping holds on the new-ticket path (requester match is customer-scoped,
-exactly like the existing webhook at `inbound.go`), so a stray email can never open a
-ticket in the wrong tenant. The reply path is different — see the residual risk under
-Security posture.
+Customer scoping holds on both paths: a new ticket's requester match is
+customer-scoped, exactly like the existing webhook at `inbound.go`, and a reply is
+public only when its sender belongs to the ticket's customer (see *Who may reply*), so
+a stray email can never open a ticket in the wrong tenant or post into one.
 
 ### Threading token
 
@@ -367,31 +383,23 @@ Follows repo convention (`testutil.SetupApp(t)`, real PB against `t.TempDir()`):
   Reject-unmatched is the primary spam/abuse control — mail we
   can't attribute to a known tenant is dropped, so the open-funnel risk is already
   closed. Author matching is by `From` **within the ticket's customer**; an unmatched
-  sender never gets attribution and never auto-reopens.
+  sender never gets attribution and never auto-reopens, and an outsider's reply is
+  held as an internal comment.
   - **Named residual risk:** log-only means a spoofed *known* sender (forged
     `bob@acme.com` with DKIM `fail`) is still processed — it could post a comment or
     reopen a resolved ticket as "bob." Acceptable for an internal MSP tool at v1, and
     audited via the logged verdict. **Upgrade path** if it ever matters: on a *reply*
     with DKIM `fail`, skip the auto-reopen / hold for staff review (don't hard-block).
-- Tenant isolation on **new tickets** is identical to the existing webhook: all
-  matching is customer-scoped, so a new ticket can't land in the wrong tenant. The
-  `email_domain` public-domain guard (see Schema) closes the one way domain-mapping
-  could have leaked across them.
-  - **Named residual risk — the reply path is scoped by attribution, not by
-    acceptance.** The `[#N]` lookup is by ticket number alone and does not resolve
-    the sender's tenant, so any message that passes the loop/spam guard with a
-    valid `[#N]` in its subject is recorded as a **public** comment on ticket N,
-    whoever sent it. Customer scoping only decides *attribution*: a sender who is
-    not a registered user of that ticket's customer gets no `author_user`, so the
-    comment cannot reopen the ticket or impersonate anyone, and the provenance line
-    names the real sender. It is still visible to that customer's requesters in
-    the portal and still fires `ticket.commented`. Ticket numbers are sequential,
-    so this is guessable. **Upgrade path:** hold unattributed replies as internal comments,
-    or require the sender to resolve to the ticket's customer.
+- Tenant isolation is identical to the existing webhook: all matching is
+  customer-scoped, so a new ticket can't land in the wrong tenant, and a reply
+  from outside the ticket's customer is held internal rather than published —
+  `[#N]` is guessable (numbers are sequential), so it selects the ticket but never
+  grants the right to write on it publicly. The `email_domain` public-domain guard
+  (see Schema) closes the one way domain-mapping could have leaked across tenants.
 
 ## Swapping providers
 
-The seam is `NormalizedInbound` + `Ingest`. A new provider is one file:
+The seam is `NormalizedInbound` + `IngestEmail`. A new provider is one file:
 
 - **SES inbound:** SES receipt rule → S3 (raw MIME) + Lambda; the Lambda (or a small
   SES→SNS→helpdesk route) parses MIME (`enmime`) into `NormalizedInbound` and calls

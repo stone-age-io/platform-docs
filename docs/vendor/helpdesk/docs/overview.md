@@ -212,7 +212,9 @@ platform can open its own ticket, and the customer it belongs to is derived from
 the **message subject**, which is operator-signed and therefore unforgeable.
 
 Replies work too — answer a notification email and it lands as a public comment
-on the right ticket, matched by the `[#42]` token in the subject.
+on the right ticket, matched by the `[#42]` token in the subject. A reply from
+someone outside that ticket's customer is held as an internal note for staff
+instead, since anyone can type `[#42]`.
 
 ---
 

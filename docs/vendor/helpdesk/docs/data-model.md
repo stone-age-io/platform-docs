@@ -112,7 +112,7 @@ optional — machine tickets have none), `source` (`portal` | `agent` | `nats` |
 `email` added `1823000000`, `maintenance` — the preventive-maintenance
 scheduler — added `1829000000`, since none of the others honestly described a
 ticket the cron opened), `origin_subject` (the full hub-side NATS subject,
-provenance for machine tickets), `dedupe_key` (unique when set — ingestion idempotency, also
+provenance for machine tickets), `dedupe_key` (unique per customer when set — ingestion idempotency, also
 carries the inbound email `Message-ID`), `attachments` (≤6 files, 10 MB each),
 `category` (→ ticket_categories, optional — see below), `type` (`reactive` |
 `planned`, default `reactive`; renamed from `issue` | `install` in
@@ -545,8 +545,11 @@ cron prunes them.
 These unique indexes are load-bearing, not just performance:
 
 - `tickets.number` — the collision backstop for the sequential-number hook.
-- `tickets.dedupe_key` (partial, `!= ''`) — absorbs NATS redelivery and
-  webhook retries; a duplicate key is acked/answered without a second ticket.
+- `tickets(customer, dedupe_key)` (partial, `!= ''`) — absorbs NATS redelivery
+  and webhook retries; a duplicate key is acked/answered without a second
+  ticket. Per customer since `1830000000` (it was global, which let one tenant's
+  key swallow another's event): publishers choose keys independently, so a key
+  only means "the same ticket" within one customer.
   It carries preventive-maintenance occurrences too, as
   `pm:{planId}:{YYYY-MM-DD}` (`1829000000`), which is what makes the daily cron
   and a hand-run `helpdesk maintenance-run` safe to overlap: the same plan
