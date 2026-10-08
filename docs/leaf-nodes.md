@@ -336,6 +336,19 @@ would poll the account's whole connection list for every viewer.
 A widget asks only when someone wants to know. The same widget can also ask
 `SUBSZ` or `JSZ` for other answers, with no platform change.
 
+### Which Agents are running
+
+CONNZ tells you that a site's leaf is connected. To find the Agents themselves,
+use service discovery: `$SRV.PING.stone-agent` gets an answer from every Agent
+in the organization ([The Agent §3E](./agent.md#e-service-discovery)).
+
+An Agent behind a leaf answers a request from the hub only if **two**
+credentials allow `$SRV.>` on subscribe: the Agent's own, and the leaf's uplink
+credential. The leaf connection filters `$SRV` like any other subject. On a
+gateway that runs its own leaf, both are the same Thing's credential, and the
+demo seed's `gateway` role allows it. A platform test checks this against a real
+hub with a real leaf.
+
 ### Per-site health, in detail
 
 CONNZ tells you whether the site's leaf is connected to the hub. For the rest

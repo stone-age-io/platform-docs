@@ -442,6 +442,12 @@ other's code.
   well above real load. Decide **before** you create tenants, because the limits
   are set at provisioning. After that, only a Platform Operator can edit an
   account's record ([Configuration §2](./configuration.md#2-section-reference)).
+- [ ] **Consumers per stream reviewed:** since NATS 2.15, a stream allows at
+  most 1000 consumers unless you raise it. Each open KV view in the console and
+  each dashboard widget that reads a stream holds one consumer on the hub. For a
+  busy organization, set `max_consumers` on the stream or the account, or set
+  `default_max_consumers` under `jetstream { limits { ... } }` in `nats.conf`
+  ([2.15 upgrade guide](https://docs.nats.io/release-notes/upgrade-to-2.15)).
 - [ ] **NATS clustered** (3 or more nodes), with `replicas: 3` on the streams and
   KV buckets that matter.
 - [ ] **Credential expiry reviewed:** the NATS Users and Nebula Hosts lists flag

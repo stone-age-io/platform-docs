@@ -375,6 +375,7 @@ Every Agent has these checks, gateway or not:
 |---|---|---|
 | `nats` | **fail** | The agent's own NATS connection is down. This is the only check whose failure means the agent is not doing its job. |
 | `jetstream` | **warn** | JetStream is not usable on the connected server, so telemetry goes nowhere. Heartbeats and commands still work. |
+| `nats_permissions` | **warn** | The server refused a subject that the agent's credential does not allow, since the agent last connected. The detail quotes the server's message. Everything else still works. Add the subject to the agent's NATS role. |
 | `task_metrics` | **warn** | More than half the system-metrics collections failed. Skipped when metrics are disabled. |
 | `nebula` | **warn** | The overlay is enabled but not running, is using its cached config, or has no tunnels. Skipped when the overlay is off. |
 | `platform_sync` | **warn** | No recent successful credential sync with the platform. The session token expires after seven days without one. Skipped when the agent does not get its credentials from the platform. |

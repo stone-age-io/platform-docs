@@ -344,6 +344,33 @@ else:
   response has `changed: false` if the platform returned the credential the
   Agent already had. An Agent that is not platform-managed returns an error.
 
+### E. Service Discovery
+
+The commands are a NATS micro service named `stone-agent`. Every Agent uses the
+same name, so one request finds all the Agents in the organization:
+
+```bash
+nats micro ls stone-agent          # every Agent, with its instance id and version
+nats micro info stone-agent <id>   # one Agent: code, location, OS, commands
+nats micro stats stone-agent       # requests, errors and timings per command
+```
+
+- **Nothing else changes.** The command subjects and the replies are the same as
+  before. An error reply also has `Nats-Service-Error` headers: `400` when the
+  Agent refused the request, `500` when the work failed.
+- **It stays in the organization.** The `$SRV` subjects are ordinary subjects in
+  the account, so a request never reaches another tenant. A caller needs
+  `$SRV.>` on publish, which the seeded `console-operator` role has and
+  `console-readonly` does not.
+- **The Agent's NATS role needs `$SRV.>` on subscribe.** The demo seed's `device`
+  and `gateway` roles have it. Without it, commands still work, but the Agent is
+  not in the list and its `nats_permissions` check warns.
+- **Behind a leaf, the uplink needs it too.** A request from the hub crosses the
+  leaf connection only if the leaf's own credential allows `$SRV.>` ([Leaf
+  Nodes](./leaf-nodes.md)).
+- **It is not a health check.** A stuck Agent can still answer a ping. Use
+  `cmd.health` or `/ready`.
+
 ---
 
 ## 4. Security & Isolation
