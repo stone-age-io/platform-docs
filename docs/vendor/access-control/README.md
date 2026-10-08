@@ -2,113 +2,218 @@
 path: access-control
 nav_order: 50
 access: public
-title: Access Control
 ---
-# stone-access
+# Access Control
 
-A standalone, NATS-native physical access control (PACS) app that dogfoods the
-[Stone-Age.io](https://stone-age.io) platform — RBAC door control with schedules,
-deny-override, and edge autonomy, composed from the platform's primitives
-(NATS core, KV, JetStream, PocketBase control plane).
+`stone-access` is a standalone, NATS-native physical access control (PACS) app
+built on the [Stone-Age.io](https://stone-age.io) platform. It does RBAC door
+control with schedules, deny-override and edge autonomy, using the platform's
+primitives: NATS core, KV, JetStream and a PocketBase control plane.
 
-The authorization decision is a small **pure function** over an in-memory policy
-graph (`internal/policy`), not a rules engine. The central app (`accessd`) is the
-system of record (PocketBase) and mirrors policy to NATS KV one key per record;
-edge controllers (`access-controller`) watch that keyspace and decide locally.
+The authorization decision is a small **pure function** over an in-memory
+policy graph (`internal/policy`), not a rules engine. The central app
+(`accessd`) is the system of record (PocketBase) and mirrors policy to NATS KV,
+one key per record. Edge controllers (`access-controller`) watch that keyspace
+and decide locally. The wire contract is in [Wire Protocol](docs/protocol.md).
 
-> v1 status: the reader is selectable per controller (`controller.reader`) — a
-> **simulated NATS reader** (`nats`, default; taps arrive over NATS, for dev), a real
-> **OSDP reader** on the model's RS485 bus (`osdp`; pure-Go, no cgo, clear-text in
-> v1; Secure Channel is a fast-follow), or `both` (NATS for every portal plus OSDP
-> for each portal with a `reader_address`). The **lock and door inputs have real
-> drivers** alongside the mocks: native GPIO (`internal/drivers/gpio`, KinCony
-> Server-Mini / CM4) and MCP23017 over I2C (`internal/drivers/i2c`, KinCony Pi5R8 /
-> CM5). Door monitoring (forced / held-open / granted-but-no-entry) and controller
-> heartbeat/health are implemented.
+::: note v1 status
+The reader is selectable per controller (`controller.reader`): a
+**simulated NATS reader** (`nats`, the default; taps arrive over NATS, for
+dev), a real **OSDP reader** on the model's RS485 bus (`osdp`; pure Go, no
+cgo, clear text in v1, with Secure Channel to follow), or `both` (NATS for
+every portal plus OSDP for each portal with a `reader_address`). The **lock
+and door inputs have real drivers** beside the mocks: native GPIO
+(`internal/drivers/gpio`, KinCony Server-Mini / CM4) and MCP23017 over I2C
+(`internal/drivers/i2c`, KinCony Pi5R8 / CM5). Door monitoring (forced,
+held-open, granted-but-no-entry) and controller heartbeat and health are
+implemented.
+:::
 
-## What it does
+---
 
-- **Doors decided at the edge.** user → roles → access groups → portals, areas and
-  aux outputs under one schedule (holiday calendars observed); deny-overrides and
-  fail-closed. Postures (secure / unlocked / free access / lockdown / disabled),
-  standing or scheduled. An optional offline cache lets a controller rebooted with
-  NATS down decide on last-known policy.
-- **Intrusion-lite areas.** Arm/disarm as separate rights, scheduled auto-arm,
-  entry-disarm on a valid badge, and intrusion alarms from motion/tamper inputs or a
-  forced member door. A fire-alarm contact is an aux input that can suppress alarm
-  noise at its site; hardware owns egress.
-- **One event stream.** Every tap, alarm, arm transition, and controller
-  online/offline flip is a JetStream event, projected into the console's Events
-  timeline and Alarm Console (acknowledge, deep-link).
-- **Notifications.** Opt-in alarm/fire/offline email (per source *and* per operator,
-  by type and location), a bounded re-page for alarms nobody acknowledges, and a
-  webhook that POSTs each pageable event as JSON to PagerDuty, Slack, ntfy or an
-  ITSM queue.
-- **A badge for the people it is about.** Cardholders and visitors sign in to see
-  their own pass and, where an operator opts in, unlock/arm/pulse remotely — always
-  authorized by the same decision function as a physical tap.
+## What It Does
+
+- **Doors decided at the edge.** User → roles → access groups → portals, areas
+  and aux outputs under one schedule, with holiday calendars observed. Deny
+  overrides, and anything unknown fails closed. Postures (secure, unlocked,
+  free access, lockdown, disabled) are standing or scheduled. An optional
+  offline cache lets a controller rebooted with NATS down decide on last-known
+  policy.
+- **Intrusion-lite areas.** Arm and disarm are separate rights. Areas support
+  scheduled auto-arm, entry-disarm on a valid badge, and intrusion alarms from
+  motion or tamper inputs or a forced member door. A fire-alarm contact is an
+  aux input that can suppress alarm noise at its site. Hardware owns egress.
+- **One event stream.** Every tap, alarm, arm transition and controller
+  online/offline flip is a JetStream event. The console projects them into its
+  Events timeline and Alarm Console (acknowledge, deep-link).
+- **Notifications.** Opt-in alarm, fire and offline email (per source *and* per
+  operator, by type and location), a bounded re-page for alarms nobody
+  acknowledges, and a webhook that POSTs each pageable event as JSON to
+  PagerDuty, Slack, ntfy or an ITSM queue.
+- **A badge for the people it is about.** Cardholders and visitors sign in to
+  see their own pass. Where an operator opts in, they can unlock, arm or pulse
+  remotely. The same decision function as a physical tap authorizes every
+  remote action.
 - **An auditable control plane.** Operator capabilities, a change log of every
   policy edit, and a simulator that answers "would this card open that door".
 
-## Something to look at
+---
 
-A fresh `accessd` has one door and one cardholder, which is enough to prove the
-decision function runs and not much else. One command fills it:
+## Try the Demo
+
+A fresh `accessd` has one door and one cardholder. That proves the decision
+function runs and not much else. One command fills it:
 
 ```bash
 ./accessd migrate up
 ./accessd demo-seed --confirm
 ```
 
-Northwind Traders across three sites: four controllers spanning both board models,
-ten portals (including a maglock on a freezer door and a vehicle gate), four areas
-(two arming themselves overnight on a schedule), aux inputs covering the monitor,
-intrusion and 24h-tamper point types, a holiday calendar, eight roles, six access
-groups, fifteen cardholders (thirteen with badge logins, three of them visitors in
-three different pass states), and a backdated event history guaranteed to carry
-**eight distinct decision reason codes** plus three unacknowledged alarms.
+You get Northwind Traders across three sites: four controllers spanning both
+board models, ten portals (including a maglock on a freezer door and a vehicle
+gate), four areas (two arm themselves overnight on a schedule), aux inputs
+covering the monitor, intrusion and 24h-tamper point types, a holiday calendar,
+eight roles, six access groups, fifteen cardholders (thirteen with badge logins,
+three of them visitors in three different pass states), and a backdated event
+history that always carries **eight distinct decision reason codes** plus three
+unacknowledged alarms.
 
 Every badge login is `demo1234`. Sign in at `/login?as=badge` as
-`elena@northwind.example` (warehouse — can arm *and* disarm) and
-`priya@northwind.example` (cleaning — can arm, **cannot** disarm) to see why arm
+`elena@northwind.example` (warehouse: can arm *and* disarm) and
+`priya@northwind.example` (cleaning: can arm, **cannot** disarm) to see why arm
 and disarm are two rights rather than one checkbox.
 
-The three site codes — `KC-DC1`, `KC-OFFICE`, `SGF-XD2` — are the ones the
-[Stone Age platform](https://github.com/stone-age-io/platform)'s own `demo-seed`
-writes for its Northwind organization, and every controller and portal code above
-is also a Thing in that platform's inventory. Seed both and the two apps describe
-one company: a door here and a Thing there are the same door, and its QR label
-resolves in either.
+The three site codes (`KC-DC1`, `KC-OFFICE`, `SGF-XD2`) are the ones the
+[Stone Age platform](https://github.com/stone-age-io/platform)'s own
+`demo-seed` writes for its Northwind organization, and every controller and
+portal code above is also a Thing in that platform's inventory. Seed both and
+the two apps describe one company: a door here and a Thing there are the same
+door, and its QR label resolves in either.
 
-Idempotent, so re-running tops up rather than duplicating. `--confirm` is
-required and is the whole safety mechanism — this ships in the binary you run in
-production, and it creates people holding working credentials on real doors.
+The seed is idempotent, so a re-run tops up rather than duplicating.
 
-### Making it move
+::: warning `--confirm` is the only safety mechanism
+`demo-seed` ships in the binary you run in production, and it creates people
+holding working credentials on real doors.
+:::
 
-[`demo/rules/`](https://github.com/stone-age-io/access-control/blob/main/demo/rules) holds [rule-router](https://github.com/skeeeon/rule-router)
-scheduler rules that keep the estate busy: badge taps at all ten portals,
-operator door-pops, a nightly gate lockdown, yard lighting, alarms and a fire
-drill. They publish to the **reader** subject, so running controllers decide each
-one for real — the reason codes on the Events screen are the ones
-`policy.Decide` produced, and editing an access group changes what the next tap
-returns.
+### Making It Move
 
-## Docs
+[`demo/rules/`](https://github.com/stone-age-io/access-control/blob/main/demo/rules) holds
+[rule-router](https://github.com/skeeeon/rule-router) scheduler rules that keep
+the estate busy: badge taps at all ten portals, operator door-pops, a nightly
+gate lockdown, yard lighting, alarms and a fire drill. They publish to the
+**reader** subject, so running controllers decide each one for real. The reason
+codes on the Events screen are the ones `policy.Decide` produced, and editing an
+access group changes what the next tap returns. See [Demo Data](demo/README.md).
 
-- [`docs/protocol.md`](docs/protocol.md) — the NATS wire contract: subjects, KV
-  shapes (`ACC_POLICY` + `ACC_STATUS`), decision reason codes, audit projection.
-- [`docs/configuration.md`](docs/configuration.md) — every config key, default,
-  and `SA_` env override for both binaries.
-- [`docs/operators.md`](docs/operators.md) — the control-plane access model: operator
-  sign-in, capabilities, collection-rule matrix, and the `audit_logs` change log.
-- [`docs/hardware.md`](docs/hardware.md) — physical I/O: supported boards, pin
-  maps, relay/input polarity, transports, and how to add a board.
-- [`docs/plan-events.md`](docs/plan-events.md) — the design record for the event,
-  notification, webhook, and fire-input work: why it was scoped the way it was.
-- [`demo/README.md`](demo/README.md) — dev/demo tooling around `accessd demo-seed`:
-  rule-router rules that keep the event feed live, a Telegraf config for long-term
-  event storage, and the older PowerShell seed + simulator.
+---
+
+## Build and Run
+
+The UI is `//go:embed`-ed into `accessd` at Go compile time, so build the UI
+**before** the binary:
+
+```
+cd ui && npm install        # once
+npm run build               # → internal/webui/public  (commit this)
+cd .. && go build ./cmd/accessd
+./accessd serve             # UI at http://127.0.0.1:8090/  · admin at /_
+```
+
+The committed `internal/webui/public` means a fresh checkout embeds a working UI
+without npm. Rebuild and commit it whenever the frontend changes.
+
+Create the admin login (a PocketBase superuser) with
+`./accessd superuser upsert <email> <pass>`.
+
+Build and run an edge controller:
+
+```
+go build ./cmd/access-controller
+./access-controller -config config/controller.yaml
+```
+
+### UI Development
+
+```
+npm --prefix ui run dev     # http://localhost:5174, proxies /api + /_ to :8090
+```
+
+Requires Node 20.19+ / 22.12+ (Vite 8).
+
+### Test
+
+```
+go test ./...
+```
+
+---
+
+## Web UI
+
+`accessd` serves a Vue 3 management console at `/`. It covers an overview,
+locations and a location map, schedules and holiday calendars, portals and
+printable door placards, controllers, areas, aux I/O, access groups, roles,
+cardholders (visitors included), credentials, CSV import, an events timeline, an
+alarm console, reports including the access simulator, a live operational
+monitor, operator management, and the control-plane audit log. The UI is
+compiled into `internal/webui/public` and **`//go:embed`-ed into the accessd
+binary**. There is no `pb_public` directory to ship; the binary is
+self-contained.
+
+### Operators
+
+Operators sign in against the built-in `users` auth collection. Their abilities
+are an orthogonal set of capabilities (`enroll`, `policy`, `topology`,
+`command`, `operators`) that gate writes and commands. Reads stay open to any
+authenticated operator. A PocketBase **superuser**
+(`accessd superuser upsert <email> <pass>`) is the break-glass account and also
+signs into the admin UI at `/_`. See
+[Operators & Authorization](docs/operators.md).
+
+### The Badge
+
+Cardholders and visitors have a second, much smaller surface. A holder signs in
+at `/login?as=badge` and sees their badge (photo, QR, validity) and what it
+grants. Where an operator has opted a door, area or relay in, the holder can
+open it, arm or disarm it, or pulse it from their phone. The same pure decision
+function the edge runs authorizes each action, so a badge can never do remotely
+what it could not do in person. `cardholders` is itself the auth collection for
+this tier: one person is one record, whether or not they ever sign in.
+[Operators & Authorization](docs/operators.md) covers the boundary between the
+two tiers.
+
+The badge is a phone screen: a fixed-height shell with one scroll region, a
+bottom navigation bar whose screens (badge, plan, portals, areas, controls, on
+site) appear only when the holder has something in them, a light/dark toggle
+and an account menu in the header, and 44px-minimum tap targets.
+
+The whole UI is an **installable PWA** (`ui/public/manifest.json`). Its service
+worker caches **nothing**, because the app must say what a badge opens *right
+now*. Offline resilience belongs at the edge, where the controller decides
+locally.
+
+### Visitors
+
+A visitor is a cardholder. **New Visitor Pass** (`/visitors/new`) mints a
+time-bound pass, and the visitor's Cardholder page reissues or revokes it.
+
+`GET /api/badge/preview/{id}` shows an operator what a holder's own badge says.
+It reuses the holder's exact payload and the badge's own components, so it is
+the fastest answer to "my pass doesn't work". It is read-only and mints no
+session: a badge action is recorded as the **holder's**, so acting through a
+borrowed badge session would look the same as the holder in the audit trail.
+
+### Branding
+
+You can rebrand the console at runtime without a rebuild. Point `branding.dir`
+(env `SA_BRANDING_DIR`) at a host directory of `theme.css`, `logo.svg` and
+`branding.json` to override the app name, logo and DaisyUI theme. See
+[Configuration Reference](docs/configuration.md#10-branding) and the
+[`branding.example/`](https://github.com/stone-age-io/access-control/blob/main/branding.example) template.
+
+---
 
 ## Layout
 
@@ -156,79 +261,26 @@ demo/                   dev-only: rules/ (rule-router activity for demo-seed), t
                         and the older seed.ps1 + access-demo.yaml
 ```
 
-## Web UI
+---
 
-`accessd` serves a Vue 3 management console (an overview, locations + a location map,
-schedules + holiday calendars, portals + printable door placards, controllers, areas, aux
-I/O, access groups, roles, cardholders (visitors included), credentials, CSV import, an
-events timeline, an alarm console, reports including the access simulator, a live
-operational monitor, operator management, and the control-plane audit log) at `/`. It is
-compiled into `internal/webui/public` and **`//go:embed`-ed into the accessd
-binary** — there is no `pb_public` directory to ship; the binary is
-self-contained.
+## Docs
 
-Operators sign in against the built-in `users` auth collection; their abilities are
-an orthogonal set of capabilities (`enroll`/`policy`/`topology`/`command`/`operators`)
-that gate writes and commands while reads stay open to any authenticated operator —
-see [`docs/operators.md`](docs/operators.md). A PocketBase **superuser**
-(`accessd superuser upsert <email> <pass>`) is the break-glass account and also
-signs into the admin UI at `/_`.
+- **[Wire Protocol](docs/protocol.md)**: the NATS wire contract. Subjects, KV
+  shapes (`ACC_POLICY` and `ACC_STATUS`), decision reason codes and the audit
+  projection.
+- **[Configuration Reference](docs/configuration.md)**: every config key,
+  default and `SA_` env override for both binaries.
+- **[Operators & Authorization](docs/operators.md)**: the control-plane access
+  model. Operator sign-in, capabilities, the collection-rule matrix and the
+  `audit_logs` change log.
+- **[Hardware & Readers](docs/hardware.md)**: physical I/O. Supported boards,
+  pin maps, relay and input polarity, transports, and how to add a board.
+- **[Demo Data](demo/README.md)**: dev and demo tooling around
+  `accessd demo-seed`. rule-router rules that keep the event feed live, a
+  Telegraf config for long-term event storage, and the older PowerShell seed and
+  simulator.
 
-There is a **second, much smaller surface for the people the system is about**: a
-cardholder or visitor signs in at `/login?as=badge` and sees their badge (photo, QR,
-validity) and what it grants. Where an operator has opted the door, area, or
-relay in, they can also open it, arm/disarm it, or pulse it from their phone; every such
-action is authorized by the same pure decision function the edge runs, so a badge can
-never do remotely what it could not do in person. `cardholders` is itself the auth
-collection for this tier — one person is one record whether or not they ever sign in — and
-`docs/operators.md` covers the boundary between the two tiers.
+Design record (in the repo, not on the wiki):
 
-It is built as a **phone screen, not a document**: a fixed-height shell with one scroll
-region, a bottom navigation bar whose screens (badge, plan, portals, areas, controls, on
-site) appear only when the holder has something in them, a light/dark toggle and an account
-menu in the header, and 44px-minimum tap targets throughout. The whole UI is an
-**installable PWA** (`ui/public/manifest.json`), which matters most here — a badge you tap
-an icon for beats one you find a bookmark for. Its service worker caches **nothing** on
-purpose: this app's job is to say what a badge opens *right now*, and offline resilience
-belongs at the edge, where the controller decides locally.
-
-For the operator side of the same tier, a visitor is a cardholder: **New Visitor Pass**
-(`/visitors/new`) mints a time-bound pass, the visitor's Cardholder page reissues or
-revokes it, and
-`GET /api/badge/preview/{id}` renders *what a holder's own badge says* — the fastest answer
-to "my pass doesn't work", since it reuses the holder's exact payload and the badge's own
-components. It is read-only and mints no session: a badge action is recorded as the
-**holder's**, so acting through a borrowed badge session would be indistinguishable from
-them in the audit trail.
-
-The console is **rebrandable at runtime without a rebuild**: point `branding.dir`
-(env `SA_BRANDING_DIR`) at a host directory of `theme.css` / `logo.svg` /
-`branding.json` to override the app name, logo, and DaisyUI theme. See
-[`docs/configuration.md`](docs/configuration.md#branding-accessd-only) and the
-[`branding.example/`](https://github.com/stone-age-io/access-control/blob/main/branding.example) template.
-
-### Build order (the embed happens at Go compile time)
-
-```
-cd ui && npm install        # once
-npm run build               # → internal/webui/public  (commit this)
-cd .. && go build ./cmd/accessd
-./accessd serve             # UI at http://127.0.0.1:8090/  · admin at /_
-```
-
-Always build the UI **before** the binary; the committed `internal/webui/public`
-means a fresh checkout embeds a working UI without needing npm.
-
-### UI development
-
-```
-npm --prefix ui run dev     # http://localhost:5174, proxies /api + /_ to :8090
-```
-
-Requires Node 20.19+ / 22.12+ (Vite 8).
-
-## Test
-
-```
-go test ./...
-```
+- [`docs/plan-events.md`](https://github.com/stone-age-io/access-control/blob/main/docs/plan-events.md): the design record for the event,
+  notification, webhook and fire-input work, and why it was scoped that way.

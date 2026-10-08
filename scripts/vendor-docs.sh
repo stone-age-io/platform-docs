@@ -66,16 +66,12 @@ helpdesk|$hd_src|stone-age-io/helpdesk|docs/protocol.md|helpdesk/protocol|30|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/notifications.md|helpdesk/notifications|40|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/email-ingestion.md|helpdesk/email-ingestion|50|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/configuration.md|helpdesk/configuration|60|
-helpdesk|$hd_src|stone-age-io/helpdesk|docs/plan.md|helpdesk/plan|70|
-helpdesk|$hd_src|stone-age-io/helpdesk|docs/service-delivery-plan.md|helpdesk/service-delivery-plan|80|
-helpdesk|$hd_src|stone-age-io/helpdesk|docs/nats-notifications-plan.md|helpdesk/nats-notifications-plan|90|
-access-control|$ac_src|stone-age-io/access-control|README.md|access-control|50|access: public\ntitle: Access Control
+access-control|$ac_src|stone-age-io/access-control|README.md|access-control|50|access: public
 access-control|$ac_src|stone-age-io/access-control|docs/protocol.md|access-control/protocol|10|
 access-control|$ac_src|stone-age-io/access-control|docs/configuration.md|access-control/configuration|20|
 access-control|$ac_src|stone-age-io/access-control|docs/operators.md|access-control/operators|30|
 access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-control/hardware|40|
 access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|50|
-access-control|$ac_src|stone-age-io/access-control|docs/plan-events.md|access-control/plan-events|60|
 EOF
 }
 
@@ -105,6 +101,27 @@ pages | while IFS='|' read -r repo src gh file path order extra; do
         -e '/^<\/\{0,1\}details>$/d' \
         -e 's|^<summary><b>\(.*\)</b></summary>$|### \1|' \
         "$src/$file" |
+      # A GitHub alert (`> [!NOTE]` or `> [!WARNING]`, then a `> **Title**`
+      # line) becomes a pb-wiki callout, so the same source reads well in both.
+      awk '
+        /^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][[:space:]]*$/ {
+          kind = ($0 ~ /WARNING|CAUTION/) ? "warning" : "note"
+          inbox = 1; head = 1; next
+        }
+        inbox && /^>/ {
+          line = $0; sub(/^> ?/, "", line)
+          if (head) {
+            head = 0
+            if (line ~ /^\*\*.*\*\*$/) {
+              gsub(/^\*\*|\*\*$/, "", line); print "::: " kind " " line; next
+            }
+            print "::: " kind
+          }
+          print line; next
+        }
+        inbox { if (head) print "::: " kind; print ":::"; inbox = 0 }
+        { print }
+        END { if (inbox) { if (head) print "::: " kind; print ":::" } }' |
       GH=$gh DIR=$(dirname "$file") \
       VENDORED=$(pages | awk -F'|' -v r="$repo" '$1 == r { print $4 }') perl -pe '
         BEGIN { %v = map { $_ => 1 } split /\s+/, $ENV{VENDORED} }
