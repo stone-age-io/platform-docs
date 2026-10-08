@@ -203,10 +203,12 @@ After that each durable keeps its position on the NATS server (§5).
   `cardholders`, `credentials`, `holidays`, `aux_input`, `aux_output` and
   `areas`. A rename deletes the old key; a delete removes the key; a put whose
   bytes match what KV already holds is skipped, so a no-op edit does not wake
-  every controller. At boot, `SyncAll` publishes every record (32 puts in
-  parallel) and **prunes any key with no backing record**, which covers
-  migration-seeded data and changes made while accessd was down. Key and value
-  shapes: [Policy KV](protocol.md#8-policy-kv-acc_policy).
+  every controller. At boot and again on every NATS reconnect, `SyncAll`
+  reconciles the whole bucket (32 writes in parallel): it puts each record
+  whose key does not already hold its payload and **prunes any key with no
+  backing record**. That covers migration-seeded data, changes made while
+  accessd was down, and edits whose KV write failed during an outage. Key and
+  value shapes: [Policy KV](protocol.md#8-policy-kv-acc_policy).
 - **Audit projection.** Writes each event as an `events` row, idempotent on
   `stream_seq`. Column mapping and the `source` rules:
   [Audit Projection](protocol.md#11-audit-projection).
@@ -326,6 +328,11 @@ The client reconnects according to `nats.maxReconnects` (forever by default)
 and `nats.reconnectWait`. See
 [NATS Connection](configuration.md#2-nats-connection).
 
+- **Policy mirror.** An edit saved while NATS is down commits to PocketBase but
+  fails its KV write. On reconnect accessd re-runs `SyncAll` in the background,
+  which writes only the keys that differ, so a credential revoked during the
+  outage reaches the controllers as soon as the link returns. Reconnects that
+  arrive during a sync queue one more sync, no more.
 - **Status projector.** On reconnect accessd stops the `ACC_STATUS` watcher, the
   projector re-creates it, and `WatchAll` re-delivers every key, so
   `point_status` fully re-syncs.
@@ -337,13 +344,6 @@ and `nats.reconnectWait`. See
   reconnect from each durable's position.
 - **Command and badge routes.** They publish over core NATS, fire-and-forget.
   Nothing retries a command.
-
-::: warning Edits made while NATS is down do not reach KV until later
-The mirror's KV write runs after the record commits. If it fails, the error is
-logged and the record stays saved, but nothing retries it on reconnect. The
-key is corrected by the next edit to that record or by the boot `SyncAll`. If
-you edited policy during an outage, restart accessd once NATS is back.
-:::
 
 ### When accessd is down
 
@@ -364,7 +364,7 @@ webhook delivery, entry-disarm, liveness tracking and the sweeps.
 
 | Piece | On the next `serve` |
 | :--- | :--- |
-| `ACC_POLICY` | `SyncAll` republishes every record and deletes keys with no record |
+| `ACC_POLICY` | `SyncAll` writes every record whose key differs and deletes keys with no record |
 | `events` | `acc-audit` resumes from its position and projects the backlog; `stream_seq` skips anything already written |
 | Email, webhook, entry-disarm | Each durable resumes from its position, so events published during the outage are processed late rather than skipped |
 | `point_status` | `WatchAll` re-delivers every key; rows with no key are deleted. An area whose state changed while accessd was down produces one transition per changed key, compared against the last projected row |

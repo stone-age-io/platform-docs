@@ -291,7 +291,7 @@ collapses to one pass, and runs off the watch goroutine.
 | :--- | :--- | :--- |
 | `PortalManager` | Portals whose `controller` is this code and that have a type | Arms the lock relay and DPS/REX inputs, then the reader. Re-arms when the type, `reader_address`, relay or input index, or wiring sense changes. Disarms a portal that leaves. |
 | `AuxManager` | `aux_input` and `aux_output` records bound to this code | Arms the line. Re-arms when the index (or an input's contact sense) changes. |
-| `AreaManager` | Areas with a member aux input **or** portal on this box | Writes this box's arm shadow `area.{controller}.{code}` with the full participant set (`peers`). Also runs on every hold-eval tick, so a scheduled-arm boundary refreshes with no policy event. |
+| `AreaManager` | Areas with a member aux input **or** portal on this box | Writes this box's arm shadow `area.{controller}.{code}` with the full participant set (`peers`). Also runs on every hold-eval tick, so a scheduled-arm boundary refreshes with no policy event. It rewrites a shadow only when its state, provenance or peers change, so `updatedAt` is the time of the last change. |
 
 A portal whose hardware or reader fails to arm is left fully unarmed and
 retried on the **next policy change**, not on a timer (`failed to arm portal
