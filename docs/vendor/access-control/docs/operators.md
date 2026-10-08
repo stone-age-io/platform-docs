@@ -1,6 +1,6 @@
 ---
 path: access-control/operators
-nav_order: 30
+nav_order: 50
 ---
 # Operators & Authorization
 
@@ -601,6 +601,7 @@ value to disable pruning and keep audit history forever. See
 
 ## 9. Where to Go Next
 
+- What the central service runs and owns: [Central Service (accessd)](accessd.md)
 - The data-plane decision, subjects and command bodies: [Wire Protocol](protocol.md)
 - Rate limits, notifications and retention settings: [Configuration Reference](configuration.md)
 - Controllers, readers and wiring: [Hardware & Readers](hardware.md)

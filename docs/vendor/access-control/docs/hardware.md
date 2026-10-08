@@ -1,6 +1,6 @@
 ---
 path: access-control/hardware
-nav_order: 40
+nav_order: 60
 ---
 # Hardware & Readers
 
@@ -9,6 +9,8 @@ it energizes, the door inputs it reads, and the readers that deliver
 credentials. The authorization decision is a pure function that runs centrally
 and at the edge (`internal/policy`), and is not covered here. For the config
 keys that select hardware, see [Configuration Reference](configuration.md).
+For everything else the box runs (boot, offline behaviour, its status page),
+see [Edge Controller (access-controller)](controller.md).
 The design rationale for the driver layer is in the repo's `CLAUDE.md`.
 
 ---
@@ -359,6 +361,7 @@ commissioning record to check the bench against.
 
 ## 9. Where to Go Next
 
+- What runs on each box, offline behaviour and its status page: [Edge Controller (access-controller)](controller.md)
 - The config keys that select a driver, model and reader: [Configuration Reference](configuration.md)
 - Tap, command and fire subjects and payloads: [Wire Protocol](protocol.md)
 - Who may edit portals, controllers and aux points: [Operators & Authorization](operators.md)

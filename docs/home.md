@@ -26,7 +26,7 @@ below, or use search in the sidebar.
 - **Running the service desk:** the [Helpdesk overview](./vendor/helpdesk/docs/overview.md),
   then its [wire protocol](./vendor/helpdesk/docs/protocol.md) for machine-generated tickets.
 - **Controlling doors:** the [Access Control README](./vendor/access-control/README.md),
-  then its [wire protocol](./vendor/access-control/docs/protocol.md) and
-  [hardware guide](./vendor/access-control/docs/hardware.md).
+  then its [central service](./vendor/access-control/docs/accessd.md) and
+  [edge controller](./vendor/access-control/docs/controller.md) pages.
 - **Going to production:** the [Operations checklist](./operations.md#7-production-checklist).
 - **Looking up a term:** [What We Call Things](./overview.md#what-we-call-things).

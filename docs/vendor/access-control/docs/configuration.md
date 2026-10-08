@@ -1,6 +1,6 @@
 ---
 path: access-control/configuration
-nav_order: 20
+nav_order: 40
 ---
 # Configuration Reference
 
@@ -15,6 +15,10 @@ default or env var:
 
 - [`config/accessd.yaml`](https://github.com/stone-age-io/access-control/blob/main/config/accessd.yaml): the central app.
 - [`config/controller.yaml`](https://github.com/stone-age-io/access-control/blob/main/config/controller.yaml): an edge controller.
+
+What each binary does with its config is on its own page:
+[Central Service (accessd)](accessd.md) and
+[Edge Controller (access-controller)](controller.md).
 
 ---
 
@@ -121,6 +125,9 @@ section. When enabled, it serves these on `diagnostics.address`:
 - `/status.json`.
 - `/`, which redirects to `/status`.
 
+What the page shows, the JSON shape and how to read it in the field are in
+[Edge Controller §5](controller.md#5-the-local-status-page).
+
 It shows this box's live in-memory state: identity (including `subjects.app`),
 NATS and policy-sync health, the portals it bound and their door and posture
 state, aux inputs and outputs, fire-input suppression state, recent decisions
@@ -163,6 +170,9 @@ severs the data plane.
 ---
 
 ## 7. accessd
+
+Keys only the central service reads. What it runs with them is in
+[Central Service (accessd)](accessd.md).
 
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
@@ -352,7 +362,8 @@ branding:
 
 A controller's config is only its identity and hardware selection. **Which
 portals it drives, and their relay and input bindings, live in policy, not
-here**, matched by `controller.code`.
+here**, matched by `controller.code`. What the box does at boot and offline is
+in [Edge Controller (access-controller)](controller.md).
 
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
@@ -458,6 +469,8 @@ if you prefer, with env vars to specialize per host.
 
 ## 14. Where to Go Next
 
+- What the central service runs and owns: [Central Service (accessd)](accessd.md)
+- What runs on each box, offline behaviour and its status page: [Edge Controller (access-controller)](controller.md)
 - Overview, build and run: [Access Control](../README.md)
 - Subjects, KV keys and message shapes: [Wire Protocol](protocol.md)
 - Operator permissions, sign-in and the audit log: [Operators & Authorization](operators.md)

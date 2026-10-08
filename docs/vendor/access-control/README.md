@@ -11,10 +11,9 @@ control with schedules, deny-override and edge autonomy, using the platform's
 primitives: NATS core, KV, JetStream and a PocketBase control plane.
 
 The authorization decision is a small **pure function** over an in-memory
-policy graph (`internal/policy`), not a rules engine. The central app
-(`accessd`) is the system of record (PocketBase) and mirrors policy to NATS KV,
-one key per record. Edge controllers (`access-controller`) watch that keyspace
-and decide locally. The wire contract is in [Wire Protocol](docs/protocol.md).
+policy graph (`internal/policy`), not a rules engine. It runs on the edge
+controller, next to the door, so a door keeps working when the network does
+not.
 
 ::: note v1 status
 The reader is selectable per controller (`controller.reader`): a
@@ -28,6 +27,27 @@ and door inputs have real drivers** beside the mocks: native GPIO
 held-open, granted-but-no-entry) and controller heartbeat and health are
 implemented.
 :::
+
+---
+
+## Two Binaries
+
+The system is two programs that share nothing but NATS.
+
+| | `accessd` | `access-controller` |
+| :--- | :--- | :--- |
+| **Runs** | Once per deployment, centrally | Once per edge box, beside the doors |
+| **Is** | The system of record: PocketBase, the management console, the badge tier | The decision point: reads cards, decides, drives locks and watches doors |
+| **Writes** | Policy records, mirrored to NATS KV; the events projection; arm-state overrides | Events to JetStream; its own status shadow; heartbeats |
+| **Reads** | Events, status and heartbeats from every controller | The policy KV, into memory |
+| **Sends** | Email, webhooks, operator commands | Nothing outside NATS |
+| **Web UI** | The console at `/` (port 8090) | An optional read-only `/status` page, localhost by default |
+| **Page** | [Central Service (accessd)](docs/accessd.md) | [Edge Controller (access-controller)](docs/controller.md) |
+
+`accessd` never decides a physical tap and `access-controller` never writes
+PocketBase. Policy flows down through KV, and events and state flow up through
+JetStream and the status KV. The [Wire Protocol](docs/protocol.md) is the whole
+contract between them.
 
 ---
 
@@ -111,6 +131,8 @@ access group changes what the next tap returns. See [Demo Data](demo/README.md).
 
 ## Build and Run
 
+### accessd
+
 The UI is `//go:embed`-ed into `accessd` at Go compile time, so build the UI
 **before** the binary:
 
@@ -127,12 +149,16 @@ without npm. Rebuild and commit it whenever the frontend changes.
 Create the admin login (a PocketBase superuser) with
 `./accessd superuser upsert <email> <pass>`.
 
-Build and run an edge controller:
+### access-controller
 
 ```
 go build ./cmd/access-controller
 ./access-controller -config config/controller.yaml
 ```
+
+With no hardware configured it runs on mock drivers and the NATS reader, which
+is enough to decide simulated taps. Set `diagnostics.enabled: true` to get its
+local status page. See [Edge Controller](docs/controller.md).
 
 ### UI Development
 
@@ -150,7 +176,7 @@ go test ./...
 
 ---
 
-## Web UI
+## The Console
 
 `accessd` serves a Vue 3 management console at `/`. It covers an overview,
 locations and a location map, schedules and holiday calendars, portals and
@@ -161,6 +187,9 @@ monitor, operator management, and the control-plane audit log. The UI is
 compiled into `internal/webui/public` and **`//go:embed`-ed into the accessd
 binary**. There is no `pb_public` directory to ship; the binary is
 self-contained.
+
+This is the only management UI. A controller's own `/status` page is a
+read-only view of one box for field troubleshooting, and it changes nothing.
 
 ### Operators
 
@@ -218,46 +247,52 @@ You can rebrand the console at runtime without a rebuild. Point `branding.dir`
 ## Layout
 
 ```
-cmd/accessd/            central: PocketBase + KV mirror + audit consumer + health monitor + notification/disarm/webhook sinks
-cmd/access-controller/  edge: policy watcher + pure decision + drivers + door monitoring + heartbeat + optional /status page
-internal/policy/        the pure core: Policy types, Decide() + DecideArea()/DecideOutput(), windowOpen()
-internal/controller/    PolicyStore (KV watch → maps) + offline policy cache, tap loop, door state machine,
-                        portal/aux/area managers, commands, heartbeat
-internal/drivers/       ReaderDriver / LockDriver / DoorInput interfaces + mocks (MockHardware)
-internal/drivers/hardware/  per-model hardware Profile: logical relay/input index → physical line + transport
-internal/drivers/gpio/  native GPIO lock + door-input backend (go-gpiocdev, no cgo; Linux only)
-internal/drivers/i2c/   MCP23017 lock + door-input backend over I2C (periph.io, no cgo; polled inputs)
-internal/drivers/osdp/  OSDP reader: RS485 CP engine (pure-Go, no cgo) + wire codec (osdp/wire); controller.reader: osdp
-internal/diag/          opt-in, read-only local /status page of an access-controller's live state (field troubleshooting)
-internal/health/        accessd-side heartbeat subscriber → controllers.last_seen/status + online/offline events
-internal/authz/         operator auth + capability checks for accessd's custom HTTP routes
-internal/commandapi/    UI→NATS command bridge (grant/posture/aux output), gated by the `command` capability
-internal/modelsapi/     GET /api/models — enum/options metadata for the UI
-internal/simulateapi/   POST /api/simulate — the access simulator; a decision oracle, so operator-only
-internal/badgeapi/      the badge tier: a holder's own badge + remote unlock/arm/pulse, and the operator
-                        routes that mint a visit and read a holder's badge for troubleshooting
-internal/badgesweep/    marks expired visitor credentials revoked — hygiene, not enforcement
-internal/policysnapshot/ point-in-time snapshot of ACC_POLICY, shared by the simulator and the badge tier
-internal/mirror/        PocketBase record hooks → one ACC_POLICY KV key per record (+ boot reconcile/prune)
-internal/policykv/      the wire contract: KV key scheme + JSON shapes shared by mirror and PolicyStore
-internal/subjects/      every NATS subject is built and parsed here — never hand-formatted elsewhere
-internal/notify/        alarm/fire/offline email sink (a second ACC_EVENTS durable); inert until opted into
-internal/repage/        re-sends an urgent alarm still unacknowledged after 15 min, at most twice
-internal/webhook/       POSTs each pageable event as JSON to `accessd.webhookURL` (another ACC_EVENTS durable)
-internal/disarm/        entry-disarm sink: a valid grant at a `disarm_on_grant` portal disarms its area
-internal/armrelease/    releases a one-shot disarm override once a scheduled area's base state is disarmed
-internal/statuskv/      the upward wire contract: ACC_STATUS key scheme + JSON shapes (the reverse of policykv)
-internal/status/        upward device shadow: ACC_STATUS → point_status projection (+ area arm-transition events)
-internal/changelog/     control-plane audit log: API-driven policy edits + logins → audit_logs collection
-internal/audit/         JetStream consumer → PocketBase events collection
-internal/natsx/         NATS connection + KV helpers
-internal/demoseed/      `accessd demo-seed`: the Northwind Traders demo estate, in-process
-internal/logger/        zap wrapper
-internal/metrics/       Prometheus instrumentation (accessd :2113, controller :2114)
-internal/webui/         the compiled management UI, //go:embed-ed into accessd
+# accessd only
+cmd/accessd/            central: PocketBase, console, KV mirror, event projection, sinks and sweeps
 pbmigrations/           PocketBase collections (schema-in-code)
-ui/                     Vue 3 + Vite management UI source (PocketBase-backed CRUD)
-demo/                   dev-only: rules/ (rule-router activity for demo-seed), telegraf/ (event → VictoriaMetrics),
+internal/mirror/        PocketBase record hooks → one ACC_POLICY KV key per record (+ boot reconcile/prune)
+internal/audit/         JetStream consumer → PocketBase events collection (+ optional prune)
+internal/status/        ACC_STATUS → point_status projection (+ area arm-transition events)
+internal/health/        heartbeat subscriber → controllers.last_seen/status + online/offline events
+internal/notify/        alarm/fire/offline email sink (an ACC_EVENTS durable); inert until opted into
+internal/webhook/       POSTs each pageable event as JSON to `accessd.webhookURL` (another durable)
+internal/disarm/        entry-disarm sink: a valid grant at a `disarm_on_grant` portal disarms its area
+internal/repage/        re-sends an urgent alarm still unacknowledged after 15 min, at most twice
+internal/armrelease/    releases a one-shot disarm override once a scheduled area's base state is disarmed
+internal/badgesweep/    marks expired visitor credentials revoked (hygiene, not enforcement)
+internal/changelog/     control-plane audit log: API-driven policy edits + logins → audit_logs
+internal/authz/         operator auth + capability checks for the custom HTTP routes
+internal/commandapi/    console → NATS commands (grant/posture/aux output) + area arm and alarm ack
+internal/modelsapi/     GET /api/models: the hardware-model catalogue for the console
+internal/simulateapi/   POST /api/simulate: the access simulator (a decision oracle, so operator-only)
+internal/badgeapi/      the badge tier: a holder's own badge + remote unlock/arm/pulse, visitor minting
+internal/policysnapshot/ point-in-time snapshot of ACC_POLICY, shared by the simulator and the badge tier
+internal/demoseed/      `accessd demo-seed`: the Northwind Traders demo estate
+internal/webui/         the compiled console, //go:embed-ed
+ui/                     Vue 3 + Vite console source
+
+# access-controller only
+cmd/access-controller/  edge: policy watch, local decisions, drivers, door monitoring, heartbeat
+internal/controller/    PolicyStore (KV watch → maps) + offline cache, tap loop, door state machine,
+                        portal/aux/area managers, commands, heartbeat, status shadow
+internal/diag/          the optional read-only /status page (+ /status.json)
+internal/drivers/       ReaderDriver / LockDriver / DoorInput interfaces + mocks
+internal/drivers/gpio/  native GPIO lock + input backend (go-gpiocdev, no cgo; Linux only)
+internal/drivers/i2c/   MCP23017 lock + input backend over I2C (periph.io, no cgo; polled inputs)
+internal/drivers/osdp/  OSDP reader: RS485 CP engine + wire codec (pure Go, no cgo)
+
+# shared by both
+config/                 one config schema for both binaries (Viper, SA_ env overrides)
+internal/policy/        the pure core: Decide() + DecideArea()/DecideOutput()
+internal/policykv/      downward wire contract: ACC_POLICY key scheme + JSON shapes
+internal/statuskv/      upward wire contract: ACC_STATUS key scheme + JSON shapes
+internal/subjects/      every NATS subject is built and parsed here
+internal/drivers/hardware/  per-model board profiles (the console reads them for /api/models)
+internal/natsx/         NATS connection + KV helpers
+internal/logger/        zap wrapper
+internal/metrics/       Prometheus instrumentation (default :2113; the example controller config uses :2114)
+
+demo/                   dev-only: rules/ (rule-router activity), telegraf/ (events → VictoriaMetrics),
                         and the older seed.ps1 + access-demo.yaml
 ```
 
@@ -265,6 +300,10 @@ demo/                   dev-only: rules/ (rule-router activity for demo-seed), t
 
 ## Docs
 
+- **[Central Service (accessd)](docs/accessd.md)**: what the central binary
+  runs, owns and serves, and how it behaves when NATS or it goes away.
+- **[Edge Controller (access-controller)](docs/controller.md)**: what runs on
+  each box, offline behaviour, and its local status page.
 - **[Wire Protocol](docs/protocol.md)**: the NATS wire contract. Subjects, KV
   shapes (`ACC_POLICY` and `ACC_STATUS`), decision reason codes and the audit
   projection.

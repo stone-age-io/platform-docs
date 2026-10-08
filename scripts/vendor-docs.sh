@@ -67,11 +67,13 @@ helpdesk|$hd_src|stone-age-io/helpdesk|docs/notifications.md|helpdesk/notificati
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/email-ingestion.md|helpdesk/email-ingestion|50|
 helpdesk|$hd_src|stone-age-io/helpdesk|docs/configuration.md|helpdesk/configuration|60|
 access-control|$ac_src|stone-age-io/access-control|README.md|access-control|50|access: public
-access-control|$ac_src|stone-age-io/access-control|docs/protocol.md|access-control/protocol|10|
-access-control|$ac_src|stone-age-io/access-control|docs/configuration.md|access-control/configuration|20|
-access-control|$ac_src|stone-age-io/access-control|docs/operators.md|access-control/operators|30|
-access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-control/hardware|40|
-access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|50|
+access-control|$ac_src|stone-age-io/access-control|docs/accessd.md|access-control/accessd|10|
+access-control|$ac_src|stone-age-io/access-control|docs/controller.md|access-control/controller|20|
+access-control|$ac_src|stone-age-io/access-control|docs/protocol.md|access-control/protocol|30|
+access-control|$ac_src|stone-age-io/access-control|docs/configuration.md|access-control/configuration|40|
+access-control|$ac_src|stone-age-io/access-control|docs/operators.md|access-control/operators|50|
+access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-control/hardware|60|
+access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|70|
 EOF
 }
 
