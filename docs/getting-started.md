@@ -4,6 +4,10 @@ nav_order: 50
 ---
 # Getting Started
 
+New to the names? [What We Call Things](./overview.md#what-we-call-things)
+defines the terms this guide uses, including Thing, Account, subject,
+JetStream, KV, leaf, domain and twin.
+
 ## The short version
 
 Run one container. It seeds itself on first boot and runs the message bus in
@@ -197,12 +201,29 @@ running yet, and all of these work without it:
 - Place Things on a floor plan or a map.
 - Do all of this over the REST API or the [`stone` CLI](./stone-cli.md).
 
-Create a Location and a Thing over the API:
+Create a Location and a Thing over the API. These commands use `jq` to read the
+JSON responses.
+
+First sign in as the Platform Operator. The response holds a `token` and your
+user `record`. `record.current_organization` is your active organization, the
+operator organization after `bootstrap`. A new record's `organization` must
+match it.
 
 ```bash
-curl -s -X POST http://localhost:8090/api/collections/locations/records \
+printf 'Password: '; read -rs PASS; echo
+AUTH=$(curl -s -X POST http://localhost:8090/api/collections/users/auth-with-password \
+  -H 'Content-Type: application/json' \
+  -d '{"identity":"admin@example.com","password":"'"$PASS"'"}')
+TOKEN=$(echo "$AUTH" | jq -r .token)
+ORG_ID=$(echo "$AUTH" | jq -r .record.current_organization)
+```
+
+Create the Location, and keep its `id` for the Thing:
+
+```bash
+LOC_ID=$(curl -s -X POST http://localhost:8090/api/collections/locations/records \
   -H "Authorization: $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"HQ","code":"hq","organization":"'"$ORG_ID"'"}'
+  -d '{"name":"HQ","code":"hq","organization":"'"$ORG_ID"'"}' | jq -r .id)
 ```
 
 ```bash
@@ -331,9 +352,21 @@ active organization**. It needs an address and an identity.
    it to point one device at a local leaf node
    ([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
 2. **The identity.** Your operator organization has a NATS account but no
-   identity in it yet. Under **NATS**, create a **Role** (the permission
-   template), then a **User** with that role. In **Settings**, choose that user
-   as the **Operational Identity**.
+   identity in it yet. Under **NATS → Roles**, create a **Role** (the
+   permission template). **Fill in its permissions.** The form starts with
+   every list empty, and
+   [an empty allow list grants nothing](./connectivity.md#core-pubsub-subject-namespacing):
+   a role saved as it is cannot publish or subscribe to anything. For §5, set:
+   - **Publishing → Allow Subjects:** `test.>`
+   - **Subscribing → Allow Subjects:** `test.>`. Add `_INBOX.>` if you will
+     send requests, for example with the Publisher widget's **Request** button.
+     The replies arrive on `_INBOX` subjects.
+
+   In a sandbox you can write `>` in both lists instead. That allows every
+   subject in the account.
+
+   Then under **NATS → Users**, create a **User** with that role. In
+   **Settings**, choose that user as the **Operational Identity**.
 3. Optionally, turn on **Auto-connect on login**. Click **Connect**.
 
 The status shows a green **Status: Connected**.
@@ -348,15 +381,24 @@ The status shows a green **Status: Connected**.
 
 Send a message and watch it arrive.
 
-1. On the dashboard, add a **Console** widget. It shows every message the
-   browser receives on the bus.
-2. Publish a test message with the `nats` CLI, or with a **Publisher** widget:
-
-   ```bash
-   nats pub test.hello '{"msg": "Hello Stone Age", "val": 42}'
-   ```
-
+1. On the dashboard, unlock the grid and add a **Console** widget. It shows
+   the messages on its **NATS Subjects**, which default to `>`. If your role
+   allows only `test.>`, configure the widget and replace `>` with `test.>`.
+   The server refuses a subscription wider than the role allows, and the
+   widget then shows nothing.
+2. Add a **Publisher** widget. Set the subject to `test.hello` and the payload
+   to `{"msg": "Hello Stone Age", "val": 42}`, then click **Publish**.
 3. The message appears in the Console widget.
+
+You can also publish from the `nats` CLI. The server runs in operator mode and
+refuses a connection with no credentials, so give the CLI a `.creds` file.
+Under **NATS → Users**, open the user you created in §4 and click **.creds** in
+the **Security & Credentials** card. The file is named after the NATS username.
+It holds the user's private key, so keep it like a password.
+
+```bash
+nats pub --creds ./<nats-username>.creds test.hello '{"msg": "Hello Stone Age", "val": 42}'
+```
 
 When you have Thing Types with operations, the Publisher widget can bind to a
 Thing and an operation. The subject then comes from the Thing, and the payload

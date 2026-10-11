@@ -41,6 +41,20 @@ Operator** for the person. Bare "operator" appears only in identifiers you type
 or configure, such as `is_operator`, `operator_name`, `--operator-org` and
 `operator_jwt`.
 
+These terms come from NATS or the data model. The docs use them without
+explanation.
+
+| Term | What it means | More |
+| :--- | :--- | :--- |
+| **Thing** | A record for anything that produces or consumes data, or an asset you want to track. It is an auth record, and it can carry the device's NATS and Nebula identities. | [Platform Entities §3](./platform-ui-entities.md#3-things) |
+| **Account** (NATS Account) | The tenant boundary on the bus. Each Organization has one, signed by the NATS Operator. Another account cannot see its subjects, streams or buckets unless an export and an import share them. | [Architecture §3](./architecture.md#3-multi-tenancy-infrastructure-isolation) |
+| **subject** | The dot-separated name a NATS message is published to, such as `camera.CA-9KD-4PX.motion`. Subscribers match subjects with wildcards: `*` matches one token, `>` matches all remaining tokens. NATS permissions are lists of subjects. | [Connectivity §1](./connectivity.md#core-pubsub-subject-namespacing) |
+| **JetStream** | The NATS persistence layer. A **stream** stores the messages on chosen subjects, so consumers can read history. Core NATS stores nothing. | [Connectivity §1](./connectivity.md#jetstream) |
+| **KV** (key-value bucket) | A JetStream stream used as a key-value store. It keeps the latest value for each key. The twin is in KV. | [Connectivity §1](./connectivity.md#key-value-buckets-live-state) |
+| **leaf** (leaf node) | A NATS server at a site that connects out to the central cluster. Local devices keep working when the link is down. A site is an ordinary Thing, whose Agent runs the leaf server. | [Leaf Nodes](./leaf-nodes.md) |
+| **domain** (JetStream domain) | The name that separates the JetStream data on one server from another's, so a leaf and the hub can each have a bucket with the same name. A leaf's domain is its Thing's code. | [Leaf Nodes §3](./leaf-nodes.md#the-domain-is-the-code-computed-and-never-stored) |
+| **twin** (reported / desired) | The live state of a Thing or Location, in two KV buckets with one writer each. `twin` holds **reported** state, written by the device. `twin_desired` holds **desired** state, written by a console user. The platform delivers a desired value but does not apply it. | [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) |
+
 ---
 
 ## The Problem
