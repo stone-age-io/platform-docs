@@ -321,7 +321,12 @@ subscribes per location over core NATS:
   `until` is ignored with a warning; timed reversion needs an external
   scheduler.
 - `acc.{location}.*.*.cmd.grant`: a momentary pulse, logged as an `evt.tap`
-  with `allow_command_grant`.
+  with `allow_command_grant`. Under an effective `lockdown` or `disabled`
+  posture, including a runtime override, it is refused whoever sent it: no
+  pulse, and the `evt.tap` says `deny_lockdown` or `deny_point_disabled`. This
+  is the only place a runtime override can stop a badge remote unlock, since
+  accessd never sees the override. See
+  [Commanded grants](protocol.md#commanded-grants).
 - `acc.{location}.*.*.cmd.output`: `on`, `off` or `pulse` on an aux output.
 - `acc.{location}.evt.fire`: sets or clears the location's fire state.
 

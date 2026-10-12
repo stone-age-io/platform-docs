@@ -252,19 +252,21 @@ After that each durable keeps its position on the NATS server (§5).
   `controllerOfflineAfter`. Each online↔offline flip publishes
   `acc.{location}.ctrl.{code}.evt.state`; heartbeats themselves never reach the
   events stream.
-- **Notification sink.** Emails on alarms, fire and controller-offline when
+- **Notification sink.** Emails on alarms, a fire input asserting (never its
+  clear) and controller-offline when
   both a source opt-in and an operator opt-in line up, through PocketBase's
   mail settings. See [Notifications & Webhook](protocol.md#12-notifications-webhook)
   and [Notifications](configuration.md#8-notifications).
-- **Reminders.** Re-sends an urgent alarm (`forced`, `intrusion`, `fire`,
-  `controller_offline`) still unacknowledged after 15 minutes, at most twice,
+- **Reminders.** Re-sends an urgent alarm (`forced`, `intrusion`, an active
+  `fire`, `controller_offline`) still unacknowledged after 15 minutes, at most twice,
   looking back 24 hours. Nothing spaces the two: the second goes on the next
   5-minute sweep after the first. It reads the `events` projection, not the
   stream, and uses the same send path as the sink.
 - **Webhook sink.** POSTs each pageable event as JSON. Inert (it acks and skips)
   while `accessd.webhookURL` is empty. Redirects are never followed.
-- **Entry-disarm sink.** On an allowed tap that carries a credential, at a
-  portal with `disarm_on_grant` and an `area`, it writes
+- **Entry-disarm sink.** On a credential grant (an `allow_grant` tap, never a
+  posture allow or a command grant), at a portal with `disarm_on_grant` and an
+  `area`, it writes
   `arm_override: disarmed` and an `audit_logs` row with
   `actor_email: entry-disarm`. It skips an area that is already overridden to
   disarmed or can never be armed. See

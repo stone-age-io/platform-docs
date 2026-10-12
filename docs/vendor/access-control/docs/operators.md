@@ -169,7 +169,7 @@ accessd's own routes do not go through a collection, so each binds
 
 | Route | Requires | Effect |
 |---|---|---|
-| `POST /api/portals/{id}/grant` | `command` | momentary strike pulse → `cmd.grant` |
+| `POST /api/portals/{id}/grant` | `command` | momentary strike pulse → `cmd.grant` (the controller refuses it under `lockdown` or `disabled`) |
 | `POST /api/portals/{id}/posture` | `command` | posture override / clear → `cmd.posture` |
 | `POST /api/aux-outputs/{id}/output` | `command` | drive an aux output → `cmd.output` |
 | `POST /api/events/{id}/ack` | `command` | acknowledge an alarm/fire (sets ack fields; also stops [`internal/repage`](https://github.com/stone-age-io/access-control/blob/main/internal/repage)'s reminder emails) |
@@ -194,6 +194,13 @@ arm-state must be durable: a reboot must not silently disarm. Each therefore
 writes its own `audit_logs` row, since a custom-route `app.Save` does not trip
 the changelog `*Request` hooks.
 
+The route answers `202` once the grant is published. The controller decides
+the rest: under an effective `lockdown` or `disabled` posture it refuses the
+pulse, and the `events` row reads `deny_lockdown` or `deny_point_disabled`
+rather than `allow_command_grant`. Operators are not exempt. To open a door in
+lockdown, clear or change its posture first (same `command` capability), which
+records the lockdown ending as an `evt.state`.
+
 ::: warning `command` covers arming and alarm ack
 An operator you trust to buzz a door open can also arm/disarm the intrusion
 system and acknowledge alarms. There is no separate `arm` capability in v1,
@@ -208,7 +215,9 @@ disarms that portal's area. It is a *cardholder* action (badging in), not an
 operator API call. accessd's disarm sink (`internal/disarm`) writes the
 `arm_override` and an `audit_logs` row attributed to the **credential +
 portal** (`actor_email: entry-disarm`), not to an operator. An operator
-remote `cmd.grant` carries no credential, so it never disarms.
+remote `cmd.grant` carries no credential, so it never disarms. Neither does a
+tap under `free_access` or `unlocked` posture. Those open without checking
+the credential, so only an `allow_grant` disarms.
 :::
 
 ### Seeing a holder's badge (`/api/badge/preview`)
