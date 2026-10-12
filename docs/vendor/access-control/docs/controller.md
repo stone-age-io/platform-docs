@@ -172,9 +172,10 @@ no cleanup; the next boot drives every line it arms back to idle first. See
    [§3.3](#33-offline-cache)).
 5. Open the reader, the hardware backend and the runtime. Everything starts
    **armed for nothing**.
-6. Start the status writer (also bound lazily), the three reconcilers, the KV
-   watcher, the tap loop, the command subscriptions, the heartbeat and (if
-   enabled) the status page.
+6. Start the status writer (also bound lazily), the KV watcher, the three
+   reconcilers, the tap loop, the command subscriptions, the heartbeat, the
+   [service discovery](#service-discovery) registration and (if enabled) the
+   status page.
 7. Log `controller started; default-deny until policy syncs`.
 8. When the first KV sync completes, log `policy synced; controller live`.
    The reconcilers arm every portal and aux point bound to this code.
@@ -625,13 +626,20 @@ file stores every credential. Treat the box's logs and its data directory as
 sensitive.
 :::
 
+### Service discovery
+
+The controller registers as NATS micro service `access-controller` with its
+`code` and `location`, so `nats micro ls` lists every running controller with
+its version and start time. It is identity only: no endpoints, nothing to read
+or control. See [Service discovery](protocol.md#service-discovery).
+
 ---
 
 ## 7. What Listens and What Dials Out
 
 | | Direction | Port | When |
 | :--- | :--- | :--- | :--- |
-| NATS: policy watch, events, status, heartbeat, commands, taps | **outbound** | 4222 (or your hub's) | always |
+| NATS: policy watch, events, status, heartbeat, commands, taps, discovery | **outbound** | 4222 (or your hub's) | always |
 | OSDP readers | local RS485 | the model's serial port | `reader: osdp` or `both` |
 | Status page (`/status`, `/status.json`) | **listens** | `127.0.0.1:2115` | only when `diagnostics.enabled` |
 | Prometheus `/metrics` | **listens** | `metrics.address` (`:2114` in the example config, all interfaces) | only when `metrics.enabled` |
@@ -651,6 +659,8 @@ A controller's NATS identity needs:
   `acc.{location}.ctrl.{code}.heartbeat`.
 - **JetStream KV:** read and watch `ACC_POLICY`; put and delete in
   `ACC_STATUS`.
+- **Discovery:** subscribe on `$SRV.>`, and publish on `_INBOX.>` (or
+  `allow_responses`) to reply. Without it only discovery is lost.
 
 Use one NATS identity per controller.
 

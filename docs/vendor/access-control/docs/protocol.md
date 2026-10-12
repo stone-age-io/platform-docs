@@ -79,18 +79,22 @@ it.
 accessd →: accessd publishes. ↔: both (see fire under
 [Command Details](#command-details)).
 
-All bodies are JSON. `ts` is RFC 3339 UTC.
+All bodies are JSON, except that `.tap` also accepts a bare credential string.
+`ts` is RFC 3339 UTC.
 
 ### Events accessd publishes
 
-Two event subjects come from **accessd**, not the edge. Both are `evt.state`,
-told apart by the `{type}` token. Both fit the existing `acc.*.*.*.evt.>`
-stream subject, so neither needed a stream change.
+Besides the `evt.tap` for a denied badge remote unlock (see
+[Audit Projection](#11-audit-projection)), two event subjects come from
+**accessd**, not the edge. Both are `evt.state`, told apart by the `{type}`
+token. Both fit the existing `acc.*.*.*.evt.>` stream subject, so neither
+needed a stream change.
 
-**`area`: an arm/disarm transition.** All four ways an area changes arm-state
-(an operator's arm route, entry-disarm, the one-shot release sweep, and a
-scheduled auto-arm evaluated on each box) converge on the per-controller arm
-shadow in `ACC_STATUS`. accessd's status projector emits the event from there.
+**`area`: an arm/disarm transition.** Every way an area changes arm-state (the
+operator or badge arm/disarm routes, entry-disarm, the one-shot release sweep,
+an edit to the area record, and a scheduled auto-arm evaluated on each box)
+converges on the per-controller arm shadow in `ACC_STATUS`. accessd's status
+projector emits the event from there.
 
 - It is emitted **per participating controller**, matching the shadow: a
   3-box area reports three transitions, each naming its own controller.
@@ -110,7 +114,8 @@ audited. `ctrl` is the reserved controller token the heartbeat also uses. The
 heartbeat sits outside `.evt` at 5 tokens so the stream cannot capture it; this
 event sits inside at 6 so it can. `status` is `online`/`offline`. `lastSeen` is
 the controller record's `last_seen` in PocketBase's datetime format
-(`2006-01-02 15:04:05.000Z`), not RFC 3339.
+(`2006-01-02 15:04:05.000Z`), not RFC 3339. The subject's `{location}` comes
+from the `controllers` record's location, not from the heartbeat subject.
 
 ### Subscriptions
 
@@ -118,11 +123,13 @@ The NATS reader subscribes to the **exact** `.tap` subject of each portal it
 has armed (the portal's own location/type/code), not a location wildcard, so it
 hears only portals this box drives.
 
-Commands are subscribed per location with wildcards:
-`acc.{location}.*.*.cmd.posture`, `acc.{location}.*.*.cmd.grant` and
-`acc.{location}.*.*.cmd.output` (aux outputs). Every controller at a location
-hears every command there and silently ignores those for portals and outputs
-it does not drive.
+Commands are subscribed per location with wildcards, on the controller's own
+`controller.location`: `acc.{location}.*.*.cmd.posture`,
+`acc.{location}.*.*.cmd.grant` and `acc.{location}.*.*.cmd.output` (aux
+outputs). Every controller at a location hears every command there and
+silently ignores those for portals and outputs it does not drive. A portal
+whose location differs from its controller's still gets its taps, but not
+commands or fire.
 
 ### Stream capture
 
@@ -153,7 +160,30 @@ controller's `last_seen`/`status` directly on the `controllers` record, not as
 an `events` row (which would flood the audit log). A controller publishes one
 heartbeat on start, then every `controller.heartbeatInterval` (default 15s).
 accessd marks a controller `offline` once it has been silent longer than
-`accessd.controllerOfflineAfter` (default 45s).
+`accessd.controllerOfflineAfter` (default 45s). The check runs every third of
+that window, so the flip lands up to a third late.
+
+### Service discovery
+
+Both binaries register as NATS micro services, so `nats micro ls` (or any
+`$SRV` client) lists every running `accessd` and controller with its version.
+
+| Service | Metadata |
+| :--- | :--- |
+| `access-controller` | `code`, `location` (the controller's own) |
+| `accessd` | `host` (left out if the hostname cannot be read) |
+
+- **Identity, not an API.** Neither registers an endpoint. `$SRV.PING`,
+  `$SRV.INFO` and `$SRV.STATS` answer with name, version, metadata and start
+  time, and nothing else. Nothing can be read or controlled through them.
+- The `$SRV` subjects belong to the NATS micro protocol, and the micro library
+  builds them. They are outside `acc.>`, and `internal/subjects` does not
+  build them.
+- `version` is the module version Go stamps at build (a tag, or a
+  pseudo-version), with a leading `v` dropped. A value that is not semver
+  reports as `0.0.0-dev`.
+- Each credential needs subscribe on `$SRV.>` and a way to reply. Without them
+  discovery is refused and nothing else changes. Registration is never fatal.
 
 ### Command Details
 
@@ -215,7 +245,7 @@ a **door-position switch** (DPS, `dpsInput`) and an optional
 | `held` | An authorized-open door stayed open past `heldOpenSeconds` (DOTL) |
 | `held_clear` | A previously-held door closed |
 | `no_entry` | A grant whose grace window expired with no door-open ("access granted, no entry") |
-| `intrusion` | An armed area's `intrusion` aux point, or any `tamper_24h` point, went active; **or** a member portal was forced while its area is armed |
+| `intrusion` | An armed area's `intrusion` aux point, or any `tamper_24h` point, went active (the point must belong to an area); **or** a member portal was forced while its area is armed |
 
 A grant (an `allow` tap or a `grant` command) and a REX press each open a short
 window. During it a door-open reads as authorized (no `forced`) and arms the
@@ -236,18 +266,19 @@ someone who badged and walked away.
 - It is emitted only where an open is **observable**, which takes two things:
   the portal's binding declares a `dpsInput`, *and* the controller has a
   door-input driver. Either alone is not enough. They agree on real hardware
-  and differ under `driver: mock`, which has a lock and no inputs. So a box
-  running the simulated reader (every demo and dev box) emits no `no_entry` at
-  all, rather than one per granted tap.
+  and differ under `driver: mock`, which has a lock and no inputs. So a box on
+  `driver: mock` (every demo and dev box) emits no `no_entry` at all, rather
+  than one per granted tap.
 
 ### Fire suppression
 
 While a location's **fire** input is active, alarm emission is suppressed
-(forced, held and intrusion alarms during evacuation would be false), but only
-if the location opts in with `faiSuppress`. **`held_clear` is always
-emitted**: a clear cannot be a false alarm, and dropping it would leave an
-active held-open on the console with no later event to resolve it. The DOTL
-timer and the held-open threshold are hardware-local timing, not policy.
+(forced, held, `no_entry` and intrusion alarms during evacuation would be
+false), but only if the location opts in with `faiSuppress`. **`held_clear` is
+always emitted**: a clear cannot be a false alarm, and dropping it would leave
+an active held-open on the console with no later event to resolve it. The DOTL
+timer runs locally on the controller; its threshold (`heldOpenSeconds`) comes
+from policy, but `policy.Decide` never reads it.
 
 A location's fire input is an `aux_input` whose `pointType` is **`fire`**. It
 is electrically an ordinary dry contact, so it needs no dedicated driver
@@ -345,9 +376,13 @@ audit and notify consumers:
 
 - Only a **credential** grant disarms (`allow` with a `cred`). A deny is
   ignored. An operator remote `cmd.grant` carries no `cred`, so a remote
-  door-pop cannot silently disarm a building.
-- The write is idempotent and skips an area that is already disarmed or can
-  never be armed, so a redelivery is a harmless no-op and needs no dedup.
+  door-pop cannot silently disarm a building. The sink checks only `allow` and
+  a non-empty `cred`, so under `free_access` or `unlocked` posture, where
+  `policy.Decide` allows without consulting the credential, any presented
+  value disarms.
+- The write is idempotent and skips an area that is already overridden to
+  disarmed or can never be armed, so a redelivery is a harmless no-op and needs
+  no dedup.
 - Each disarm writes its own `audit_logs` row attributed to the credential and
   portal.
 
@@ -367,8 +402,9 @@ arm to revert to, so its disarm override stays until an operator clears it
 
 ## 5. Badge Actions
 
-The badge tier adds **no wire surface**: no new subject, no new KV key, no
-controller change.
+The badge tier adds **no new subject and no new KV key**. Its wire surface is
+one optional field, `source` on `cmd.grant`, which the controller copies onto
+its `evt.tap`, plus the `evt.tap` accessd publishes for a denied remote unlock.
 
 ### Remote unlock
 
@@ -378,11 +414,15 @@ A badge holder opening a door from their badge page
 because the physical effect is the same one-shot strike pulse. Two checks on
 the accessd side make it safe:
 
-- **Authorization is `policy.Decide`**, run centrally over a live snapshot of
-  `ACC_POLICY` (`internal/policysnapshot`, the same package the access
-  simulator uses). A remote unlock can never exceed what that person's
-  credential opens in person, and schedules, holidays, validity bounds and the
-  posture gate all apply with no second implementation.
+- **Authorization is `policy.Decide`**, run centrally over a snapshot of
+  `ACC_POLICY` cached for up to 3 seconds (`internal/policysnapshot`, the same
+  package the access simulator uses). A remote unlock can never exceed what
+  that person's credential opens in person, and schedules, holidays, validity
+  bounds and the posture gate (standing or scheduled posture) all apply with no
+  second implementation. A runtime override set with `cmd.posture` exists only
+  on the controller, so accessd cannot see it, and the controller's `cmd.grant`
+  handler does not check posture: a commanded `lockdown` does not block a
+  remote unlock.
 - **`portals.allow_remote_unlock`** (default false) is a per-door opt-in,
   checked before the graph is consulted. It is control-plane only and **not
   mirrored** to KV: the decision happens before publishing, so the edge never
@@ -451,9 +491,9 @@ posture three ways:
 
 - immediately on a posture command, so a lockdown re-locks at once;
 - immediately when a portal is armed;
-- on a periodic **hold-eval reconcile** (default 10s) that re-evaluates each
-  portal. This is the no-event fallback that flips scheduled posture at window
-  boundaries.
+- on a periodic **hold-eval reconcile** (every 10s, fixed) that re-evaluates
+  each portal. This is the no-event fallback that flips scheduled posture at
+  window boundaries.
 
 The reconcile is a *sampling* loop. It reads "is the window open now" and never
 computes boundaries, so the interval only sets latency and has no effect on
@@ -521,9 +561,13 @@ the only writer; controllers are read-only watchers.
 | `area.{code}` | `{"code","name"?,"location","arm"?,"armOverride"?,"autoArm"?,"autoSchedule"?}` |
 
 Eventual consistency is fail-safe. An unknown credential, a reference to a
-not-yet-synced role, group or schedule, a malformed value, or no policy at all
-each result in **deny**. A `WatchAll` re-delivers every key on (re)subscribe,
-so a reconnect performs a full re-sync.
+not-yet-synced role, group or schedule, or no policy at all each result in
+**deny**. A malformed value is rejected and the key keeps its previous value
+(so a key never applied stays absent, and denies); a credential with an
+unparseable bound is dropped. A `WatchAll` re-delivers every key on
+(re)subscribe, so a reconnect performs a full re-sync. On accessd's side the
+mirror re-runs its full reconcile on every reconnect, and skips any put whose
+bytes already match the stored value, so a no-op edit wakes no controller.
 
 ### Access group targets
 
@@ -556,6 +600,10 @@ omit them:
   remote-actuation path to gate.
 - **The holiday calendar record.** See [Holidays](#holidays).
 - **The credential `type`.** See [Values and formats](#values-and-formats).
+- **Notification opt-ins.** `portals.notify_on_alarm`,
+  `areas.notify_on_alarm`, `locations.notify_fire` and
+  `controllers.notify_offline` are read by accessd's notification sink (see
+  [Notifications & Webhook](#12-notifications-webhook)).
 - **Controller liveness.** `controllers.last_seen`/`status` are written by
   accessd from heartbeats (see [Controller heartbeat](#controller-heartbeat)).
 
@@ -825,7 +873,7 @@ Each event subject maps to a row:
 | :--- | :--- |
 | `location`, `type`, `portal`, `kind` | Parsed from the subject (`kind` ∈ `tap`/`state`/`alarm`/`fire`) |
 | `credential`, `user`, `allow`, `reason`, `ts` | The matching body fields (`cred` → `credential`). `user` is the cardholder id for a credential decision, or the issuing actor for a command grant (an operator email or `badge:<cardholderId>`) |
-| `user_name` | The cardholder's `name`, resolved from `user` **at projection time**. It is a snapshot, so a later rename or delete does not change who the event was about. Empty when `user` is not a cardholder id (no user, a command actor, legacy rows); the UI falls back to `user` |
+| `user_name` | The cardholder's `name`, resolved from `user` **at projection time**. It is a snapshot, so a later rename or delete does not change who the event was about. Empty when `user` is not a cardholder id (no user, a command actor including `badge:<cardholderId>`, legacy rows); the UI falls back to `user` |
 | `source` | Tap body field: **what produced the tap**. `nats`/`osdp` (a reader) or `command`/`badge` (a remote act that never reached a reader). Empty on non-tap and legacy rows. See the warning below |
 | `acknowledged`, `ack_by`, `ack_at` | Operator acknowledgement, set with `POST /api/events/{id}/ack` (the `command` capability) |
 | `stream_seq` | The message's JetStream stream sequence (the idempotency key; 0 on rows projected before it existed) |
@@ -855,7 +903,7 @@ exists for any of the newer shapes:
   `fire`.
 - For an area intrusion alarm, `type` is `area`, `portal` is the area code,
   `kind` is `alarm`, and `payload.type` is `intrusion` (with `payload.point`
-  naming the tripped input).
+  naming the tripped aux input or portal).
 - The ack fields live on the projection row. The `stream_seq` dedupe means a
   redelivery or stream replay does not bring back an already-acknowledged row.
   Rows from before the field existed read `stream_seq` 0 and are exempt from
@@ -863,9 +911,10 @@ exists for any of the newer shapes:
 
 A **denied badge remote unlock** is emitted by accessd as an ordinary `evt.tap`
 with `allow: false` and `source: badge`, so a person denied at a door produces
-an events row whether they tap a card or press the button. `cred` is empty: the
-badge tier is identity-based, `user` carries `badge:<cardholderId>`, and it
-keeps credential values out of one more place. The badge routes also write an
+an events row whether they tap a card or press the button. The body has no
+`cred` key, so the `credential` column is empty: the badge tier is
+identity-based, `user` carries `badge:<cardholderId>`, and it keeps credential
+values out of one more place. The badge routes also write an
 `audit_logs` row, which records the API call, a different question.
 
 ---

@@ -27,7 +27,7 @@ The platform is designed for performance, security, and flexibility in event-dri
 *   **Array Processing**: Native support for batch message processing with array operators and forEach iteration.
 *   **Primitive Message Support**: Handle strings, numbers, arrays, and objects at the root - perfect for IoT protocols and simple formats.
 *   **Bidirectional HTTP Gateway**:
-    *   **Inbound**: "Fire-and-forget" webhook ingestion returns `200 OK` immediately for maximum compatibility. Optional per-rule **HMAC verification** authenticates provider webhooks (GitHub, Shopify, …) as a fail-closed gate — a bad/missing signature returns `401` before the rule fires. JSON and `application/x-www-form-urlencoded` bodies both decode into addressable fields, and query parameters are available as `{@query.name}` in their own namespace.
+    *   **Inbound**: "Fire-and-forget" webhook ingestion returns `200 OK` immediately for maximum compatibility. Optional per-rule **HMAC verification** authenticates provider webhooks (GitHub, Shopify, and the timestamp-signed Stripe, Slack, and Standard Webhooks schemes) as a fail-closed gate — a bad/missing signature returns `401` before the rule fires. JSON and `application/x-www-form-urlencoded` bodies both decode into addressable fields, and query parameters are available as `{@query.name}` in their own namespace.
     *   **Outbound**: "ACK-on-Success" API calls with configurable retries and exponential backoff ensure reliable delivery.
     *   **Synchronous responses**: An HTTP rule can return an evaluated/enriched payload as the response (`respond` action), or bridge the request through NATS request/reply (`request: true`) and return the reply.
 *   **NATS Request/Reply**: Answer requests on a subject via `msg.Respond` (`reply: true` trigger + `respond` action), with optional queue-group load balancing — exposing rule-driven services over core NATS.
@@ -40,7 +40,7 @@ The platform is designed for performance, security, and flexibility in event-dri
     *   **Time-Based Logic**: Create rules that only run at certain times of day, on specific days, or within a time window.
     *   **Throttle**: Optional per-rule rate limiting on actions (or triggers) with configurable time windows and template-based keys. `mode: leading` (default) fires the first match in a window and drops the rest; `mode: trailing` holds the action and emits the last value when the window closes.
 *   **Cryptographic Security**: Verify message integrity and authenticity — NATS NKey signatures for NATS publishers, and shared-secret HMAC verification for inbound webhooks.
-*   **Production Ready**: Structured logging, Prometheus metrics, graceful shutdown, and full NATS authentication support.
+*   **Production Ready**: Structured logging, Prometheus metrics, NATS service discovery (`nats micro ls`), graceful shutdown, and full NATS authentication support.
 
 ## Core Concepts
 
@@ -67,7 +67,7 @@ Detailed documentation on the rule engine's features can be found in the `docs/`
 *   **[09 - Patterns](./docs/09-patterns.md)**: Recipe catalogue from simple routing through stateful cross-source correlation.
 *   **[10 - Troubleshooting](./docs/10-troubleshooting.md)**: Common failure modes and how to diagnose them.
 *   **[11 - Configuration Reference](./docs/11-configuration.md)**: Every config section, field, default, and validation bound.
-*   **[12 - Metrics & Observability](./docs/12-observability.md)**: Full Prometheus metric catalogue, health checks, example queries and alerts.
+*   **[12 - Metrics & Observability](./docs/12-observability.md)**: Full Prometheus metric catalogue, health checks, NATS service discovery, example queries and alerts.
 *   **[Rule Builder Web UI](./web/README.md)**: Visual rule creation, live YAML preview, in-browser rule testing via WASM, and NATS KV push/pull.
 *   **[Docker Deployment](#quick-start)**: Docker Compose setup for local development and deployment.
 
@@ -120,11 +120,11 @@ docker compose ps
 # View logs
 docker compose logs -f
 
-# Include the web UI on port 3000
+# Include the web UI on port 3000 (serves web/dist — build it first, see web/README.md)
 docker compose --profile nats --profile web up -d
 
 # Run the CLI tool
-docker compose run --rm rule-cli lint /rules
+docker compose run --rm rule-cli lint --rules /rules
 
 # Tear down (add -v to also remove NATS data)
 docker compose down
@@ -171,18 +171,20 @@ docker run -d \
   rule-router --config /config/http-gateway.yaml --rules /rules
 ```
 
-**Ports exposed:**
+**Ports exposed by `docker compose`** (host ports):
 
 | Service | Port | Description |
 |---|---|---|
 | NATS (optional) | 4222 | Client connections |
 | NATS (optional) | 8222 | Monitoring dashboard |
-| rule-router (gateway) | 8080 | Inbound webhooks |
 | rule-router | 2112 | Prometheus metrics |
-| nats-auth-manager | 2113 | Prometheus metrics |
+| http-gateway | 8080 | Inbound webhooks |
+| http-gateway | 2113 | Prometheus metrics |
+| rule-scheduler | 2114 | Prometheus metrics |
+| nats-auth-manager | 2115 | Prometheus metrics |
 | web (optional) | 3000 | Rule Builder UI |
 
-Configuration files in `config/` and rules in `rules/` are mounted as volumes, so edits are picked up on restart (or via SIGHUP for hot-reload).
+Configuration files in `config/` and rules in `rules/` are mounted as volumes. Rule edits are picked up on restart or SIGHUP (hot-reload); config changes need a restart, because SIGHUP reloads rules only.
 
 ### Option C: Build from Source
 
@@ -334,7 +336,7 @@ All features expose a shared Prometheus metrics endpoint (default `:2112`). The 
 *   `rule_matches_total`: Total number of times any rule has matched.
 *   `actions_total`: Total actions executed by status.
 
-**Array Operations:**
+**Array Operations** (the `rule_file` label carries the action type, `nats` or `http`):
 *   `foreach_iterations_total{rule_file="..."}`: Array elements visited in forEach operations.
 *   `foreach_filtered_total{rule_file="..."}`: Elements dropped by forEach `filter` conditions.
 *   `foreach_actions_generated_total{rule_file="..."}`: Actions successfully generated by forEach.
@@ -348,6 +350,7 @@ All features expose a shared Prometheus metrics endpoint (default `:2112`). The 
 *   `http_outbound_requests_total`: (Gateway) Outbound HTTP requests.
 
 **Scheduler:**
+*   `scheduler_job_runs_total`: Scheduled fires by cron expression and outcome (`singleton_rescheduled` = dropped because the previous run was still going).
 *   `rules_active`: Number of schedule rules registered.
 *   `action_publish_failures_total`: Failed scheduled publish attempts.
 

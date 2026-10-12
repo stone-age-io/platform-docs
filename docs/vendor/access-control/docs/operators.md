@@ -101,8 +101,8 @@ would make the badge and alarm views differ per operator.
 - Photos live in `pb_data/storage`, so **backups grow** with the cardholder
   population. Dropping the field does not delete the stored files.
 
-The photo is never mirrored to NATS KV (`policykv.User` carries only status and
-roles), so it never reaches a leaf node.
+The photo is never mirrored to NATS KV (`policykv.User` carries only id, status
+and roles), so it never reaches a leaf node.
 
 ---
 
@@ -163,7 +163,8 @@ substring of another, and do not switch the operator.
 
 ## 4. Operator Routes
 
-accessd's own routes do not go through a collection, so each handler calls
+accessd's own routes do not go through a collection, so each binds
+`authz.RequireOperatorAuth()`, and each one that needs a capability calls
 `authz.RequireCapability`:
 
 | Route | Requires | Effect |
@@ -184,11 +185,11 @@ There is **no** route for "give this cardholder a badge login". It is a field
 on the cardholder (`badge_login`), so it is an ordinary record update the
 collection rules already govern.
 
-Most of these routes bridge the UI to the **NATS command plane**. The subjects
-and bodies they publish are in
+The grant, posture and output routes bridge the UI to the **NATS command
+plane**. The subjects and bodies they publish are in
 [Wire Protocol](protocol.md#command-details). The **ack** and **arm/disarm**
-routes are the exception. They write a PocketBase record (the ack fields; the
-area `arm_override`) rather than publish a fire-and-forget command, because
+routes write a PocketBase record (the ack fields; the area `arm_override`)
+rather than publish a fire-and-forget command, because
 arm-state must be durable: a reboot must not silently disarm. Each therefore
 writes its own `audit_logs` row, since a custom-route `app.Save` does not trip
 the changelog `*Request` hooks.
@@ -265,9 +266,9 @@ stone-access has more than one auth collection:
 - `users` is the **operator** tier this page describes.
 - `_superusers` is the break-glass admin.
 - **`cardholders`**, the people the PACS is about, is itself the **badge
-  tier**. A cardholder with `badge_login` set can sign in to view their own
-  badge and, where permitted, act remotely (unlock a door, arm an area, pulse
-  an output).
+  tier**. A cardholder with `badge_login` set and status `active` can sign in
+  to view their own badge and, where permitted, act remotely (unlock a door,
+  arm an area, pulse an output).
 
 A cardholder is not an operator. The record holds no `permissions` field and
 must never read the policy graph. One row is both the thing a holder
@@ -343,7 +344,8 @@ remote action can never exceed the holder's physical access.
 
 All of these, and the `cardholders` sign-in endpoints, are rate-limited by
 default (migrations `1750000032`/`1750000039`/`1750000041`). The operator-only
-preview is not. The numbers are in
+preview has no rule of its own; only PocketBase's generic defaults apply to it.
+The numbers are in
 [Configuration Reference](configuration.md#9-rate-limits).
 
 `/api/badge/me` is the **only** one an operator token may call. It resolves
@@ -427,13 +429,18 @@ Enrollment does **not** grant a staff badge login. Most cardholders never need
 one, and a login on everyone would put a phone-openable surface on people who
 only ever tap a card. It is one checkbox on the person's own form, because it
 is one **field** on that person: `badge_login`, which backs the collection's
-auth rule.
+auth rule (`badge_login = true && status = "active"`, checked when a token is
+issued or refreshed).
 
 Every cardholder is an auth record, including the majority who never sign in.
 An auth record is not an account. A record without `badge_login` fails the
-collection's auth rule, and carries a random password nobody has seen
-(PocketBase requires a non-blank one;
-[`badgeapi.RegisterGuards`](https://github.com/stone-age-io/access-control/blob/main/internal/badgeapi/guards.go) fills it). A
+collection's auth rule, and carries a random password nobody has seen.
+PocketBase requires a non-blank one, and its create form checks that before
+any hook runs, so the console's cardholder form and CSV import send a random
+one (`ui/src/utils/cardholderPassword.ts`) and any other API client must send
+`password`/`passwordConfirm` itself.
+[`badgeapi.RegisterGuards`](https://github.com/stone-age-io/access-control/blob/main/internal/badgeapi/guards.go) fills it for
+server-side saves such as the visitor mint. A
 cardholder with **no email** (a contractor, an hourly worker, a "Loading Dock
 Spare" card) cannot sign in by any method, since email is the only identity
 field and the only way an emailed code can arrive. So `bindLoginRequiresEmail`
@@ -573,7 +580,10 @@ route in `request_url`:
 | alarm ack, area arm/disarm/arm-clear (`internal/commandapi`) | `events`, `areas` | `after` is the fields written |
 | badge unlock / arm / disarm / pulse | `portals`, `areas`, `aux_output` | **every attempt, denials included**; `record_id` is the target's *code*, `after.action` names it |
 | visitor mint · revoke, invite, badge preview, holder password change | `cardholders` | `after.action`; never the credential value or a password |
-| entry-disarm (`internal/disarm`) | `areas` | no request: `actor_email: entry-disarm`, attributed to the credential + portal |
+| entry-disarm (`internal/disarm`) | `areas` | no request: `actor_email: entry-disarm`, a synthetic `request_url` of `/disarm/grant`, attributed to the credential + portal |
+
+The one-shot disarm release (clearing `areas.arm_override`) and the visitor
+credential sweep (marking `credentials.status` revoked) write no row.
 
 Each row carries:
 
@@ -581,7 +591,7 @@ Each row carries:
 |---|---|
 | `event_type` | `create` · `update` · `delete` · `auth` |
 | `collection_name`, `record_id` | the affected record |
-| `actor_id`, `actor_email`, `actor_collection` | the authenticated operator (or superuser) |
+| `actor_id`, `actor_email`, `actor_collection` | the authenticated caller: an operator, a superuser, or for badge actions and a holder password change the cardholder. An entry-disarm row has only `actor_email: entry-disarm` |
 | `request_ip`, `request_method`, `request_url` | the request origin |
 | `timestamp` | when the row was written |
 | `before`, `after` | full field snapshots (JSON); **`password` and `tokenKey` are stripped** |

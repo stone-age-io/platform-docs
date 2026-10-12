@@ -32,8 +32,8 @@ bus, or both at once (see [§6](#6-readers)).
 
 ### Logical indices, not physical lines
 
-A portal record carries **logical** 1-based indices (`lockRelay`, `dpsInput`,
-`rexInput`) plus the `controller` that drives it. Aux points carry the same
+A portal record carries **logical** 1-based indices (`lock_relay`, `dps_input`,
+`rex_input`) plus the `controller` that drives it. Aux points carry the same
 (`relay_index` / `input_index`, see [§5](#5-auxiliary-io-and-the-fire-input)).
 The controller resolves those indices to physical lines through the
 **profile** (`internal/drivers/hardware`) named by its local
@@ -84,19 +84,24 @@ so a contact wired the other way is a field edit, not a rewire:
 | `portals.lock_type` | `strike` · `maglock` | `strike` is fail-secure (energize to unlock). `maglock` is fail-safe (energize to **lock**), so it inverts the lock relay: it idles energized and drops for a grant. |
 | `portals.rex_unlock` | off · on | Off: REX only opens the authorized-open window (egress is mechanical). On: a REX press also pulses the lock for the portal's `pulse_seconds`. |
 
-Changing any of these (or an index) re-arms the portal's lines with the new
-polarity. Aux outputs take no `lock_type`, so they are always driven
-energize-to-activate.
+Changing any of these except `rex_unlock` (or an index) re-arms the portal's
+lines with the new polarity; `rex_unlock` is read on each REX press. Aux
+outputs take no `lock_type`, so they are always driven energize-to-activate.
 
 ### Fail-safe behaviour
 
-- Each lock relay starts in its idle (locked) state when armed, and returns to
-  it on disarm and on graceful shutdown (`Close`). For a strike that is
-  de-energized; for a maglock, energized. Egress stays hardware-owned.
+- Each lock relay starts in its idle (locked) state when armed: for a strike
+  that is de-energized, for a maglock energized. On disarm and on graceful
+  shutdown (`Close`) the driver writes the idle state and then lets go of the
+  line: the GPIO backend releases it, and the I2C backend returns the pin to a
+  high-impedance input. What the relay does after that depends on the board,
+  so confirm on the bench whether a maglock stays powered. Egress stays
+  hardware-owned.
 - A killed process runs no cleanup (the MCP23017's output latch keeps its last
   value). The next boot drives every line it arms back to idle before using
   it.
-- An unknown `controller.model` stops the controller at boot.
+- An unknown `controller.model` stops the controller at boot when
+  `driver: gpio` or `reader: osdp`/`both` needs the profile.
 - A lock relay index that is unset (`0`) or not on the board is rejected, and
   so is an undefined input index. An input index of `0` means "not wired" and
   is skipped.
@@ -247,9 +252,10 @@ not reported until it clears and asserts again.
 ## 6. Readers
 
 `controller.reader` picks how credentials arrive, independent of the lock and
-door driver (the strike and DPS/REX stay on GPIO/I2C either way). Each tap
-event carries a `source` (`nats` / `osdp`), so a physical read can be told
-apart from a NATS-published tap in the audit trail.
+door driver (the strike and DPS/REX stay on that driver either way). Each tap
+event carries a `source` (`nats` / `osdp`, or `command` / `badge` for a
+commanded grant), so a physical read can be told apart from a NATS-published
+tap in the audit trail.
 
 | Mode | Credentials come from |
 | :--- | :--- |
@@ -275,8 +281,8 @@ Server-Mini).
   fail to arm under this mode, so that portal is not driven at all.
 - A card from an address no portal claims is dropped.
 - The engine is pure Go, no cgo (`internal/drivers/osdp`), and mirrors
-  libosdp's CP design. A reader goes offline after 8 failed exchanges and is
-  re-initialized 10 s later.
+  libosdp's CP design. A reader goes offline after 8 retries (the ninth
+  consecutive failed exchange) and is re-initialized 10 s later.
 
 ::: note v1 is clear-text
 OSDP Secure Channel (SCBK/AES) is a planned fast-follow. See the

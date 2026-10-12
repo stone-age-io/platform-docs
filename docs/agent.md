@@ -74,15 +74,17 @@ You do not copy credential files to each device. The Agent signs in to the
 Control Plane **as its own Thing**, fetches its NATS credentials, and keeps them
 current for the life of the device.
 
-This is `auth.type: "platform"` in the Agent's config, with the platform set in
-a **top-level `platform:` block**. The Agent depends on the Stone-Age.io schema
+This is `nats.auth.type: "platform"` in the Agent's config, with the platform
+set in a **top-level `platform:` block**. The Agent depends on the Stone-Age.io schema
 (`things` to `nats_user` to `creds_file`) and on platform routes, not on generic
 PocketBase.
 
 The block is top-level because **three** parts of the Agent read it: the NATS
 credential lifecycle below, the [Nebula](#4-security-isolation) config source,
-and the [leaf bootstrap](./leaf-nodes.md#3-get-apimeleaf-config). Each checks
-only whether the block is present.
+and the [leaf bootstrap](./leaf-nodes.md#3-get-apimeleaf-config). All three
+authenticate as the same Thing, so each also needs `nats.auth.type:
+"platform"`, and the Agent refuses to start with a Nebula `source: "platform"`
+under any other auth type.
 
 ### The lifecycle of a Thing
 

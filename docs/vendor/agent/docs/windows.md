@@ -24,7 +24,7 @@ Complete guide for installing and configuring the agent on Windows systems.
 # Run as Administrator
 
 # Download agent (set the version to the latest release)
-$agentVersion = "0.1.0"
+$agentVersion = "0.4.0"
 $downloadUrl = "https://github.com/stone-age-io/agent/releases/download/v$agentVersion/agent_${agentVersion}_windows_amd64.zip"
 $agentPath = "C:\Program Files\Agent"
 $configPath = "C:\ProgramData\Agent"
@@ -296,7 +296,8 @@ commands:
     - "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10"
 ```
 
-**Security note**: Only exact matches are allowed. Be specific!
+**Security note**: A request must match an entry exactly, apart from
+whitespace, and the entry as you wrote it is what runs. Be specific!
 
 ### Log File Paths
 
@@ -507,12 +508,14 @@ Select-String -Path "C:\ProgramData\Agent\agent.log" -Pattern "service"
 
 ### PowerShell Execution Errors
 
+The agent starts PowerShell with `-ExecutionPolicy Bypass`, so the machine's
+local execution policy does not apply to its commands and scripts. Only a
+policy set by Group Policy overrides that:
+
 **Check execution policy:**
 ```powershell
-Get-ExecutionPolicy
-
-# If restricted, set to RemoteSigned
-Set-ExecutionPolicy RemoteSigned -Scope LocalMachine
+# MachinePolicy or UserPolicy set here wins over -ExecutionPolicy Bypass
+Get-ExecutionPolicy -List
 ```
 
 ---
@@ -528,10 +531,12 @@ Stop-Service agent
 # Backup current binary
 Copy-Item "C:\Program Files\Agent\agent.exe" -Destination "C:\Program Files\Agent\agent.exe.backup"
 
-# Download new version
-$agentVersion = "1.1.0"
-$downloadUrl = "https://github.com/stone-age-io/agent/releases/download/v$agentVersion/agent-windows-amd64.exe"
-Invoke-WebRequest -Uri $downloadUrl -OutFile "C:\Program Files\Agent\agent.exe"
+# Download and extract the new release archive
+$agentVersion = "0.4.0"
+$downloadUrl = "https://github.com/stone-age-io/agent/releases/download/v$agentVersion/agent_${agentVersion}_windows_amd64.zip"
+Invoke-WebRequest -Uri $downloadUrl -OutFile "$env:TEMP\agent.zip"
+Expand-Archive -Path "$env:TEMP\agent.zip" -DestinationPath "$env:TEMP\agent" -Force
+Move-Item -Path "$env:TEMP\agent\agent.exe" -Destination "C:\Program Files\Agent\agent.exe" -Force
 
 # Start service
 Start-Service agent

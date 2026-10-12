@@ -82,7 +82,8 @@ contract between them.
 ## Try the Demo
 
 A fresh `accessd` has one door and one cardholder. That proves the decision
-function runs and not much else. One command fills it:
+function runs and not much else. One command fills it (with a config of your
+own; see the note under [Build and Run](#build-and-run)):
 
 ```bash
 ./accessd migrate up
@@ -131,6 +132,17 @@ access group changes what the next tap returns. See [Demo Data](demo/README.md).
 
 ## Build and Run
 
+::: note Point the configs at your NATS first
+Every `accessd` command, `migrate` and `demo-seed` included, loads
+`config/accessd.yaml` (relative to the working directory) unless `SA_CONFIG`
+names another file, and the controller loads `config/controller.yaml` unless
+`-config` does. In a checkout both are annotated examples: they point at `nats.example.com` and name a `credsFile`,
+and a binary refuses to start while a named creds file is missing. Copy them
+to `config/local*.yaml` (gitignored) and edit them, or point
+`SA_CONFIG`/`-config` at your own file. See
+[Configuration Reference](docs/configuration.md).
+:::
+
 ### accessd
 
 The UI is `//go:embed`-ed into `accessd` at Go compile time, so build the UI
@@ -146,8 +158,10 @@ cd .. && go build ./cmd/accessd
 The committed `internal/webui/public` means a fresh checkout embeds a working UI
 without npm. Rebuild and commit it whenever the frontend changes.
 
-Create the admin login (a PocketBase superuser) with
-`./accessd superuser upsert <email> <pass>`.
+Create the PocketBase admin login for `/_` (a superuser) with
+`./accessd superuser upsert <email> <pass>`. The console at `/` signs in
+operators from the `users` collection instead; see
+[Operators & Authorization](docs/operators.md#1-sign-in).
 
 ### access-controller
 
@@ -163,7 +177,7 @@ local status page. See [Edge Controller](docs/controller.md).
 ### UI Development
 
 ```
-npm --prefix ui run dev     # http://localhost:5174, proxies /api + /_ to :8090
+npm --prefix ui run dev     # http://localhost:5174, proxies /api + /_ + /branding to :8090
 ```
 
 Requires Node 20.19+ / 22.12+ (Vite 8).
@@ -288,7 +302,7 @@ internal/policykv/      downward wire contract: ACC_POLICY key scheme + JSON sha
 internal/statuskv/      upward wire contract: ACC_STATUS key scheme + JSON shapes
 internal/subjects/      every NATS subject is built and parsed here
 internal/drivers/hardware/  per-model board profiles (the console reads them for /api/models)
-internal/natsx/         NATS connection + KV helpers
+internal/natsx/         NATS connection + KV helpers + service-discovery registration
 internal/logger/        zap wrapper
 internal/metrics/       Prometheus instrumentation (default :2113; the example controller config uses :2114)
 

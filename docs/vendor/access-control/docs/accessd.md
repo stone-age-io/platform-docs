@@ -48,10 +48,11 @@ This is the canonical split between the two binaries.
 | Hardware (readers, locks, door and aux inputs) | None | Drives all of it |
 | Door alarms (`forced`, `held`, `no_entry`), intrusion trips, fire input | Projects, notifies | Detects and publishes |
 | Commands (`cmd.grant`, `cmd.posture`, `cmd.output`) | Publishes them from the command routes and badge tier | Subscribes and applies them; posture overrides live only in its memory |
-| Events stream (`ACC_EVENTS`) | Creates the stream; consumes it with four durables | Publishes taps, alarms and fire to it |
+| Events stream (`ACC_EVENTS`) | Creates the stream; consumes it with four durables | Publishes taps, posture changes, alarms and fire to it |
 | `events` collection | Writes it (the audit projection) | Never sees it |
 | Status shadow (`ACC_STATUS`) | Creates the bucket; projects it into `point_status` | Writes its own shadow keys |
 | Heartbeats and liveness | Subscribes; writes `controllers.last_seen`/`status`; emits liveness events | Publishes a heartbeat |
+| [Service discovery](protocol.md#service-discovery) (`$SRV`) | Registers as `accessd` with `host`; identity only, no endpoints | Registers as `access-controller` with `code` and `location`; identity only, no endpoints |
 | Arm-state | Owns the durable `areas.arm_override` (operator, badge and entry-disarm writes, one-shot release); emits arm-transition events | Resolves the effective state (override, schedule, standing) and trips intrusion while armed |
 | Notifications and webhook | Sends all email and webhook POSTs | Sends nothing outside NATS |
 | Control-plane audit (`audit_logs`) | Writes it | Never sees it |
@@ -112,9 +113,11 @@ On `serve`, in this order:
 8. The HTTP routes: command bridge, models, simulator, badge tier.
 9. The one-shot disarm release and the visitor credential sweep.
 10. The status projector.
+11. The [service discovery](protocol.md#service-discovery) registration. A
+    failure is logged and `serve` carries on without it.
 
 Steps 4 to 6 share a two-minute timeout, and each bucket or stream call has its
-own 5-second limit.
+own 10-second limit.
 
 An error from steps 3 to 7 or step 10 stops `serve`. Errors inside a step that
 is per-record (one key that will not publish, one row that will not project)
@@ -155,6 +158,30 @@ against that NATS account, the bind fails with "accessd creates it on first
 serve" and the controller keeps retrying. Start accessd first on a new
 deployment.
 :::
+
+### Metrics
+
+With `metrics.enabled`, accessd serves these
+([`internal/metrics`](https://github.com/stone-age-io/access-control/blob/main/internal/metrics/metrics.go), shared with the
+controller):
+
+| Metric | Type | Labels | Meaning |
+| :--- | :--- | :--- | :--- |
+| `audit_writes_total` | counter | `status` (`ok`, `error`) | `events` rows written by the audit projection. |
+| `notify_sends_total` | counter | `status` (`ok`, `error`, `skip`, `dedup`) | Notification-sink outcomes. |
+| `webhook_posts_total` | counter | `status` (`ok`, `error`, `skip`) | Webhook-sink outcomes. |
+| `disarm_sink_total` | counter | `status` (`disarmed`, `skip`, `error`) | Entry-disarm sink outcomes. |
+| `controller_heartbeats_received_total` | counter | `status` (`ok`, `unknown`, `error`) | Heartbeats processed. `unknown` is a code with no `controllers` record. |
+| `events_published_total` | counter | `kind` (`state`) | Liveness and area arm-transition events accessd published. |
+| `policy_kv_applies_total` | counter | `op` (`put`, `delete`) | Mirror writes to `ACC_POLICY` **and** rows projected from `ACC_STATUS`, counted together. |
+| `policy_kv_watch_state` | gauge | | The `ACC_STATUS` watcher: `1` after its initial sync, `0` while it is being re-established. |
+| `nats_connection_status` | gauge | | `1` connected, `0` disconnected. |
+| `nats_reconnects_total` | counter | | NATS reconnections. |
+| `process_goroutines`, `process_memory_bytes` | gauge | | Refreshed every `metrics.updateInterval`. |
+
+The controller's series are registered too. `taps_dropped_total` and
+`controller_heartbeats_sent_total` show as `0`; `access_decisions_total` has
+labels and does not appear.
 
 ---
 
@@ -231,8 +258,9 @@ After that each durable keeps its position on the NATS server (§5).
   and [Notifications](configuration.md#8-notifications).
 - **Reminders.** Re-sends an urgent alarm (`forced`, `intrusion`, `fire`,
   `controller_offline`) still unacknowledged after 15 minutes, at most twice,
-  looking back 24 hours. It reads the `events` projection, not the stream, and
-  uses the same send path as the sink.
+  looking back 24 hours. Nothing spaces the two: the second goes on the next
+  5-minute sweep after the first. It reads the `events` projection, not the
+  stream, and uses the same send path as the sink.
 - **Webhook sink.** POSTs each pageable event as JSON. Inert (it acks and skips)
   while `accessd.webhookURL` is empty. Redirects are never followed.
 - **Entry-disarm sink.** On an allowed tap that carries a credential, at a

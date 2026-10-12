@@ -26,7 +26,10 @@ What each binary does with its config is on its own page:
 
 - **File path.** `accessd` reads `$SA_CONFIG` (default `config/accessd.yaml`).
   `access-controller` uses its `-config` flag (default
-  `config/controller.yaml`).
+  `config/controller.yaml`). In a checkout those defaults are the annotated
+  examples, which name a `credsFile` that must exist (§12), so point
+  `SA_CONFIG` or `-config` at your own copy (`config/local*.yaml` is
+  gitignored).
 - **A missing file is fine.** Defaults and env vars still apply. Nothing has to
   exist on disk.
 - **Every key has an `SA_`-prefixed env var.** Take the dotted key, uppercase
@@ -69,6 +72,14 @@ dev box). A `.creds` file is the recommended choice for a backend service.
 
 ::: warning Never commit credentials
 `*.creds` is gitignored. Keep credentials out of any file you commit.
+:::
+
+::: note Service discovery needs `$SRV.>`
+Both binaries register for NATS service discovery
+([Wire Protocol](protocol.md#service-discovery)). Give each binary's
+credential subscribe on `$SRV.>` and a way to reply: publish on `_INBOX.>`,
+or `allow_responses: true`. Without them, discovery is refused for that
+process and nothing else changes. nats.go prints the refusal to stderr.
 :::
 
 ### TLS
@@ -314,9 +325,15 @@ open. Defaults, per client:
 
 Change them in the PocketBase admin under **Settings → Rate limits**.
 
-`GET /api/badge/preview/{id}` has no limit. It is operator-only (`enroll`), so
-it sits behind the same trust boundary as every other operator route, and none
-of those are limited. It is audited instead. See
+`1750000032` also switches the limiter on, which brings PocketBase's own
+default rules into force for every other route (unless an install has already
+changed them): for example `*:auth` at 2 per 3s, `*:create` at 20 per 5s and
+`/api/` at 300 per 10s.
+
+`GET /api/badge/preview/{id}` has no rule of its own. It is operator-only
+(`enroll`), so it sits behind the same trust boundary as every other operator
+route, and like them it falls under only those PocketBase defaults. It is
+audited instead. See
 [Operators & Authorization](operators.md#seeing-a-holders-badge-apibadgepreview).
 
 ::: warning Behind a reverse proxy, set `TrustedProxy`
@@ -395,7 +412,7 @@ up on last-known policy instead of default-deny.
 |---|---|---|---|
 | `policy.cache.enabled` | `false` | `SA_POLICY_CACHE_ENABLED` | Opt in to the offline cache. Off means the stateless, default-deny-until-sync boot. |
 | `policy.cache.path` | `./data/policy-cache.json` | `SA_POLICY_CACHE_PATH` | Snapshot file. Written `0600` (it holds credential values), parent dir created `0700`, atomic (temp file + rename). |
-| `policy.cache.maxAge` | `72h` | `SA_POLICY_CACHE_MAXAGE` | Staleness bound. On boot, a snapshot older than this is **refused** and the box falls back to default-deny, so a credential revoked during a long outage cannot keep working off a stale cache. Set a large value (for example `8760h`) to turn the check off in practice. |
+| `policy.cache.maxAge` | `72h` | `SA_POLICY_CACHE_MAXAGE` | Staleness bound. On boot, a snapshot older than this is **refused** and the box falls back to default-deny, so a credential revoked during a long outage cannot keep working off a stale cache. Set a large value (for example `8760h`) to turn the check off in practice. An explicit `0` refuses every snapshot; omit the key for the default. |
 
 How the cache behaves:
 
