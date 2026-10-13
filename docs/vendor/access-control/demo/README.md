@@ -30,6 +30,8 @@ and no running server.
 
 What you get:
 
+- the console operator `admin@local.dev`, with every capability, unless an
+  account with that email already exists (a new install has no operator)
 - three sites (`KC-DC1`, `KC-OFFICE`, `SGF-XD2`)
 - four controllers across both board models
 - ten portals, including a maglock and a vehicle gate
@@ -42,6 +44,8 @@ What you get:
   three different pass states
 - about 240 backdated events (`--events` changes the count) that always carry
   eight distinct decision reason codes, plus three unacknowledged alarms
+
+Every login it creates, the operator's included, uses the password `demo1234`.
 
 The other files in this directory still work. `seed.ps1` creates a
 **different** company (`dc`, `east-office`) so the two do not collide, but
@@ -104,7 +108,7 @@ Check `pb context list` before you run it.
 | Area rights | `ag-warehouse` grants arm **and** disarm on `dc-warehouse`; `ag-cleaning` grants **arm only** |
 | Aux output on a badge | `ag-relays` grants the East gate strike (Facilities and Security hold it) |
 | Remote opt-ins | unlock on `east-lobby` and `hq-east-stair`; arm/disarm on `dc-warehouse`; the gate strike; floor plan on `east-office` |
-| Operator's own badge | `admin@local.dev` is linked to Sarah Chen's cardholder, so "My badge" in the profile menu works |
+| Operator's own badge | `admin@local.dev`, if it exists, is linked to Sarah Chen's cardholder, so "My badge" in the profile menu works |
 | Troubleshooting a badge | Open the expired and revoked visitors: find them on **Cardholders** under the **Visitors** filter, then **View their badge** shows what that person's own screen says. That tells "expired" from "never issued" from "no login" without cross-referencing four collections. |
 | History | 9 taps and 3 unacknowledged alarms, backdated minutes to hours |
 
@@ -123,10 +127,12 @@ The seed prints these when it finishes:
 
 | Tier | Identity | Secret |
 |---|---|---|
-| Operator console (`/login`) | `admin@local.dev` | `changeme123` (from fixture `1750000010`) |
+| Operator console (`/login`) | whoever you made with `./accessd operator upsert <email> <pass>` before seeding | your choice |
 | Badge, staff (`/login?as=badge`) | `sarah.chen@stoneage.example`, `marcus.johnson@…`, `priya.patel@…`, `emily.rodriguez@…` | `badge-demo-1234` |
-| Badge, fixture cardholder | `alice@example.com` | `changeme123` |
 | Badge, visitor | `dana.whitfield@acme.example` | `badge-demo-1234` |
+
+The migrations seed no operator, so make one first. Name it `admin@local.dev`
+and the seed links it to Sarah Chen's cardholder.
 
 A real visitor normally signs in with an **emailed one-time code**, so their
 pass would need SMTP. The seed gives the demo visitors the staff password

@@ -61,9 +61,16 @@ go build ./cmd/access-controller
 ./access-controller -config config/controller.yaml
 ```
 
-The binary takes one flag, `-config` (default `config/controller.yaml`). A
-missing file is not an error: defaults and `SA_` env vars apply. See
-[How Config Loads](configuration.md#1-how-config-loads).
+Or download a release: the `linux_arm64` archive is the build for the KinCony
+CM4 and CM5 boards, and it carries the annotated example config at
+`config/controller.yaml`.
+
+The binary takes two flags. `-config` (default `config/controller.yaml`) names
+the config file; a missing file is not an error, since defaults and `SA_` env
+vars apply. See [How Config Loads](configuration.md#1-how-config-loads).
+`-version` prints the build and exits without loading the config. The build
+is the version `go build` stamped from the checkout: the tag for a release, a
+pseudo-version between tags.
 
 ### Minimal config
 

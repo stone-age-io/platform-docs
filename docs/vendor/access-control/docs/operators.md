@@ -19,9 +19,12 @@ controller never sees an operator.
 The management UI authenticates against PocketBase's built-in **`users` auth
 collection**, not the all-powerful `_superusers` admin. Open signup is
 disabled. An operator account is created by another operator who holds the
-`operators` capability, or by a superuser. Seed the first one with the guarded
-dev fixture (`pbmigrations/1750000010`), or create it directly in the
-PocketBase admin (`/_`).
+`operators` capability, or by a superuser. A new install has none: create the
+first with `./accessd operator upsert <email> <pass>`, which grants every
+capability (narrow them afterwards on the Operators page), or directly in the
+PocketBase admin (`/_`). Run the same command again to reset a locked-out
+operator's password. `accessd demo-seed --confirm` creates the demo operator
+`admin@local.dev`.
 
 A **superuser** is the break-glass account. It bypasses every collection rule
 and every capability check, and it signs in to the PocketBase admin UI at `/_`.
