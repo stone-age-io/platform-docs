@@ -5,15 +5,18 @@ access: public
 ---
 # Platform
 
-**Every site you manage, on one screen.**
+**Every site. Every vendor cloud. One screen.**
 
-Stone-Age.io gives you one console and one automation layer for the equipment
-your sites already run. Door controllers, cameras, kiosks, sensors and machines
-connect if they speak HTTP, MQTT or NATS. You do not replace them.
+Stone-Age.io gives you one console and one automation layer for everything from
+the door controllers, sensors and machines on your sites to the cloud platforms
+you log into separately today. Equipment connects if it speaks HTTP, MQTT or
+NATS. A cloud platform connects through the [rule engine](./automation.md),
+which receives its webhooks and polls its API. You do not replace any of them.
 
 The platform has one place to register equipment and the people who use it,
-one real-time bus for what the equipment reports, and one encrypted network to
-reach it. Each piece does one job, so you can adopt only what you need now.
+one real-time bus for what the equipment and the cloud platforms report, and
+one encrypted network to reach the equipment. Each piece does one job, so you
+can adopt only what you need now.
 
 ---
 
