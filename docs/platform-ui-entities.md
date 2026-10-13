@@ -285,7 +285,7 @@ Thing of that type follows it.
 
 Types classify your inventory and locations.
 
-- **Location Types** categorize sites, for example `Campus`, `Building`, `Room`
+- **Location Types** categorize Locations, for example `Campus`, `Building`, `Room`
   or `Cabinet`. They only classify.
 - **Thing Types** are the platform's **contract layer**. A Thing Type declares
   a **subject prefix** (a template such as `camera.{thing}`, or blank for the

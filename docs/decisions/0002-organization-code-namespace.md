@@ -11,7 +11,7 @@ nav_order: 20
 
 > The Context and Decision below describe the design as it was argued. All six steps have since shipped; see [As implemented](#as-implemented) for what changed on contact with the code — including one ordering error in this document that would have dropped events.
 
-> **One collection named below no longer exists.** `leaf_nodes` was the precedent this ADR cites for freezing `code`, and it has since been dropped — an edge site is an ordinary Thing now (see [Leaf Nodes](../leaf-nodes.md)). The argument is unaffected: the freeze shipped on every collection listed, `things` included, and `things.code` is the precedent to point at today. The references are left as written, because an ADR records what was argued at the time.
+> **One collection named below no longer exists.** `leaf_nodes` was the precedent this ADR cites for freezing `code`, and it has since been dropped — a gateway is an ordinary Thing now (see [Leaf Nodes](../leaf-nodes.md)). The argument is unaffected: the freeze shipped on every collection listed, `things` included, and `things.code` is the precedent to point at today. The references are left as written, because an ADR records what was argued at the time.
 
 > **Rule 2 is amended for Things and Locations by [ADR 0003](./0003-human-friendly-codes-and-default-subject.md)**. A blank code there is replaced with a generated one, not slugified from the name; in practice only organizations were ever slugified. Uniqueness ignores case, and a record's type is frozen once set. Everything else here stands.
 

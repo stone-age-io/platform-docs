@@ -29,4 +29,4 @@ below, or use search in the sidebar.
   then its [central service](./vendor/access-control/docs/accessd.md) and
   [edge controller](./vendor/access-control/docs/controller.md) pages.
 - **Going to production:** the [Operations checklist](./operations.md#7-production-checklist).
-- **Looking up a term:** [What We Call Things](./overview.md#what-we-call-things).
+- **Looking up a term:** [Glossary](./overview.md#glossary).

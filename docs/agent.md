@@ -29,7 +29,7 @@ The Agent is one Go binary with no external dependencies.
 - **Reconnects by itself:** it handles NATS reconnection and backoff.
 - **Cross-platform:** Windows services, Linux systemd and FreeBSD rc.d.
 
-A site that runs a leaf node needs only the Agent. It bootstraps and can host
+A gateway, the box that runs a leaf node, needs only the Agent. It bootstraps and can host
 the leaf server. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Getting the binary

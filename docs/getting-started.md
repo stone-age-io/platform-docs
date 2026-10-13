@@ -4,7 +4,7 @@ nav_order: 50
 ---
 # Getting Started
 
-New to the names? [What We Call Things](./overview.md#what-we-call-things)
+New to the names? The [Glossary](./overview.md#glossary)
 defines the terms this guide uses, including Thing, Account, subject,
 JetStream, KV, leaf, domain and twin.
 
@@ -79,7 +79,7 @@ database, the NATS config, the account JWTs and the JetStream store.
 container cannot find it for itself. If other people will use the console,
 give the host's real name, not `localhost`.
 
-For [edge sites](./leaf-nodes.md), also publish the leaf node port with
+For [gateways](./leaf-nodes.md), also publish the leaf node port with
 `-p 7422:7422`, and set `STONE_AGE_NATS_LEAF_URL` to the address edge boxes
 dial, such as `nats-leaf://hub.example.com:7422`. The generated `nats.conf`
 already has the leaf node listener and the hub's JetStream domain.
@@ -261,11 +261,11 @@ To get a populated platform to look at, run:
 
 It creates three tenants, a type taxonomy, locations on a real map, things
 (devices, gateways, applications and unattended screens), NATS roles and signed
-identities, a Nebula network with a lighthouse, and edge sites.
+identities, a Nebula network with a lighthouse, and edge gateways.
 
 It runs **in-process, through the same provisioning hooks** as the console and
 the API, so the result is the same as records you create by hand. Creating an
-organization mints its NATS account and Nebula CA. Creating an edge site mints
+organization mints its NATS account and Nebula CA. Creating a gateway mints
 the leaf node's NATS user. It needs no running NATS server, because account
 claims wait in `nats_publish_queue`.
 
@@ -334,7 +334,7 @@ For production topologies, leaf nodes, clustering and TLS, see the
 
 > **The browser needs WebSockets**, because it cannot use the NATS TCP protocol. The exported `nats.conf` enables a WebSocket listener on port `9222`. For TLS (`wss://`), edit the `websocket { ... }` block, or pass `--websocket-port` to the export.
 >
-> **Edge sites need a leaf node listener and a JetStream domain.** The export writes both: `leafnodes { port: 7422 }`, and `domain` inside `jetstream { }` from `nats.jetstream_domain`, the same key that agents are given as `hub_domain`, so the hub and its edges agree. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
+> **Gateways need a hub with a leaf node listener and a JetStream domain.** The export writes both: `leafnodes { port: 7422 }`, and `domain` inside `jetstream { }` from `nats.jetstream_domain`, the same key that agents are given as `hub_domain`, so the hub and its edges agree. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
 
 ---
 
@@ -422,7 +422,7 @@ is free text. See [Thing Types](./thing-types.md).
 - Put your config in git. `stone pull` writes every tenant record to YAML that
   you can diff and review. See [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply).
 - Read [Platform Layers](./platform-layers.md) for the full model, and
-  [What We Call Things](./overview.md#what-we-call-things) for the names.
+  the [Glossary](./overview.md#glossary) for the names.
 
 ### If you stopped at §2 (inventory)
 

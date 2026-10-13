@@ -486,7 +486,7 @@ can read `nats_system_operator`.
 edge feature. Extend the route. The route keeps the edge's exposure to a fixed
 list of named fields, not to rules that change for other reasons.
 
-To take a site out of service, clear `active` on its Thing (§4.2), like any
+To take a gateway out of service, clear `active` on its Thing (§4.2), like any
 other device.
 
 ---

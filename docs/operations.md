@@ -67,7 +67,7 @@ you might expect:
 | NATS and Nebula credentials already issued | ✅ Keep working. The cluster checks them, not PocketBase. |
 | Console login, record management | ❌ Paused |
 | Provisioning new Orgs, Things and credentials | ❌ Paused |
-| Agent bootstrap and credential sync | ⏸️ Paused. The Agent retries, and a provisioned site keeps running on the credential and leaf config it has. |
+| Agent bootstrap and credential sync | ⏸️ Paused. The Agent retries, and a provisioned gateway keeps running on the credential and leaf config it has. |
 
 None of the paused work is urgent. So the platform uses **frequent backups and
 a short, practiced restore** (§3 and §4), not an HA database. With scheduled
@@ -246,8 +246,8 @@ reconnects on the System Account and sends changes again, as in
   is green.
 - Create a throwaway Thing in a test org. This tests the provisioning hooks and
   the System Account connection.
-- Sites are connected again. Ask the hub over a tenant's own NATS connection,
-  with the widget in [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up), or send
+- Gateways are connected again. Ask the hub over a tenant's own NATS connection,
+  with the widget in [Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up), or send
   `$SYS.REQ.ACCOUNT.PING.CONNZ` with the `nats` CLI. The answer comes live from
   the hub.
 

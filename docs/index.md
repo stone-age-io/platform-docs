@@ -24,7 +24,7 @@ can adopt only what you need now.
 
 | | Start here |
 | :--- | :--- |
-| **Just show me what it does** | [Getting Started](./getting-started.md). One container, then `demo-seed` gives you three tenants, a map, floor plans, signed identities and edge sites. |
+| **Just show me what it does** | [Getting Started](./getting-started.md). One container, then `demo-seed` gives you three tenants, a map, floor plans, signed identities and edge gateways. |
 | **I run an integration business** | [Authorization & Roles](./authorization.md) for the tenancy model, then [Stone CLI](./stone-cli.md) to configure many sites from one workspace. |
 | **I run IT or operations for a facility** | [Connectivity](./connectivity.md) for how equipment reaches the bus, then [Observability](./observability.md) to send events to the stack you already run. |
 | **I am evaluating the engineering** | [Architecture](./architecture.md), [API Reference](./api-reference.md) and the [decision records](./decisions.md). |
@@ -70,7 +70,7 @@ them without a rebuild. Where a feature applies only to hosted accounts, the
 page says so.
 
 "The platform", "the Control Plane", "the console" and "`stone`" are four
-different things in these docs. See [What We Call Things](./overview.md#what-we-call-things).
+different things in these docs. See the [Glossary](./overview.md#glossary).
 
 ---
 

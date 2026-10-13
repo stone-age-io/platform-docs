@@ -44,14 +44,14 @@ The Control Plane holds the NATS operator and the `$SYS` account, and **no user
 credential inside any organization's account**. So it cannot read an org's
 `twin` KV or anything a site reports. The console can, because the browser
 connects as the signed-in user. That is also how a tenant checks whether a
-site's leaf node is connected: a dashboard widget asks the bus over that
-connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)). The Agent can,
+gateway's leaf node is connected: a dashboard widget asks the bus over that
+connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up)). The Agent can,
 because it runs inside the account.
 
 Do not give the platform a credential in a tenant's account to add a check.
 That would make the credential issuer a participant in every tenant's bus,
 which breaks the boundary the NATS design depends on. So the Control Plane has
-**no** per-site liveness check. It is on the edge instead ([§5](#5-the-edge-agent)).
+**no** per-gateway liveness check. It is on the edge instead ([§5](#5-the-edge-agent)).
 
 ---
 
@@ -251,10 +251,10 @@ last values.
 Before you build a dashboard on these:
 
 **`stone_age_records{collection="things"}` counts configured devices.** It does
-not measure availability, and an alert on it never fires. Per-site liveness is
-in `agent_*` on the edge box ([§5](#5-the-edge-agent)). Whether a site's leaf
+not measure availability, and an alert on it never fires. Per-gateway liveness is
+in `agent_*` on the edge box ([§5](#5-the-edge-agent)). Whether a gateway's leaf
 node is *connected* comes from asking the hub over a tenant's own NATS
-connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up)).
+connection ([Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up)).
 
 **`stone_age_database_size_bytes` is the database only.** Uploaded files
 (photos, floor plans, logos) are in `pb_data/storage` and in every backup, but no
@@ -298,7 +298,7 @@ bus and a missing one look different. Scrape an external server with
 `prometheus-nats-exporter`, which reads its monitoring port and reports much
 more.
 
-> `stone_age_nats_leafnode_connections` counts leaf sessions **across every account**. It is a capacity number, not a per-tenant availability signal. A tenant checks its own sites with `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is scoped to its account. See [Leaf Nodes §7](./leaf-nodes.md#7-is-the-site-up).
+> `stone_age_nats_leafnode_connections` counts leaf sessions **across every account**. It is a capacity number, not a per-tenant availability signal. A tenant checks its own gateways with `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is scoped to its account. See [Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up).
 
 ---
 
@@ -343,7 +343,7 @@ the console out of a load balancer.
 ## 5. The Edge Agent
 
 The [Agent](./agent.md) serves the same two endpoints from its own registry,
-under the `agent` namespace. **You see per-site health in detail here.** The
+under the `agent` namespace. **You see per-gateway health in detail here.** The
 Control Plane cannot see it ([§1](#1-why-this-exists-at-all)). The Agent keeps
 answering when the WAN is down. `cmd.health` goes over NATS, the link that
 fails, so you most need a local answer from the box that has gone quiet.
@@ -385,15 +385,15 @@ A gateway (an Agent that runs a leaf) has three more:
 | Check | State when it trips | Notes |
 |---|---|---|
 | `nats_local` | **fail** | The agent is not connected to the local leaf, the bus that this site's devices use. |
-| `hub_uplink` | **warn** | No outbound leaf connection to the hub. The site is *cut off*. |
+| `hub_uplink` | **warn** | No outbound leaf connection to the hub. The gateway is *cut off*. |
 | `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
 
 These three exist only where there is a leaf.
 
 **A cut-off edge warns. It does not fail.** Local NATS still works and devices
 keep running, which is why a leaf node exists. A `503` would make an
-orchestrator restart a site that is working correctly. `sync` warns for the same
-reason: a relay backlog on a cut-off site is expected.
+orchestrator restart a gateway that is working correctly. `sync` warns for the same
+reason: a relay backlog on a cut-off gateway is expected.
 
 Metrics: every Agent exports `agent_ready`, `_check_state`,
 `_check_timestamp_seconds` and `_build_info`. A gateway adds
@@ -410,7 +410,7 @@ normally. If it rises while the uplink is fine, investigate.
 The server-derived rows come from the leaf's own **loopback** monitoring port,
 so the edge reads its own server with no `$SYS` user credential. If that port
 is unreachable, the rows are **left out**, not reported as zero. Zero would say
-"a cut-off site with no devices", which is a much stronger claim than "not
+"a cut-off gateway with no devices", which is a much stronger claim than "not
 scraped". In the check registry, `skipped` also ranks *below* `ok`, so an
 all-skipped report does not look healthy. See [Leaf Nodes](./leaf-nodes.md).
 
@@ -453,8 +453,8 @@ Suggested alerts:
 | CA expiring | `stone_age_certificate_expiry_seconds{kind="nebula_ca"} - time() < 90 * 86400` |
 | Database growth | `predict_linear(stone_age_database_size_bytes[6h], 7 * 86400) > <your disk>` |
 | Edge prober stuck | `time() - agent_check_timestamp_seconds > 120` |
-| Site cut off | `agent_edge_hub_uplink_connected == 0` |
-| Site bus down | `agent_edge_nats_connected == 0` |
+| Gateway cut off | `agent_edge_hub_uplink_connected == 0` |
+| Gateway bus down | `agent_edge_nats_connected == 0` |
 
 A **warning** raises no alert here, and `stone_age_ready` stays `1`. Warnings are
 for a person who reads `/api/ready` after a deploy, or for a dashboard panel,

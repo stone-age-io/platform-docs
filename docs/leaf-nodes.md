@@ -8,16 +8,17 @@ A site with its own local NATS server keeps working when the WAN fails. The
 transport is a stock NATS leaf node ([Connectivity §1](./connectivity.md#leaf-nodes)).
 It connects outbound to the hub and keeps the site running during an outage.
 
-**The platform models the site as an ordinary Thing.** Its
-[Agent](./agent.md) has its leaf-node capabilities turned on. There is no
-special record type or collection, so sites use the same inventory, identity
-model and API rules as everything else.
+**The box that runs the leaf is a gateway, and the platform models it as an
+ordinary Thing.** Its [Agent](./agent.md) has its leaf-node capabilities turned
+on. There is no special record type or collection, so gateways use the same
+inventory, identity model and API rules as everything else.
 
-> ## Three related terms
+> ## Four related terms
 >    | Term | What it is |
 >    | :--- | :--- |
->    | **NATS leaf node** | The stock `nats-server` at the site in leaf mode, connected outbound to the hub. A Layer 0 transport. See [Connectivity](./connectivity.md#leaf-nodes). |
->    | **A gateway** | The *platform's* model of the site: an ordinary **Thing**, with one NATS identity and optionally a Nebula host. Nothing in the schema marks it as a gateway (§1). This page covers how you configure one and how you check that it is up. |
+>    | **A site** | The place: a Location, not a Thing. A site can have several gateways, or none when its devices reach the platform through a vendor's cloud. See the [Glossary](./overview.md#glossary). |
+>    | **NATS leaf node** | The stock `nats-server` in leaf mode on the gateway, connected outbound to the hub. A Layer 0 transport. See [Connectivity](./connectivity.md#leaf-nodes). |
+>    | **A gateway** | The *platform's* model of the box that runs the leaf: an ordinary **Thing**, with one NATS identity and optionally a Nebula host. Nothing in the schema marks it as a gateway (§1). This page covers how you configure one and how you check that it is up. |
 >    | **The [Agent](./agent.md)** | The binary on the box. It manages the device and, if configured, bootstraps and hosts the leaf node. |
 
 ---
@@ -56,7 +57,7 @@ account**. It has no access inside any tenant's account (see
 *cannot* push anything into an organization's buckets, and it cannot read from
 them.
 
-So the site pulls its config, signed in as itself. Live data (twin state,
+So the gateway pulls its config, signed in as itself. Live data (twin state,
 telemetry) goes through JetStream mirrors and relays across domains, set up by
 the account's own users (§5 and §6).
 
@@ -81,8 +82,8 @@ fields:
 
 The two hub fields come from `nats.leaf_url` and `nats.jetstream_domain`
 ([Configuration §2](./configuration.md#2-section-reference)). If either is
-empty, the route answers `503` and names the setting, because edge sites are
-not set up on that hub (§5).
+empty, the route answers `503` and names the setting, because that hub is not
+set up for gateways (§5).
 
 **There is no flag or capability check on it.** Everything it returns is public
 trust material or the caller's own credential. Every server in the network
@@ -102,8 +103,8 @@ Thing's own access, whatever the collection rules become later.
 
 The platform computes `domain` from `code` on each request. The agent writes it
 into **both** `server_name` and `jetstream { domain }` in the generated config.
-A site-status widget matches a leaf's `server_name` to a Thing's `code` to name
-the site (§7). So the two must always match, and the simplest way is to have
+A status widget matches a leaf's `server_name` to a Thing's `code` to name the
+gateway (§7). So the two must always match, and the simplest way is to have
 only one of them.
 
 There is no `edge-` prefix and no organization token in it. JetStream is already
@@ -137,7 +138,7 @@ the ten field names, separately. Keep both tests if you change either side.
 
 ## 5. Deploy flow
 
-The hub is set up once, for every site:
+The hub is set up once, for every gateway:
 
 - **A leaf node listener and a JetStream domain.** `nats export` writes
   `leafnodes { port: 7422 }`, and `domain` inside `jetstream { }` from
@@ -149,14 +150,15 @@ The hub is set up once, for every site:
   server. Adding the domain keeps existing streams and buckets.
 - **The address edge boxes dial.** Set `nats.leaf_url`
   (`STONE_AGE_NATS_LEAF_URL`), for example `nats-leaf://hub.acme.io:7422`, and
-  open port 7422 to the sites. In the container, publish it with
+  open port 7422 to the gateways. In the container, publish it with
   `-p 7422:7422`.
 
-Then, for each site:
+Then, for each gateway:
 
-1. In the console, create the site's **Thing**, with any Thing Type your
-   organization uses for sites (§1). Copy the login email and password from the
-   success dialog. The password is shown only once.
+1. In the console, create the gateway's **Thing**, with any Thing Type your
+   organization uses for gateways (§1). Set its Location to the site it serves,
+   if it serves one. Copy the login email and password from the success dialog.
+   The password is shown only once.
 2. Install the [Agent](./agent.md) on the edge box and configure the platform
    block:
 
@@ -182,7 +184,7 @@ Then, for each site:
 
     Two startup checks often fail here. `tasks.service_check` is on by default,
     and the Agent refuses a config that lists no services. Turn it off, as
-    above, or list the site's services. `commands.scripts_directory` defaults to
+    above, or list the gateway's services. `commands.scripts_directory` defaults to
     `/opt/agent/scripts`, which must exist. The install steps in
     [The Agent §1](./agent.md#getting-the-binary) create it.
 
@@ -243,7 +245,7 @@ buckets:
 | `twin` | the device, at the edge | edge to hub | relay |
 | `twin_desired` | people and rules, at the hub | hub to edge | JetStream **mirror** |
 
-The rules below apply to the twin and to every bucket a site declares.
+The rules below apply to the twin and to every bucket a gateway declares.
 
 **One writer per bucket is what keeps the data safe.** If both ends write one
 bucket, a conflict has no winner. Two values for one key swap across the link,
@@ -257,10 +259,10 @@ names the bucket.
 
 Desired state is a **mirror** because it has one origin, and the edge never
 writes it. The edge reads the last known values locally, which is what you
-need when the link is down. Reported state needs a **relay**. To combine N sites
-with native sourcing, you would need N sources all named `KV_twin`, which the
-client library cannot express. The other choice, a different bucket name at
-each site, would push the problem into every rule that reads one.
+need when the link is down. Reported state needs a **relay**. To combine N
+gateways with native sourcing, you would need N sources all named `KV_twin`,
+which the client library cannot express. The other choice, a different bucket
+name on each gateway, would push the problem into every rule that reads one.
 
 Sync is off by default, because it adds Data Plane traffic, and an upgrade must
 not start that silently.
@@ -273,13 +275,13 @@ not start that silently.
 
 - **You cannot narrow a mirror's filter later.** `nats-server` rejects any change
   to a mirror block on an existing stream. To change `keys:` on a mirror, delete
-  and recreate that bucket *at every site*. Scope it before rollout. The agent
+  and recreate that bucket *on every gateway*. Scope it before rollout. The agent
   reports a mismatch but cannot repair it.
 
 - **The agent creates hub-side buckets only for the two presets.** It creates
   the local side of any declared bucket, but the hub side only of `twin` and
-  `twin_desired`. A typo that creates a stray local bucket affects one site. A
-  stray hub bucket would affect everyone, with retention one site guessed. For
+  `twin_desired`. A typo that creates a stray local bucket affects one gateway.
+  A stray hub bucket would affect everyone, with retention one gateway guessed. For
   any other bucket, the hub side must already exist. The Control Plane cannot
   create it, because it holds the NATS Operator and no credential inside an
   organization's account
@@ -302,12 +304,12 @@ run `agent -leaf-config` again. That change also invalidates every generated
 
 ---
 
-## 7. Is the site up?
+## 7. Is the gateway up?
 
 Ask NATS. No field or screen answers this for you. Build the question as a
 [dashboard widget](./dashboards.md).
 
-There is **no heartbeat and no status field** for a site. A heartbeat would
+There is **no heartbeat and no status field** for a gateway. A heartbeat would
 travel over the same link whose failure it reports, so a missing beat could not
 tell "edge box down" from "WAN down" from "agent crashed". The Control Plane
 also cannot read tenant data (§2).
@@ -322,7 +324,7 @@ $SYS.REQ.ACCOUNT.PING.CONNZ
 
 with `{}` as the payload. It returns the account's current connection list.
 Match entries with `kind: "Leafnode"` by `name`, which is the leaf's
-`server_name` and so the Thing's `code` (§3). You can then name each site.
+`server_name` and so the Thing's `code` (§3). You can then name each gateway.
 
 **Each account has its own `$SYS` subject space.** `$SYS.REQ.ACCOUNT.PING.*` is
 scoped to the caller's account and answers for that organization only. A tenant
@@ -360,7 +362,7 @@ A widget asks only when someone wants to know. The same widget can also ask
 
 ### Which Agents are running
 
-CONNZ tells you that a site's leaf is connected. To find the Agents themselves,
+CONNZ tells you that a gateway's leaf is connected. To find the Agents themselves,
 use service discovery: `$SRV.PING.stone-agent` gets an answer from every Agent
 in the organization ([The Agent §3E](./agent.md#e-service-discovery)).
 
@@ -371,15 +373,15 @@ gateway that runs its own leaf, both are the same Thing's credential, and the
 demo seed's `gateway` role allows it. A platform test checks this against a real
 hub with a real leaf.
 
-### Per-site health, in detail
+### Per-gateway health, in detail
 
-CONNZ tells you whether the site's leaf is connected to the hub. For the rest
+CONNZ tells you whether the gateway's leaf is connected to the hub. For the rest
 (is JetStream filling the disk, how many devices are connected, is the uplink
 down), the agent serves `/ready` and `/metrics` **on the box**, at
 `observability.addr`. These keep answering when the WAN is down, which is when
 you need them. See [Health & Metrics](./health-metrics.md).
 
-**A cut-off site warns. It does not fail.** `hub_uplink` is a warning, and the
+**A cut-off gateway warns. It does not fail.** `hub_uplink` is a warning, and the
 endpoint still returns 200. Local NATS and devices keep working, which is the
 reason a leaf node exists.
 
@@ -388,15 +390,15 @@ reason a leaf node exists.
 ## 8. Security model
 
 - **The edge box is the trust boundary.** Tenant isolation is the NATS
-  *account* boundary, which a site cannot cross. Each gateway has one NATS
+  *account* boundary, which a gateway cannot cross. Each gateway has one NATS
   identity, shared by the leaf remote, the rule engine and the agent.
-- The site holds **public trust material** (Operator JWT, account JWT, `$SYS`
+- The gateway holds **public trust material** (Operator JWT, account JWT, `$SYS`
   account JWT) and its own user's creds. It **cannot create account users**.
-- **To take a site out of service, clear `active` on its Thing** (Owner/Admin
+- **To take a gateway out of service, clear `active` on its Thing** (Owner/Admin
   only). This does four things at once:
   1. The agent can no longer sign in.
   2. Its current session token stops working immediately.
-  3. The site's NATS credential is suspended (revoked, nothing reissued).
+  3. The gateway's NATS credential is suspended (revoked, nothing reissued).
   4. Its Nebula host is deactivated, and the certificate is blocklisted across
      the CA when peer configs are redeployed.
 
@@ -417,14 +419,14 @@ reason a leaf node exists.
 - An org Admin or Owner can reset the Thing's PocketBase password on its **edit
   form** (Authentication card). The collection's `manageRule` allows this. It is
   a scoped, audited record action, not a superuser task.
-- To reduce what a site can reach, edit its records: assign another NATS role, or
+- To reduce what a gateway can reach, edit its records: assign another NATS role, or
   add per-user permission overrides. Only **Owners and Admins** can, because
   these write to `nats_users` and `nats_roles`.
 
 ::: warning `active` and a connected leaf answer different questions
-A CONNZ reply (§7) says whether the site **is** connected to the hub. `active`
-says whether it **may** be. A deactivated site missing from the list is
-expected. An *active* site missing from the list needs investigation.
+A CONNZ reply (§7) says whether the gateway **is** connected to the hub.
+`active` says whether it **may** be. A deactivated gateway missing from the list
+is expected. An *active* gateway missing from the list needs investigation.
 :::
 
 ---
@@ -437,5 +439,5 @@ expected. An *active* site missing from the list needs investigation.
 - Site-local rules during outages: [Automation](./automation.md)
 - What an edge identity can read, and who manages it: [Authorization & Roles](./authorization.md)
 - `leaf-config` with every other platform route: [API Reference](./api-reference.md)
-- Per-site health endpoints: [Health & Metrics](./health-metrics.md)
+- Per-gateway health endpoints: [Health & Metrics](./health-metrics.md)
 - How the planes fit together: [Architecture](./architecture.md) and [Platform Layers](./platform-layers.md)

@@ -178,7 +178,7 @@ Each excluded character has a reason:
   pattern built from it, from one identity to every identity of that kind.
   This is the security case, because NATS permissions go into a signed JWT
   exactly as written.
-- **A space** breaks the JetStream domain that an edge site's code becomes.
+- **A space** breaks the JetStream domain that a gateway's code becomes.
 - **63 characters** is the RFC 1123 label limit, the strictest place a code is
   used.
 

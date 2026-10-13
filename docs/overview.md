@@ -18,9 +18,9 @@ into a full private IoT and event-driven system. See
 
 ---
 
-## What We Call Things
+## Glossary
 
-The docs use these eight names with exact meanings. Do not interchange them.
+The docs use these ten names with exact meanings. Do not interchange them.
 
 | Name | What it means | What it is *not* |
 | :--- | :--- | :--- |
@@ -32,9 +32,15 @@ The docs use these eight names with exact meanings. Do not interchange them.
 | **NATS Operator** | The root key and JWT of the NATS trust chain. The Control Plane holds it and signs each organization's NATS Account with it. Config key: `operator_name`. | Not a person. Nobody signs in as the NATS Operator. |
 | **Platform Operator** | A user account with `is_operator = true`. Creates and edits Organizations, invites users into any org, reads the audit log. | Not a tenant role. It is a flag on the user, separate from any Membership. |
 | **the provider** | Whoever runs this deployment for its tenants: an MSP, an integrator or an internal IT group. | Not a database record. The provider's own organization is the one `--operator-org` creates. |
+| **site** | A physical place you manage: a building, a campus, a store or a colo cage. It is a [Location](./platform-ui-entities.md#2-locations), at the level the map draws one pin for. Its devices can reach the platform through a gateway, through a vendor's cloud or directly. It is the same site whichever way they connect. | Not a Thing, a gateway or a leaf node. A campus with three gateways is one site. A VPS or a cloud network is not a site. |
+| **gateway** (site gateway) | A Thing whose Agent runs a leaf node, so the devices behind it keep working when the link to the hub fails. Usually a box at a site. It can also be a VPS or a VM in a cloud network. | Not a site, and not a record type. Nothing in the schema marks a Thing as a gateway ([Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)). |
 
 "The platform does X" means the whole system. "The Control Plane does X" means
 that binary.
+
+A site is a place and a gateway is a box. "A site's leaf node" or "a site's
+Agent" means the one on that site's gateway. A site can have several gateways,
+or none.
 
 "Operator" always has a qualifier: **NATS Operator** for the key, **Platform
 Operator** for the person. Bare "operator" appears only in identifiers you type
@@ -51,7 +57,7 @@ explanation.
 | **subject** | The dot-separated name a NATS message is published to, such as `camera.CA-9KD-4PX.motion`. Subscribers match subjects with wildcards: `*` matches one token, `>` matches all remaining tokens. NATS permissions are lists of subjects. | [Connectivity §1](./connectivity.md#core-pubsub-subject-namespacing) |
 | **JetStream** | The NATS persistence layer. A **stream** stores the messages on chosen subjects, so consumers can read history. Core NATS stores nothing. | [Connectivity §1](./connectivity.md#jetstream) |
 | **KV** (key-value bucket) | A JetStream stream used as a key-value store. It keeps the latest value for each key. The twin is in KV. | [Connectivity §1](./connectivity.md#key-value-buckets-live-state) |
-| **leaf** (leaf node) | A NATS server at a site that connects out to the central cluster. Local devices keep working when the link is down. A site is an ordinary Thing, whose Agent runs the leaf server. | [Leaf Nodes](./leaf-nodes.md) |
+| **leaf** (leaf node) | A NATS server that connects out to the central cluster, usually at a site. Local devices keep working when the link is down. It runs on a gateway. | [Leaf Nodes](./leaf-nodes.md) |
 | **domain** (JetStream domain) | The name that separates the JetStream data on one server from another's, so a leaf and the hub can each have a bucket with the same name. A leaf's domain is its Thing's code. | [Leaf Nodes §3](./leaf-nodes.md#the-domain-is-the-code-computed-and-never-stored) |
 | **twin** (reported / desired) | The live state of a Thing or Location, in two KV buckets with one writer each. `twin` holds **reported** state, written by the device. `twin_desired` holds **desired** state, written by a console user. The platform delivers a desired value but does not apply it. | [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) |
 
@@ -153,9 +159,9 @@ Each component is a single binary with no external runtime dependencies.
   hooks. `serve --nats` starts a NATS server inside it, so the smallest working
   deployment is one process ([ADR 0001](./decisions/0001-embedded-nats-server.md)).
 - The rule engine, `rule-router`.
-- The Agent. With `nebula.enabled` it runs the site's Nebula host in-process.
-  With `nats.server_config` set it also runs the site's leaf `nats-server`
-  in-process, so an edge box can run one binary.
+- The Agent. With `nebula.enabled` it runs the device's Nebula host in-process.
+  With `nats.server_config` set it also runs a leaf `nats-server` in-process,
+  so a gateway can run one binary.
 - NATS and Nebula, as their own upstream binaries when you want them separate.
 - Stream processors (eKuiper, Benthos or your own), Telegraf and a TSDB, when
   you need them.

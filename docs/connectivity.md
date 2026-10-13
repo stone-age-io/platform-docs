@@ -149,7 +149,7 @@ evaluating rules against local KV during a WAN outage. A stream processor at the
 edge keeps producing aggregates. When the link returns, synced KV buckets catch
 up in their own direction: hub to edge by mirror, edge to hub by relay.
 
-The platform models a site as an ordinary **Thing**, whose Agent sets up the
+The box that runs a leaf is a **gateway**: an ordinary **Thing**, whose Agent sets up the
 leaf server and can host it. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Cross-Account Subject Sharing (Imports & Exports)
@@ -354,5 +354,5 @@ is needed.
 - Who can manage roles, hosts and account wiring: [Authorization & Roles](./authorization.md)
 - CA rotation and the host certificate audit: [Stone CLI](./stone-cli.md#nebula-operations-that-are-not-record-writes)
 - The edge: [The Agent](./agent.md)
-- Modeling and syncing a site: [Leaf Nodes](./leaf-nodes.md)
+- Setting up a gateway and syncing its buckets: [Leaf Nodes](./leaf-nodes.md)
 - The layer model: [Platform Layers](./platform-layers.md)

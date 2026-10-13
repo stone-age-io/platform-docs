@@ -339,7 +339,7 @@ leaf link with no end.
 At the edge, the twin is a preset. An agent takes lists of buckets to mirror
 down and relay up, and `sync.twin: true` expands to these two buckets
 ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). The
-rules on this page apply to every bucket a site declares. The agent refuses to
+rules on this page apply to every bucket a gateway declares. The agent refuses to
 start if two lists give one bucket two writers.
 
 Reported state is written by the edge, so **it is read-only in the console.**
