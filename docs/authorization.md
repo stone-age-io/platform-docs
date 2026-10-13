@@ -316,10 +316,10 @@ for a device whose password was removed.
 
 For a device, use `things.active`, which moves the NATS identity, the Nebula
 host and the session together. The NATS user's detail view also has **Revoke**
-(replace leaked credentials, stay active) and **Re-enable** (reactivate a
-suspended identity with a new `.creds`). On the NATS user, `active` is a real
-control: true to false revokes and issues nothing, and false to true mints a
-credential issued after the cutoff.
+(replace leaked credentials, stay active), which the Thing's page has too, and
+**Re-enable** (reactivate a suspended identity with a new `.creds`). On the
+NATS user, `active` is a real control: true to false revokes and issues
+nothing, and false to true mints a credential issued after the cutoff.
 
 **A deactivated Thing's identities stay down until the Thing is reactivated.**
 While the Thing is deactivated, the server refuses to make its NATS user or

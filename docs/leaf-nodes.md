@@ -79,6 +79,11 @@ fields:
 | `hub_leaf_url` | Where the leaf remote connects to the hub |
 | `hub_domain` | The hub's own JetStream domain |
 
+The two hub fields come from `nats.leaf_url` and `nats.jetstream_domain`
+([Configuration §2](./configuration.md#2-section-reference)). If either is
+empty, the route answers `503` and names the setting, because edge sites are
+not set up on that hub (§5).
+
 **There is no flag or capability check on it.** Everything it returns is public
 trust material or the caller's own credential. Every server in the network
 already validates the Operator, account and `$SYS` account JWTs, and the caller
@@ -131,6 +136,23 @@ the ten field names, separately. Keep both tests if you change either side.
 ---
 
 ## 5. Deploy flow
+
+The hub is set up once, for every site:
+
+- **A leaf node listener and a JetStream domain.** `nats export` writes
+  `leafnodes { port: 7422 }`, and `domain` inside `jetstream { }` from
+  `nats.jetstream_domain`. Without the domain, every mirror from the hub fails,
+  because the agent addresses the hub's JetStream as `$JS.<domain>.API`. A
+  `nats.conf` exported by platform v0.10.0 or earlier has neither, and the
+  export does not rewrite an existing file. Add both by hand (`domain: hub`
+  inside `jetstream { }`, or your `nats.jetstream_domain`) and restart the
+  server. Adding the domain keeps existing streams and buckets.
+- **The address edge boxes dial.** Set `nats.leaf_url`
+  (`STONE_AGE_NATS_LEAF_URL`), for example `nats-leaf://hub.acme.io:7422`, and
+  open port 7422 to the sites. In the container, publish it with
+  `-p 7422:7422`.
+
+Then, for each site:
 
 1. In the console, create the site's **Thing**, with any Thing Type your
    organization uses for sites (§1). Copy the login email and password from the

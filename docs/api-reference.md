@@ -124,6 +124,10 @@ to the `things` collection, and the target is the caller's own record.
 the Thing's code and is not stored, so it cannot disagree with the code. The
 agent writes it into `server_name` and `jetstream { domain }`.
 
+`hub_leaf_url` and `hub_domain` are `nats.leaf_url` and
+`nats.jetstream_domain`. If either is empty, the route answers `503` and names
+the setting, rather than serve a config the agent would reject.
+
 **The route checks only that the caller is an authenticated Thing.** Everything
 it returns is public trust material or the caller's own credential. Every
 server in the network already validates the operator, account and `$SYS`

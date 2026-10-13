@@ -73,10 +73,23 @@ details follow from this:
 - A user that **answers** requests needs either *Response Permissions* on its
   role, or `_INBOX.>` on publish.
 - A NATS micro service that should be **discoverable** needs `$SRV.>` on
-  subscribe. The Agent is one ([The Agent §3E](./agent.md#e-service-discovery)).
+  subscribe. The Agent is one ([The Agent §3E](./agent.md#e-service-discovery)),
+  and so are access-control's two binaries
+  ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)) and
+  rule-router after v0.20.0
+  ([observability](./vendor/rule-router/docs/12-observability.md#service-discovery)).
 
 Before pb-nats v0.3.0 an empty list granted *everything* in the account
 instead, so roles created earlier may need a second look.
+
+**A role limit left unset is `-1`, and `0` is refused.** A role's
+`max_subscriptions`, `max_data` and `max_payload` go into each user JWT it
+signs. On a role, `-1` means the role sets no limit of its own, and the
+account's limit still applies, because NATS uses the lower of the two. In a
+JWT, `0` means none: a credential with 0 subscriptions is disconnected as soon
+as it connects, so it cannot publish either. A write that sets a role limit to
+`0` gets a `400` that says so. For a publish-only user, leave the subscribe
+allow list empty instead.
 
 > **A NATS role is not a membership role.** `nats_roles` records are Data Plane permission sets for NATS users. The five **membership** roles (`owner`, `admin`, `member`, `viewer`, `dashboard`) control who can read or write platform records. Only Owners and Admins can read or write `nats_roles`, because the platform copies a role's permission fields **exactly** into the user JWT it signs. See [Authorization](./authorization.md).
 

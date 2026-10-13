@@ -79,6 +79,11 @@ database, the NATS config, the account JWTs and the JetStream store.
 container cannot find it for itself. If other people will use the console,
 give the host's real name, not `localhost`.
 
+For [edge sites](./leaf-nodes.md), also publish the leaf node port with
+`-p 7422:7422`, and set `STONE_AGE_NATS_LEAF_URL` to the address edge boxes
+dial, such as `nats-leaf://hub.example.com:7422`. The generated `nats.conf`
+already has the leaf node listener and the hub's JetStream domain.
+
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `STONE_AGE_BOOTSTRAP_PASSWORD` | none (**required on first boot**) | Password for the SuperUser and the Platform Operator user. If it is missing, the container stops and says why. |
@@ -328,6 +333,8 @@ For production topologies, leaf nodes, clustering and TLS, see the
 [NATS documentation](https://docs.nats.io).
 
 > **The browser needs WebSockets**, because it cannot use the NATS TCP protocol. The exported `nats.conf` enables a WebSocket listener on port `9222`. For TLS (`wss://`), edit the `websocket { ... }` block, or pass `--websocket-port` to the export.
+>
+> **Edge sites need a leaf node listener and a JetStream domain.** The export writes both: `leafnodes { port: 7422 }`, and `domain` inside `jetstream { }` from `nats.jetstream_domain`, the same key that agents are given as `hub_domain`, so the hub and its edges agree. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
 
 ---
 

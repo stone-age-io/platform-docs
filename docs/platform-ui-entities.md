@@ -135,9 +135,10 @@ signs. A **suspended** identity (`active = false`) gets `403`, because a new
 credential would be issued after the revocation cutoff and end the suspension.
 
 Suspending, reactivating and revoking are Owner/Admin actions. On a NATS user's
-detail view, **Revoke** is for *leaked* credentials. It moves the identity to a
-new key pair, returns a working replacement, and leaves the identity active. To
-take an identity out of service, deactivate the Thing that holds it. See
+detail view and a Thing's page, **Revoke** is for *leaked* credentials. It
+moves the identity to a new key pair, returns a working replacement, and leaves
+the identity active. To take an identity out of service, deactivate the Thing
+that holds it. See
 [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
 
 ---
