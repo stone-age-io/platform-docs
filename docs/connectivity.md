@@ -75,8 +75,9 @@ details follow from this:
 - A NATS micro service that should be **discoverable** needs `$SRV.>` on
   subscribe. The Agent is one ([The Agent §3E](./agent.md#e-service-discovery)),
   and so are access-control's two binaries
-  ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)) and
-  rule-router after v0.20.0
+  ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)),
+  the helpdesk ([protocol](./vendor/helpdesk/docs/protocol.md#1-the-whole-surface))
+  and rule-router after v0.20.0
   ([observability](./vendor/rule-router/docs/12-observability.md#service-discovery)).
 
 Before pb-nats v0.3.0 an empty list granted *everything* in the account

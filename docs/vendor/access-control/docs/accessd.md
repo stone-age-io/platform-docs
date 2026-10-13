@@ -52,7 +52,7 @@ This is the canonical split between the two binaries.
 | `events` collection | Writes it (the audit projection) | Never sees it |
 | Status shadow (`ACC_STATUS`) | Creates the bucket; projects it into `point_status` | Writes its own shadow keys |
 | Heartbeats and liveness | Subscribes; writes `controllers.last_seen`/`status`; emits liveness events | Publishes a heartbeat |
-| [Service discovery](protocol.md#service-discovery) (`$SRV`) | Registers as `accessd` with `host`; identity only, no endpoints | Registers as `access-controller` with `code` and `location`; identity only, no endpoints |
+| [Service discovery](protocol.md#service-discovery) (`$SRV`) | Registers as `accessd` with `host`; identity only, no endpoints | Registers as `access-controller` with `code` and `location`, and one read-only endpoint, [`health`](protocol.md#controller-health) |
 | Arm-state | Owns the durable `areas.arm_override` (operator, badge and entry-disarm writes, one-shot release); emits arm-transition events | Resolves the effective state (override, schedule, standing) and trips intrusion while armed |
 | Notifications and webhook | Sends all email and webhook POSTs | Sends nothing outside NATS |
 | Control-plane audit (`audit_logs`) | Writes it | Never sees it |

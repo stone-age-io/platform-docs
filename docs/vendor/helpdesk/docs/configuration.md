@@ -143,7 +143,10 @@ The helpdesk authenticates to the hub account with a **platform-minted
 1. In the platform, create a hub-account `nats_user` with subscribe permission
    on `helpdesk.>`. To also emit outbound notification events, grant
    `pub helpdesk.>` and stream management for `HELPDESK_NOTIFICATIONS`. The
-   helpdesk is otherwise unaware of the grant.
+   helpdesk is otherwise unaware of the grant. To list it in `nats micro ls`,
+   also grant subscribe on `$SRV.>` and a way to reply: publish on
+   `_INBOX.>`, or Response Permissions on the role
+   ([Wire Protocol](protocol.md#1-the-whole-surface)).
 2. Export its creds file, and point `nats.creds_file` at it.
 3. Start the helpdesk. On first serve it creates `HELPDESK_EVENTS` (subjects
    `helpdesk.*.tickets.>`) and begins consuming. If publish is granted, it also

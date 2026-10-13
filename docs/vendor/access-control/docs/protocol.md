@@ -74,6 +74,7 @@ it.
 | `acc.{location}.area.{code}.evt.state` | accessd → | core NATS → JetStream | `{"arm","previous","controller","armSource","ts"}` |
 | `acc.{location}.ctrl.{code}.evt.state` | accessd → | core NATS → JetStream | `{"status","lastSeen","ts"}` |
 | `acc.{location}.ctrl.{code}.heartbeat` | ctrl → accessd | core NATS (**not** JetStream) | `{"code","location","ts"}` |
+| `acc.{location}.ctrl.{code}.health` | → ctrl, request/reply | core NATS (**not** JetStream) | any request body; the reply is the [health report](#controller-health) |
 
 \* → ctrl: the controller subscribes. ctrl →: the controller publishes.
 accessd →: accessd publishes. ↔: both (see fire under
@@ -163,6 +164,35 @@ accessd marks a controller `offline` once it has been silent longer than
 `accessd.controllerOfflineAfter` (default 45s). The check runs every third of
 that window, so the flip lands up to a third late.
 
+### Controller health
+
+A controller answers a request on `acc.{location}.ctrl.{code}.health` with its
+live state, so a field check needs no SSH tunnel to the
+[status page](controller.md#5-the-local-status-page):
+
+```
+nats req acc.hq.ctrl.ctrl-hq-1.health ''
+```
+
+The reply is the status page's `/status.json` report **without its recent
+decisions**: `identity`, `build`, `nats`, `policy`, `portals`, `fire`,
+`auxOutputs`, `auxInputs` and `alarms`. Each decision carries the raw
+credential value that was presented, and this reply goes to anyone the account
+lets publish on the subject. What a card did is in the events stream instead.
+Read `policy.state` first: `synced`, `cached` (on the offline snapshot) or
+`loading` (default-deny).
+
+- **Read-only and always on.** The request body is ignored, and nothing
+  changes. Unlike the status page, it needs no config.
+- It sits beside the heartbeat, 5 tokens outside `.evt`, so `ACC_EVENTS` never
+  captures a request.
+- It is the `health` endpoint of the controller's discovery service (below),
+  so `nats micro info` lists it and `nats micro stats` counts its requests. It
+  has no queue group: two boxes misconfigured with one code both answer.
+- The controller's credential needs subscribe on its health subject and a way
+  to reply: publish on `_INBOX.>`, or `allow_responses`. Without them the
+  endpoint is refused and nothing else changes.
+
 ### Service discovery
 
 Both binaries register as NATS micro services, so `nats micro ls` (or any
@@ -173,9 +203,11 @@ Both binaries register as NATS micro services, so `nats micro ls` (or any
 | `access-controller` | `code`, `location` (the controller's own) |
 | `accessd` | `host` (left out if the hostname cannot be read) |
 
-- **Identity, not an API.** Neither registers an endpoint. `$SRV.PING`,
-  `$SRV.INFO` and `$SRV.STATS` answer with name, version, metadata and start
-  time, and nothing else. Nothing can be read or controlled through them.
+- **Identity, plus one read-only endpoint.** accessd registers no endpoint.
+  The controller registers one, [`health`](#controller-health). `$SRV.PING`,
+  `$SRV.INFO` and `$SRV.STATS` answer with name, version, metadata, start time
+  and the controller's endpoint and its request counts. Nothing can be
+  controlled through them.
 - The `$SRV` subjects belong to the NATS micro protocol, and the micro library
   builds them. They are outside `acc.>`, and `internal/subjects` does not
   build them.

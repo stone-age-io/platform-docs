@@ -181,8 +181,8 @@ no cleanup; the next boot drives every line it arms back to idle first. See
    **armed for nothing**.
 6. Start the status writer (also bound lazily), the KV watcher, the three
    reconcilers, the tap loop, the command subscriptions, the heartbeat, the
-   [service discovery](#service-discovery) registration and (if enabled) the
-   status page.
+   [service discovery](#service-discovery-and-health) registration with its
+   health endpoint, and (if enabled) the status page.
 7. Log `controller started; default-deny until policy syncs`.
 8. When the first KV sync completes, log `policy synced; controller live`.
    The reconcilers arm every portal and aux point bound to this code.
@@ -390,6 +390,10 @@ troubleshooting ([`internal/diag`](https://github.com/stone-age-io/access-contro
 live in-memory state: identity, NATS and policy health, the portals it is
 bound to with their door and posture state, aux I/O, fire suppression, and
 recent decisions and alarms.
+
+The same state, without the recent decisions, is always available over NATS
+from the controller's [health endpoint](#service-discovery-and-health), with no
+tunnel. The page adds the decisions, and an HTML view.
 
 ### Turning it on
 
@@ -638,12 +642,25 @@ file stores every credential. Treat the box's logs and its data directory as
 sensitive.
 :::
 
-### Service discovery
+### Service discovery and health
 
 The controller registers as NATS micro service `access-controller` with its
 `code` and `location`, so `nats micro ls` lists every running controller with
-its version and start time. It is identity only: no endpoints, nothing to read
-or control. See [Service discovery](protocol.md#service-discovery).
+its version and start time. See
+[Service discovery](protocol.md#service-discovery).
+
+The service has one read-only endpoint, `health`, on
+`acc.{location}.ctrl.{code}.health`. It answers with the
+[status page](#5-the-local-status-page)'s report without the recent decisions,
+which carry raw credential values. It is always on, and nothing can be
+controlled through it:
+
+```
+nats req acc.hq.ctrl.ctrl-hq-1.health ''
+```
+
+Read `policy.state` first: `synced`, `cached` or `loading`. See
+[Controller health](protocol.md#controller-health) for the fields.
 
 ---
 
@@ -651,7 +668,7 @@ or control. See [Service discovery](protocol.md#service-discovery).
 
 | | Direction | Port | When |
 | :--- | :--- | :--- | :--- |
-| NATS: policy watch, events, status, heartbeat, commands, taps, discovery | **outbound** | 4222 (or your hub's) | always |
+| NATS: policy watch, events, status, heartbeat, commands, taps, discovery, health | **outbound** | 4222 (or your hub's) | always |
 | OSDP readers | local RS485 | the model's serial port | `reader: osdp` or `both` |
 | Status page (`/status`, `/status.json`) | **listens** | `127.0.0.1:2115` | only when `diagnostics.enabled` |
 | Prometheus `/metrics` | **listens** | `metrics.address` (`:2114` in the example config, all interfaces) | only when `metrics.enabled` |
@@ -673,6 +690,8 @@ A controller's NATS identity needs:
   `ACC_STATUS`.
 - **Discovery:** subscribe on `$SRV.>`, and publish on `_INBOX.>` (or
   `allow_responses`) to reply. Without it only discovery is lost.
+- **Health:** subscribe on `acc.{location}.ctrl.{code}.health`, with the same
+  way to reply. Without it only the health endpoint is lost.
 
 Use one NATS identity per controller.
 

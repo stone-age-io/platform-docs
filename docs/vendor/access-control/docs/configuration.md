@@ -80,6 +80,8 @@ Both binaries register for NATS service discovery
 credential subscribe on `$SRV.>` and a way to reply: publish on `_INBOX.>`,
 or `allow_responses: true`. Without them, discovery is refused for that
 process and nothing else changes. nats.go prints the refusal to stderr.
+A controller's [health endpoint](protocol.md#controller-health) also needs
+subscribe on `acc.{location}.ctrl.{code}.health`, with the same way to reply.
 :::
 
 ### TLS

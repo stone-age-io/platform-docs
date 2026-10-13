@@ -21,6 +21,16 @@ channels read, see [Configuration Reference](configuration.md).
 | [HTTP webhook](#4-http-webhook) | `POST /api/helpdesk/inbound/{token}` | in | the per-customer token |
 | [Email provider webhook](#5-email-provider-webhook) | `POST /api/helpdesk/inbound/email/{provider}` | in | Basic auth with `inbound.secret` |
 
+**Service discovery.** Once NATS connects, the helpdesk registers as NATS micro
+service `helpdesk`, with its `host` as metadata, so `nats micro ls` in the hub
+account lists it beside the agents, rule-routers and access-control binaries,
+with its version and start time. The version is the module version `go build`
+stamps from the checkout, a pseudo-version until releases are tagged. It is
+identity only: the service has no endpoints, so nothing can be read or
+controlled through it. Its credential needs subscribe on `$SRV.>` and a way to
+reply (see [NATS credentials](configuration.md#nats-credentials)). Without
+them only discovery is lost.
+
 ---
 
 ## 2. NATS Ticket Events
