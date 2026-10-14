@@ -41,7 +41,10 @@ Organizations.
   it orphans the whole inventory. See [Authorization §3](./authorization.md#3-cross-organization-identities).
 - **Suspension:** a Platform Operator can clear an Organization's **Active**
   flag. This withdraws its NATS account, and every device, agent and browser in
-  the tenant disconnects. No credential is revoked, so everything reconnects
+  the tenant disconnects from the hub at once. Devices on a site's leaf node
+  keep working locally
+  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). No
+  credential is revoked, so everything reconnects
   when you set the flag again. Nebula is not affected, and the tenant can still
   sign in to the console and read its records. You cannot suspend the operator
   or system organizations. See [Authorization §3.1](./authorization.md#31-suspending-an-organization).
@@ -243,7 +246,9 @@ record and nothing more.
 - **Active:** an Owner/Admin switch that takes the device out of service and
   keeps its record and history. **Deactivation is a real decommission.** The
   device is signed out immediately and cannot sign in again. Its NATS identity
-  is suspended. Every peer blocklists its Nebula certificate when its config is
+  is suspended: at the hub at once, and on a site's leaf node at its next
+  refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
+  Every peer blocklists its Nebula certificate when its config is
   redeployed. The detail view shows a banner, and the list greys the row.
   Reactivating issues a *new* `.creds` file, and the old one stays revoked.
   - **Deactivate a Thing. Do not delete it.** A delete does not touch either

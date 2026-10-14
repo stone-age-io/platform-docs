@@ -472,12 +472,17 @@ other's code.
 - [ ] **A decommissioning procedure agreed:** clearing `active` on a Thing cuts a
   device off, gateways included. It refuses new logins, ends every session,
   suspends the NATS identity, and blocklists the Nebula host as peers get their
-  next config. Reactivating issues a **new** `.creds` for the device
+  next config. The hub refuses the NATS identity at once. A site's leaf node
+  refuses it after its next refresh
+  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
+  Reactivating issues a **new** `.creds` for the device
   ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
   **Deactivate, never delete:** a delete does not touch either identity.
 - [ ] **A tenant-suspension procedure agreed:** clearing `active` on an
   **organization** withdraws its NATS account, so every device, agent and
-  browser in the tenant disconnects, including after restarts. Only a Platform
+  browser in the tenant disconnects from the hub at once, including after
+  restarts. Devices on a site's leaf node keep working locally
+  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). Only a Platform
   Operator can do it, and it is **reversible**: no credential changes, so setting
   the flag again reconnects everything. It does not change Nebula, lock the
   console or end sessions. The operator and system organizations refuse it

@@ -372,7 +372,8 @@ It is the same as the console's Deactivate button, with the same four effects:
 1. The device cannot sign in again.
 2. Every session it holds ends at once.
 3. Its linked **NATS identity is suspended**: the key is revoked and nothing is
-   reissued.
+   reissued. The hub applies this at once, and a site's leaf node at its next
+   refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
 4. Its linked **Nebula host is deactivated**, and its certificate goes on every
    peer's blocklist when those configs are redeployed.
 
@@ -609,7 +610,7 @@ service:
 | Operation | What it does | Use it when |
 | :--- | :--- | :--- |
 | `--regenerate` | Signs a new JWT for the **same** key. Copies of the old file keep working. | A JWT field changed, or a device lost its file. |
-| `--revoke` | Makes a new key pair and puts the **old** public key on the account's revocation list. Every copy of the old file is rejected at once and permanently. The record gets a working replacement and **stays active**. | Credentials leaked. Give the new file to the real holder. |
+| `--revoke` | Makes a new key pair and puts the **old** public key on the account's revocation list. Every copy of the old file is rejected permanently: at the hub at once, and on a site's leaf node at its next refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). The record gets a working replacement and **stays active**. | Credentials leaked. Give the new file to the real holder. |
 | `active` to `false` | Revokes the key and issues **nothing**. Setting it back to `true` issues a new credential. The old one stays revoked. | The identity must stop connecting. |
 
 ```sh

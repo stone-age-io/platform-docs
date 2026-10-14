@@ -205,9 +205,10 @@ An Agent's credential rotates in two ways:
 the **same** key pair. The seed in the old `.creds` is the same, so the old file
 keeps working until it expires. After a suspected compromise, use **Revoke** on
 the NATS identity. It generates a new key pair, puts the old public key on the
-account's revocation list so every copy of the old file is rejected at once,
-and issues a working replacement. The Agent picks it up on its next sync. The
-identity stays active.
+account's revocation list, and issues a working replacement. The Agent picks it
+up on its next sync. The identity stays active. The hub rejects every copy of
+the old file at once. A site's leaf node rejects it after its next refresh
+([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
 
 The rotate route returns `403` for a **suspended** identity. Otherwise the new
 JWT would be issued after the revocation cutoff, NATS would accept it, and the
@@ -238,17 +239,18 @@ one prefix, so you address a fleet by convention, not by a registry.
 | `{prefix}.{code}.telemetry.system` | JetStream | CPU, memory, disk |
 | `{prefix}.{code}.telemetry.service` | JetStream | Service status |
 | `{prefix}.{code}.telemetry.inventory` | JetStream | Hardware/software inventory |
-| `{prefix}.{code}.cmd.*` | Core NATS (request/reply) | `ping`, `service`, `logs`, `exec`, `health`, `rotate_creds`, `nebula` |
+| `{prefix}.{code}.cmd.*` | Core NATS (request/reply) | `ping`, `service`, `logs`, `exec`, `health`, `rotate_creds`, `nebula`, `leaf_refresh` |
 
 Every telemetry payload has `code`, `location` and `ts`, so any subscriber can
 read it without other context.
 
-On a box that is also a **site gateway**, the Agent has three more capabilities.
+On a box that is also a **site gateway**, the Agent has four more capabilities.
 You turn each on separately:
 
 | Capability | Turned on by | What it does |
 |---|---|---|
 | Leaf bootstrap | `agent -leaf-config` | Writes `nats-leaf.conf` and creds from `GET /api/me/leaf-config` |
+| Leaf refresh | `platform.leaf_refresh_interval`: on by default (`5m`), `0` turns it off | Checks the account JWT. If it changed, fetches the leaf config again, rewrites `nats-leaf.conf` and reloads the leaf. `cmd.leaf_refresh` runs it at once. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow) |
 | Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
 | KV bucket sync | `sync.twin`, `sync.mirrors`, `sync.relays` | Keeps declared KV buckets in step with the hub: mirrors down, relays up |
 

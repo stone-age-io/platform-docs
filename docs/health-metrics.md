@@ -380,15 +380,16 @@ Every Agent has these checks, gateway or not:
 | `nebula` | **warn** | The overlay is enabled but not running, is using its cached config, or has no tunnels. Skipped when the overlay is off. |
 | `platform_sync` | **warn** | No recent successful credential sync with the platform. The session token expires after seven days without one. Skipped when the agent does not get its credentials from the platform. |
 
-A gateway (an Agent that runs a leaf) has three more:
+A gateway (an Agent that runs a leaf) has four more:
 
 | Check | State when it trips | Notes |
 |---|---|---|
 | `nats_local` | **fail** | The agent is not connected to the local leaf, the bus that this site's devices use. |
 | `hub_uplink` | **warn** | No outbound leaf connection to the hub. The gateway is *cut off*. |
 | `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
+| `leaf_preload` | **warn** | The leaf's loaded account JWT differs from the latest one. The leaf is behind, and can still accept a credential the hub refuses ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). |
 
-These three exist only where there is a leaf.
+These four exist only where there is a leaf.
 
 **A cut-off edge warns. It does not fail.** Local NATS still works and devices
 keep running, which is why a leaf node exists. A `503` would make an

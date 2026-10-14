@@ -176,7 +176,10 @@ Only a Platform Operator can change `organizations.active`. It does one thing:
 `hooks/org_active_flag.go` copies the flag onto the account record's own
 `active` field, which is pb-nats's account-level suspend. Clearing it deletes
 the account claim from the resolver. Every device, edge agent and browser in the
-tenant disconnects at once, and the account stays withdrawn across restarts.
+tenant disconnects from the hub at once, and the account stays withdrawn across
+restarts. A site's leaf node keeps its own copy of the account, so devices on it
+keep working locally
+([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
 
 - **It is reversible.** It deletes the *account* claim only. It adds no
   revocation, changes no `nats_users` row and re-mints nothing. Every `.creds`
@@ -287,7 +290,7 @@ the device. Four things happen in the same operation:
 | :--- | :--- |
 | The collection's `authRule` (`active = true`) | New sign-ins. The device cannot get another token. |
 | A new `tokenKey` | Every token the device **already holds**, immediately. |
-| `active = false` on the linked `nats_users` row | The signed NATS credential. pb-nats revokes the public key on the account and issues nothing new, so the device stops publishing. |
+| `active = false` on the linked `nats_users` row | The signed NATS credential. pb-nats revokes the public key on the account and issues nothing new. The hub disconnects the device at once. A site's leaf node applies the revocation at its next refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). |
 | `active = false` on the linked `nebula_hosts` row | The mesh certificate. pb-nebula adds its fingerprint to the `pki.blocklist` of every host under the same CA. Nebula has no CRL, so this applies as each peer's config is redeployed. |
 
 All four are necessary:

@@ -189,7 +189,11 @@ Then, for each gateway:
     [The Agent §1](./agent.md#getting-the-binary) create it.
 
 3. Run `agent -leaf-config`. It writes `nats-leaf.conf` (0644) and the creds
-   (0600) in the same directory.
+   (0600) in the same directory. Every path inside the file (`credentials`,
+   `store_dir`, `pid_file`) is absolute and points into that directory, because
+   `nats-server` resolves a relative path against its working directory, not
+   the file's. The leaf needs write access to that directory. It needs the same
+   access to create its JetStream store there.
 4. Start the leaf in one of two ways:
     - **Two processes (default):** run `nats-server -c /etc/agent/nats-leaf.conf`
       under systemd or Docker. The bus then stays up when the agent restarts,
@@ -205,6 +209,21 @@ A separately supervised `nats-server` needs its config file *before* it starts,
 which is before the agent has a server to connect to. So `-leaf-config` runs
 once, on its own.
 :::
+
+**After that, the running Agent keeps the leaf config current.** Every
+`platform.leaf_refresh_interval` (`5m` by default, `0` turns it off), it asks
+`GET /api/me/account-jwt` for the account JWT. That route returns no secret. If
+the JWT changed, the Agent fetches `GET /api/me/leaf-config` again, rewrites
+`nats-leaf.conf` and reloads the leaf:
+
+- **One process:** the Agent reloads the server it hosts.
+- **Two processes, on Linux or FreeBSD:** the Agent sends the leaf a SIGHUP,
+  through the server's `pid_file`.
+- **Two processes, on Windows:** the leaf does not reload. Restart it to load
+  the new file.
+
+`cmd.leaf_refresh` runs a refresh at once. This refresh is how a revocation
+reaches the site (§8.1).
 
 ---
 
@@ -402,8 +421,11 @@ reason a leaf node exists.
   4. Its Nebula host is deactivated, and the certificate is blocklisted across
      the CA when peer configs are redeployed.
 
-  So the config pull, the leaf remote connection and the overlay all stop. It
-  sets `active`, never `revoke`, because revoke returns a working replacement.
+  So the config pull, the leaf remote connection and the overlay all stop.
+  Local traffic on the site continues, because the leaf checks credentials
+  against its own copy of the account JWT (§8.1). The Agent can no longer
+  refresh that copy, because it has no session. Deactivation sets `active`,
+  never `revoke`, because revoke returns a working replacement.
 
   Reactivating issues a **new** NATS credential. The old `.creds` stays revoked.
   The agent needs a platform session to fetch the new one, and deactivation
@@ -428,6 +450,26 @@ A CONNZ reply (§7) says whether the gateway **is** connected to the hub.
 `active` says whether it **may** be. A deactivated gateway missing from the list
 is expected. An *active* gateway missing from the list needs investigation.
 :::
+
+### 8.1 What reaches a site, and when
+
+The hub and a site's leaf node do not apply these changes at the same time.
+
+| Action | At the hub | Devices behind a gateway |
+| :--- | :--- | :--- |
+| Revoke or suspend a NATS identity, including by deactivating a Thing | At once | At the next leaf refresh: at most `platform.leaf_refresh_interval` (5 minutes by default), or at once with `cmd.leaf_refresh` |
+| Deactivate the gateway's own Thing | At once: the hub refuses the leaf's uplink | The site is cut off from the hub. Local traffic continues. |
+| Suspend the organization | At once: every hub connection drops, including the gateway's uplink | Not applied. Local devices keep working on the site's leaf. |
+| Blocklist a Nebula host | — | As each peer pulls its config (`nebula.sync_interval`) |
+| End a Thing's platform session | At once | At once |
+
+The leaf runs `resolver: MEMORY`, so it checks each credential against its own
+copy of the account JWT (§4). A revocation reaches the leaf only when the Agent
+refreshes that copy (§5). On Windows, a separately supervised leaf loads the new
+copy only when you restart it. A suspension never reaches the leaf, because
+`GET /api/me/leaf-config` serves the account JWT whether or not the organization
+is active. The Agent's `leaf_preload` readiness check warns when the leaf's
+loaded account JWT differs from the latest one.
 
 ---
 

@@ -22,6 +22,7 @@ cannot express what it does.
 | :--- | :--- | :--- | :--- |
 | [`/api/client-config`](#get-apiclient-config) | `GET` | any `users` session | Deployment settings the SPA cannot contain at build time |
 | [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to run a NATS leaf server |
+| [`/api/me/account-jwt`](#get-apimeaccount-jwt) | `GET` | any `things` session | The caller's account JWT, so a gateway can tell when its leaf config is out of date |
 | [`/api/me/nats-creds/rotate`](#post-apimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
 | [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any authenticated caller | Redeem an invitation token |
 | [`/api/org/things`](#post-apiorgthings) | `POST` | `member` and up for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
@@ -148,6 +149,28 @@ of named fields, not to rules that change for other reasons. See
 
 The field names are a **contract with the agent repository**. The agent reads
 them by name, so a rename breaks every deployed site.
+
+### `GET /api/me/account-jwt`
+
+The account JWT that `leaf-config` would serve, and nothing else. It is bound
+to the `things` collection, and the target is the caller's own record.
+
+```json
+{
+  "account_jwt": "eyJ0…",
+  "account_pub": "AD3…"
+}
+```
+
+A running gateway calls it every `platform.leaf_refresh_interval`. Revocations
+are in the account JWT, so a new JWT means the site's leaf is out of date. The
+agent then fetches `leaf-config` and reloads the leaf. When the JWT is the same,
+it fetches nothing else. So the Thing's credential crosses the network only
+when something changed. See [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow).
+
+Both values are public trust material. The route makes the same lookup as
+`leaf-config`, so it always names the same account. The two field names are the
+same as in `leaf-config`.
 
 ### `POST /api/me/nats-creds/rotate`
 

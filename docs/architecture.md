@@ -227,6 +227,8 @@ a Thing:
 1. The device cannot sign in again.
 2. Every session it holds is signed out immediately.
 3. Its NATS identity is suspended. The key is revoked and nothing is reissued.
+   This takes effect at the hub at once, and on a site's leaf node at its next
+   refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
 4. Its Nebula certificate goes on every peer's blocklist. This takes effect as
    each peer's config is redeployed.
 
@@ -423,7 +425,9 @@ Tokens (JWT).
 The Control Plane creates every Account JWT and pushes it to the servers. The
 servers run a **full resolver** (`resolver: { type: full }` in the exported
 config). The Control Plane publishes each new or changed Account JWT on
-`$SYS.REQ.CLAIMS.UPDATE`. There is no separate account server.
+`$SYS.REQ.CLAIMS.UPDATE`. There is no separate account server. A site's leaf
+node is the exception. It preloads its own copy of the Account JWT, which its
+Agent refreshes ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
 
 1. The Control Plane holds the **NATS Operator** key.
 2. Each Org has an **Account** key, signed by the NATS Operator.
