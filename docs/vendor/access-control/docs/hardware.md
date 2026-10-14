@@ -99,7 +99,11 @@ outputs take no `lock_type`, so they are always driven energize-to-activate.
   hardware-owned.
 - A killed process runs no cleanup (the MCP23017's output latch keeps its last
   value). The next boot drives every line it arms back to idle before using
-  it.
+  it, and it arms at boot rather than at the first sync: the controller
+  writes a bindings snapshot after every live sync and, with no usable offline
+  cache, arms this box's portals from it before policy arrives (see
+  [Bindings snapshot](controller.md#34-bindings-snapshot)). Only a box that
+  has never synced, or has lost its data directory, waits for policy.
 - An unknown `controller.model` stops the controller at boot when
   `driver: gpio` or `reader: osdp`/`both` needs the profile.
 - A lock relay index that is unset (`0`) or not on the board is rejected, and
@@ -109,6 +113,26 @@ outputs take no `lock_type`, so they are always driven energize-to-activate.
   lock, no reader) and retried on the next policy change.
 - An I2C input read error keeps the last known state.
 - A pulse defaults to **5 s** when neither the portal nor the command sets one.
+
+### Physical state
+
+What a door's lock does in each situation. "Armed at idle" is what the code
+writes; a cell that depends on what the board does with a line the controller
+is not driving says **verify on the bench**, because nobody has measured it
+yet.
+
+| Situation | Strike (fail-secure) | Maglock (fail-safe) |
+| :--- | :--- | :--- |
+| First boot (no snapshot) | Not driven until policy syncs. Board power-on level: verify on the bench. | Not driven until policy syncs, so unpowered and **unlocked** unless the board drives the relay on by default: verify on the bench. |
+| Boot with NATS down + bindings snapshot | Armed at idle (unpowered, locked) at boot. Taps deny, lock commands refused. | Armed at idle (energized, **locked**) at boot. Taps deny, lock commands refused. |
+| Boot with NATS down + fresh full cache | Armed at idle at boot, then the cached posture applies (`unlocked` holds it open). | Armed at idle (locked) at boot, then the cached posture applies (`unlocked` releases it). |
+| Process killed while held open | Not written. I2C: the latch stays energized (open) until the restart re-arms it. GPIO: what a released line does: verify on the bench. | Not written. I2C: the latch stays de-energized (unlocked) until the restart re-arms it. GPIO: verify on the bench. |
+| Graceful stop | Idle written (unpowered), then the line is released. After release: verify on the bench. | Idle written (energized), then the line is released (I2C: high-impedance input). Whether it stays powered: verify on the bench. |
+| Reboot with NATS down | Not driven while the OS boots (verify on the bench), then as the bindings-snapshot or cache row. With neither, as first boot until NATS returns. | Same: unlocked while the OS boots unless the board says otherwise (verify on the bench), then **locked** from the controller's start with a snapshot. |
+
+The window between process start and the first arm (config load, NATS
+connect attempt, driver open) is short but not zero, and is part of every
+"boot" row above.
 
 ### Door monitoring
 
@@ -358,6 +382,18 @@ Before you trust a board in production, confirm on the bench:
   detection.
 - **OSDP.** The RS485 direction, credential format and secure-channel items in
   [§6](#osdp-bench-items).
+- **Physical state.** Each "verify on the bench" cell in
+  [Physical state](#physical-state), with one strike and one maglock on a
+  meter or a real door:
+  - power-on with no controller running (relay level before anything drives
+    it);
+  - first boot with no `./data/bindings.json`, NATS down;
+  - boot with NATS down and a bindings snapshot (the maglock should lock
+    within seconds of start, the strike stay locked, a tap deny);
+  - `kill -9` while a strike is held open, then the restart;
+  - `systemctl stop` (graceful): does the maglock stay powered after the line
+    is released;
+  - host reboot with NATS down.
 
 The console's **Reports → Wiring / As-Built** sheet lists every portal and aux
 point's binding, contact sense, and lock type, grouped by location. It is the

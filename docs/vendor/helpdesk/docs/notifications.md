@@ -136,7 +136,7 @@ Four independent mechanisms keep a notification from being sent:
 3. **`notifications.Suppress(record)`.** A server-initiated change whose news
    already went out another way, or should never be announced, marks itself
    silent. **Every** send hook honours it: ticket create and update, comment
-   create, and visit create and update. It has three callers:
+   create, and visit create and update. It has four callers:
    - **Auto-reopen.** A requester's comment reopens a resolved ticket. The
      comment mail already alerted staff, so the status-change mail is
      skipped.
@@ -144,13 +144,19 @@ Four independent mechanisms keep a notification from being sent:
      message.
    - **`internal/demoseed`.** It marks every write, so seeding a showcase
      host cannot mail 150 fictional people.
+   - **Repeat counting** (`tickets.CountRepeat`). A NATS event or webhook call
+     whose `dedupe_key` matches an open ticket bumps `repeat_count` on it. The
+     update hook only mails on a status or assignee change, so that save would
+     be silent anyway; `Suppress` keeps it silent if the hook ever grows.
 4. **Day-keyed dedupe.** `SendIfFirst` writes `notification_dedupe`, which has
    a unique index on (event, ref, UTC day), and dispatches (both channels)
    only if its insert wins. A flapping source then cannot announce the same
    thing twice in a day. **No built-in hook calls it**: every event goes
    through plain `Send`. A machine publisher's retries are absorbed earlier,
    by `tickets.dedupe_key`, which stops the duplicate ticket (and so its
-   `ticket.created`) from existing at all.
+   `ticket.created`) from existing at all while that ticket is open. A NATS or
+   webhook ticket releases its key on resolve or close, so the same key
+   arriving afterwards is a new ticket and announces itself like any other.
 
 ### Maintenance tickets are not suppressed
 

@@ -336,9 +336,15 @@ normally-open or normally-closed contact is folded onto the board's electrical
 polarity, so "active" always means the monitored condition is asserted,
 whatever the wiring. By default a REX press only shunts the forced alarm. With
 `rexUnlock` the controller also pulses the strike (electric egress). The
-strike's fail-safe behavior follows `lockType`: a fail-secure **strike**
-de-energizes (re-locks) on shutdown or crash, while a fail-safe **maglock**
-idles energized and releases on power loss.
+strike's fail-safe behavior follows `lockType`: a fail-secure **strike** idles
+de-energized (locked), while a fail-safe **maglock** idles energized (locked)
+and releases on power loss. The controller writes the idle level when it arms
+a portal and on a graceful stop. A crash writes nothing: an MCP23017 latch
+keeps its last level (what a released native GPIO line does is up to the
+board), so a strike held open can stay open until the next boot re-arms the
+portal. That boot arms from the controller's bindings snapshot before policy
+arrives, so the wait is the restart, not the first sync (see
+[Physical state](hardware.md#physical-state)).
 
 ---
 
@@ -551,8 +557,10 @@ reconcile keeps the previous hold rather than flapping the door.
 
 A momentary `Pulse` composes with the hold: the strike is energized while
 either is active, so a habitual tap during an auto-unlock window pulses
-harmlessly. On controller shutdown or crash the strike de-energizes
-(fail-secure: the door re-locks; egress stays hardware-owned).
+harmlessly. On a graceful controller stop the driver writes each relay's idle
+level, so a strike re-locks; egress stays hardware-owned. A crash writes
+nothing, and a held strike can stay energized until the next boot re-arms the
+portal at idle (from the bindings snapshot, before policy syncs).
 
 ---
 

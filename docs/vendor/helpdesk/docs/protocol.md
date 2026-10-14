@@ -67,7 +67,7 @@ Only the `create` verb is consumed. The `{verb}` token leaves room for
   "title": "pump fault on line 3",          // required
   "body": "vibration sensor overcurrent",   // optional
   "priority": "high",                       // optional: low|normal|high|urgent (else normal)
-  "dedupe_key": "pump-7-overcurrent",       // optional: idempotency key, unique per customer
+  "dedupe_key": "pump-7-overcurrent",       // optional: suppresses repeats while its ticket is open (per customer)
   "thing": "pump-7",                        // optional: free-text, stored as thing_note
   "thing_code": "PUMP-7",                   // optional: resolves to a things row (this customer)
   "location": "line-3",                     // optional: free-text, stored as location_note
@@ -82,11 +82,18 @@ Only the `create` verb is consumed. The `{verb}` token leaves room for
   logged (`ingest: no customer mapped for organization code`) and acked. Map
   the customer in the SPA and later events flow. The missed event is not
   replayed.
-- **`dedupe_key`.** If a ticket with the same key exists, the event is acked
-  and no second ticket is created. Publishers should stamp a stable key for
-  retry loops and flapping sources. The key is unique **per customer**
-  (`(customer, dedupe_key)`, migration `1830000000`), so publishers in
-  different tenants cannot collide. Within one customer, the key space is
+- **`dedupe_key`.** If an **open** ticket holds the same key, the event is
+  acked, no second ticket is created, and the repeat is counted on that ticket:
+  `repeat_count` goes up by one and `last_repeat_at` is stamped (migration
+  `1831000000`). Counting is silent, so nobody is mailed. When the ticket is
+  resolved or closed it **releases** the key, so the next event with that key
+  opens a new ticket. Publishers should stamp a stable key for retry loops and
+  flapping sources: an alarm that keeps firing is one ticket with a count, and
+  an alarm that comes back after the fix is a new ticket. The count is of
+  deliveries, so a JetStream redelivery counts too, and if the count cannot be
+  saved the event is redelivered and may count twice. The key is unique **per
+  customer** (`(customer, dedupe_key)`, migration `1830000000`), so publishers
+  in different tenants cannot collide. Within one customer, the key space is
   shared with that customer's webhook calls and email `Message-ID`s.
 - **`thing` and `location`** are free text, stored as `thing_note` and
   `location_note`.
@@ -279,7 +286,7 @@ Non-admins get `403` from both.
   "body": "3rd floor copy room",         // optional
   "priority": "urgent",                  // optional: low|normal|high|urgent (else normal)
   "requester_email": "rita@acme.com",    // optional: links an existing portal account
-  "dedupe_key": "alarm-1234",            // optional: idempotency key (per customer)
+  "dedupe_key": "alarm-1234",            // optional: suppresses repeats while its ticket is open (per customer)
   "category": "hardware",                // optional: a ticket_categories key (unknown ignored)
   "thing": "printer-3f",                 // optional: free-text (thing_note)
   "thing_code": "HQ-PRN-3",              // optional: resolves to a things row (this customer)
@@ -299,15 +306,18 @@ Non-admins get `403` from both.
 - **The free-text thing field is spelled `thing`**, matching the NATS contract.
 - **The ticket lands as `type = reactive`**, as on NATS. The staff triage
   fields are not accepted, and unknown JSON fields are ignored.
-- **`dedupe_key`** is scoped to the token's customer, and shares that
-  customer's key space with NATS and email (§2).
+- **`dedupe_key`** behaves as on NATS (§2): it suppresses only while its
+  ticket is open, each repeat is counted on that ticket (`repeat_count`,
+  `last_repeat_at`), and resolving or closing the ticket releases the key. The
+  count is of deliveries, so your own retries are included. It is scoped to the
+  token's customer, and shares that customer's key space with NATS and email.
 
 ### Responses
 
 | Code | Body | When |
 | :--- | :--- | :--- |
 | `201` | `{"id": "...", "number": 17, "duplicate": false}` | Ticket created (`source = webhook`). |
-| `200` | `{"id": "...", "number": 17, "duplicate": true}` | A ticket of this customer with this `dedupe_key` already exists, including one a concurrent delivery created a moment earlier. Its identifiers are returned. |
+| `200` | `{"id": "...", "number": 17, "duplicate": true}` | An open ticket of this customer holds this `dedupe_key`. The repeat is counted on it and its identifiers are returned (if the count cannot be saved the call fails with `500`; retry it). Also returned, uncounted, when a concurrent delivery created that ticket a moment earlier. |
 | `400` | | Missing or invalid title, or malformed JSON. |
 | `404` | | Unknown token. An inactive customer gets the same response, so the route is not an oracle. |
 
@@ -365,7 +375,10 @@ is logged, never enforced.
 - **Idempotency.** The email `Message-ID` dedupes both paths:
   `tickets.dedupe_key` (unique per customer) and the hidden
   `ticket_comments.source_message_id` (unique). A message with no Message-ID is
-  not deduped.
+  not deduped. Unlike a NATS or webhook key, a Message-ID is **not released**
+  when its ticket is resolved or closed, and a redelivery is not counted as a
+  repeat: it names one message, not a recurring problem, so a provider retry
+  that arrives after the ticket closed is still a duplicate.
 
 ### Responses
 

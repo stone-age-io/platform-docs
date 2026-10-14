@@ -123,7 +123,11 @@ whole decision and is testable without HTTP. The steps run in this order:
    - `DedupeKey` = `MessageID`
 
    A ticket of that customer that already has `dedupe_key == MessageID` comes
-   back as `duplicate`.
+   back as `duplicate`, whatever its status. Unlike a NATS or webhook key, a
+   Message-ID is never released when its ticket is resolved or closed, and a
+   redelivery is not counted in `repeat_count`: it is the same message again,
+   not the same problem again, and a provider may retry after the ticket has
+   closed.
 
 The `Result` is `created`, `commented`, `duplicate` or `ignored{reason}`. The
 adapter turns it into the HTTP response.

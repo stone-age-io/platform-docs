@@ -403,6 +403,11 @@ anything until the link returns. The optional offline cache fixes that: it
 saves the last policy graph delivered over KV to a local file and, on boot,
 decides from it while the connection is down.
 
+Without the cache the box is not quite stateless: it always writes the
+[bindings snapshot](#bindings-snapshot), so it can arm its doors at boot and
+hold a maglock locked. That snapshot decides nothing. The cache is still the
+only way a box admits anyone before NATS returns.
+
 A controller **never treats a missing NATS at startup as fatal**, with or
 without the cache. It connects with retry-on-failed-connect, binds the KV
 buckets lazily and retries in the background, comes up default-deny, and
@@ -412,7 +417,7 @@ up on last-known policy instead of default-deny.
 
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
-| `policy.cache.enabled` | `false` | `SA_POLICY_CACHE_ENABLED` | Opt in to the offline cache. Off means the stateless, default-deny-until-sync boot. |
+| `policy.cache.enabled` | `false` | `SA_POLICY_CACHE_ENABLED` | Opt in to the offline cache. Off means the default-deny-until-sync boot, with portals armed from the bindings snapshot if there is one. |
 | `policy.cache.path` | `./data/policy-cache.json` | `SA_POLICY_CACHE_PATH` | Snapshot file. Written `0600` (it holds credential values), parent dir created `0700`, atomic (temp file + rename). |
 | `policy.cache.maxAge` | `72h` | `SA_POLICY_CACHE_MAXAGE` | Staleness bound. On boot, a snapshot older than this is **refused** and the box falls back to default-deny, so a credential revoked during a long outage cannot keep working off a stale cache. Set a large value (for example `8760h`) to turn the check off in practice. An explicit `0` refuses every snapshot; omit the key for the default. |
 
@@ -437,6 +442,28 @@ cannot mistake it for a freshly synced box. The staleness bound is checked
 **only at boot**: a box already running on cache keeps running until NATS
 returns.
 :::
+
+### Bindings snapshot
+
+Controller only, and always on. After every live sync the controller writes
+this box's portal hardware bindings to a local file: only its own `portal.*`
+records, each cut down to `code`, `type`, `location`, `controller`,
+`lockRelay`, `lockType`, `dpsInput`, `rexInput`, `dpsContact`, `rexContact`
+and `readerAddress`. No posture, schedule, credential, user, group or area.
+
+| Key | Default | Env var | Purpose |
+|---|---|---|---|
+| `policy.bindings.path` | `./data/bindings.json` | `SA_POLICY_BINDINGS_PATH` | Snapshot file. Written `0600`, parent dir created `0700`, atomic (temp file + rename), and only when the bindings change. |
+
+On a boot where the offline cache is off, missing, corrupt or too old, the box
+loads this file before anything arms, and the portal manager arms those
+portals. Arming drives each lock relay to idle, so a maglock is **locked** and
+a strike unpowered from boot rather than from the first sync. Every tap denies
+(`deny_point_disabled`, no posture), and `cmd.posture` and `cmd.grant` are
+refused until policy syncs. A fresh offline cache wins: the box loads one or
+the other, never both. A missing or corrupt bindings file loads nothing. There
+is no `maxAge`, because the file grants nothing. See
+[Bindings snapshot](controller.md#34-bindings-snapshot).
 
 ---
 
@@ -477,7 +504,7 @@ Some values pass `Load` and fail **later, at startup**:
 
 - **Both** read `nats`, `logging`, `metrics`, `policy`, `status` and
   `subjects`. The controller writes the status bucket; accessd watches it.
-  `policy.cache` is controller-only.
+  `policy.cache` and `policy.bindings` are controller-only.
 - **accessd** also reads `events`, `accessd` and `branding`.
 - **access-controller** also reads `controller` and `diagnostics`.
 

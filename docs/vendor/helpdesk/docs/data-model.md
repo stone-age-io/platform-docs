@@ -159,7 +159,7 @@ Migrations: `1810000000` (`show_time_to_requester`), `1823000000`
 | `requester`          | → users, optional. Machine tickets have none. |
 | `source`             | `portal`, `agent`, `nats`, `webhook`, `email` or `maintenance`. Default `agent`. `maintenance` marks a ticket opened by the preventive-maintenance scheduler. |
 | `origin_subject`     | The full hub-side NATS subject. Provenance for machine tickets. |
-| `dedupe_key`         | Unique per customer when set. Ingestion idempotency; also carries the inbound email `Message-ID`. |
+| `dedupe_key`         | Unique per customer when set. Ingestion idempotency; also carries the inbound email `Message-ID`. A `nats` or `webhook` ticket releases it on resolve or close. See below. |
 | `attachments`        | Up to 6 files, 10 MB each. |
 | `category`           | → ticket_categories, optional. |
 | `type`               | `reactive` or `planned`. Default `reactive`. |
@@ -173,9 +173,28 @@ Migrations: `1810000000` (`show_time_to_requester`), `1823000000`
 | `resolved_at`        | Datetime, optional. Nil unless the ticket is currently resolved. See below. |
 | `due_at`             | Date, optional. The target date. See below. |
 | `maintenance_plan`   | → maintenance_plans, optional. Set only on a generated ticket. |
+| `repeat_count`       | Int ≥ 0, server-only. How often a NATS or webhook source re-sent this ticket's `dedupe_key` while it was open. See below. |
+| `last_repeat_at`     | Datetime, optional, server-only. When the last repeat arrived. |
 
 The `internal/tickets` create hook sets the defaults above when a field is
 empty.
+
+- **`dedupe_key`** means different things by source. On a `nats` or `webhook`
+  ticket it names a recurring problem ("pump-7 overcurrent"), so it suppresses
+  only while the ticket is open: the `internal/tickets` update hook clears it
+  when the ticket enters `resolved` or `closed`, and the next event with that
+  key opens a new ticket. On an `email` ticket it is the `Message-ID` and on a
+  `maintenance` ticket it is `pm:{planId}:{YYYY-MM-DD}`. Each names one message
+  or one occurrence, so it is never released: a provider retry after the
+  ticket closed, or a generator re-run after a crash, must still dedupe.
+- **`repeat_count` and `last_repeat_at`** record what the suppression used to
+  hide. A NATS event or webhook call whose key matches an open ticket adds one
+  and stamps the time, silently (no notification), instead of being dropped.
+  They count deliveries, so a webhook caller's retries and a NATS redelivery
+  after a failed count are included. Email and maintenance never count. They
+  are read wherever the ticket is, but no client writes them: a request hook in
+  `internal/tickets` pins both on every record-API create and update, staff
+  included.
 
 - **`awaiting_requester`** is a queryable flag that `internal/tickets`
   maintains. It backs the portal's "needs your reply" prompt, list chip and
@@ -255,7 +274,8 @@ source), `1824000000` (`thing` and `thing_note`, replacing the free-text
 `asset`), `1825000000` (requester may set `location` and `thing`), `1826000000`
 (`type` values, formerly `issue` and `install`), `1829000000` (`maintenance`
 source, `due_at`, `maintenance_plan`, and the requester ban on both),
-`1830000000` (`dedupe_key` unique per customer).
+`1830000000` (`dedupe_key` unique per customer), `1831000000` (`repeat_count`
+and `last_repeat_at`).
 
 ### `ticket_categories`: classification
 
@@ -648,7 +668,8 @@ seeded plan arrive inactive and be skipped silently.
 the same night) and on demand with `helpdesk maintenance-run`, the catch-up
 path for an install that was down when the cron should have fired. It is
 idempotent per occurrence through `tickets.dedupe_key` (see
-[Uniqueness Indexes](#9-uniqueness-indexes)). It does **not** suppress
+[Uniqueness Indexes](#9-uniqueness-indexes)), which a maintenance ticket keeps
+after it closes, unlike a NATS or webhook ticket. It does **not** suppress
 notifications: a new preventive ticket is real news, unlike the administrative
 auto-close.
 
@@ -731,13 +752,18 @@ These unique indexes enforce behaviour; they are not just for performance.
 - `tickets.number`: the collision backstop for the sequential-number hook.
 - `tickets(customer, dedupe_key)` (partial, `!= ''`): absorbs NATS
   redelivery and webhook retries. A duplicate key is acked or answered without
-  a second ticket. It is per customer because publishers choose keys
-  independently, so a key means "the same ticket" only within one customer; a
-  global index would let one tenant's key swallow another's event
-  (`1830000000`). It also carries preventive-maintenance occurrences, as
-  `pm:{planId}:{YYYY-MM-DD}` (`1829000000`). That is what makes the daily cron
-  and a hand-run `helpdesk maintenance-run` safe to overlap: one plan
-  occurrence can only produce one ticket.
+  a second ticket (and counted on it, see `repeat_count`). The lookups carry no
+  status filter: a NATS or webhook ticket stops matching because it releases
+  its key on resolve or close (`1831000000`), which also takes it out of this
+  partial index, so the index stays the race backstop for the open ticket. It
+  is per customer because publishers choose keys independently, so a key means
+  "the same ticket" only within one customer; a global index would let one
+  tenant's key swallow another's event (`1830000000`). It also carries
+  preventive-maintenance occurrences, as `pm:{planId}:{YYYY-MM-DD}`
+  (`1829000000`), and email `Message-ID`s, neither of which is released. That
+  is what makes the daily cron and a hand-run `helpdesk maintenance-run` safe
+  to overlap, even after the ticket closed: one plan occurrence can only
+  produce one ticket.
 - `customers.code` (partial, `!= ''`): the tenant token resolves to exactly
   one customer. Partial because a customer the platform never onboarded has no
   code until an operator assigns one, and SQLite treats `''` as a value.

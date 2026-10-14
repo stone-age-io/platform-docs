@@ -135,8 +135,9 @@ The controller survives a boot with NATS unreachable (see
 
 The repo ships **no** unit file or installer. Run the binary under your
 service manager with a restart policy, a working directory, and `SA_` env vars
-or a config path. The offline cache path defaults to the relative
-`./data/policy-cache.json`, so the working directory matters if you enable it.
+or a config path. The bindings snapshot (always written) and the offline cache
+default to the relative `./data/bindings.json` and `./data/policy-cache.json`,
+so the working directory matters.
 
 An example systemd unit, **not shipped with the repo**:
 
@@ -160,7 +161,9 @@ WantedBy=multi-user.target
 `SIGINT` and `SIGTERM` stop it cleanly: the metrics and status servers shut
 down (5 s each), the readers and reconcilers stop, the hardware driver returns
 each lock relay to idle, and the NATS connection drains. A killed process runs
-no cleanup; the next boot drives every line it arms back to idle first. See
+no cleanup, so each relay keeps its last level until the next boot arms the
+portal again, which drives it to idle first. With a bindings snapshot on disk
+that happens at boot, not when policy arrives. See
 [Fail-safe behaviour](hardware.md#fail-safe-behaviour).
 
 ---
@@ -175,21 +178,26 @@ no cleanup; the next boot drives every line it arms back to idle first. See
    background (`NATS not reachable at startup; retrying in background`).
 3. Build the policy store. The `ACC_POLICY` bucket is bound **lazily**, inside
    the watch loop, so construction never touches NATS.
-4. If `policy.cache.enabled`, replay the on-disk snapshot into the store (see
-   [§3.3](#33-offline-cache)).
+4. Seed the store from disk. If `policy.cache.enabled` and the snapshot loads,
+   replay it (see [§3.3](#33-offline-cache)). Otherwise replay the bindings
+   snapshot, if there is one (see [§3.4](#34-bindings-snapshot)). Never both.
 5. Open the reader, the hardware backend and the runtime. Everything starts
    **armed for nothing**.
 6. Start the status writer (also bound lazily), the KV watcher, the three
    reconcilers, the tap loop, the command subscriptions, the heartbeat, the
    [service discovery](#service-discovery-and-health) registration with its
-   health endpoint, and (if enabled) the status page.
-7. Log `controller started; default-deny until policy syncs`.
+   health endpoint, and (if enabled) the status page. The reconcilers arm
+   whatever step 4 loaded straight away.
+7. Log that startup finished, naming what it booted from (see
+   [Logs](#logs)).
 8. When the first KV sync completes, log `policy synced; controller live`.
    The reconcilers arm every portal and aux point bound to this code.
 
-Until policy arrives, no portal is armed, so no tap subject is subscribed, no
-OSDP address is mapped and no strike is driven. That is **default-deny**: the
-box denies by doing nothing, rather than blocking or crashing.
+With nothing on disk, no portal is armed until policy arrives, so no tap
+subject is subscribed, no OSDP address is mapped and no relay is driven. That
+is **default-deny**: the box denies by doing nothing, rather than blocking or
+crashing. It is also the one case where a maglock door is unlocked, because an
+undriven maglock relay is unpowered.
 
 The watcher retries the bind and the watch with backoff from 500 ms, doubling
 to a 30 s cap (`policy KV watcher not established (NATS may be unreachable);
@@ -202,7 +210,7 @@ The policy store reports one of three states, shown on the status page:
 
 | State | Meaning |
 | :--- | :--- |
-| `loading` | No policy yet. The default-deny boot window. |
+| `loading` | No policy yet. The default-deny boot window. Portals armed from the bindings snapshot still read `loading`. |
 | `cached` | Booted from the offline cache and no live sync has landed. Deciding on last-known config. |
 | `synced` | A live KV sync completed this session. |
 
@@ -224,7 +232,49 @@ file holds credential values and is written `0600`. The keys, the freshness
 rules and the scope are in
 [Offline config cache](configuration.md#offline-config-cache).
 
-### 3.4 Reconnect
+### 3.4 Bindings snapshot
+
+A maglock is locked only while its relay is energized, and a relay is driven
+only once its portal is armed. Before this snapshot, a box booted with no
+usable cache armed nothing until policy arrived, so every maglock door was
+unlocked for the whole boot, and for as long as NATS stayed down after a
+reboot.
+
+So after every live sync the controller also writes `policy.bindings.path`
+(default `./data/bindings.json`), whatever `policy.cache.enabled` says. It
+holds only this controller's `portal.*` records, each cut down to the fields
+that arm hardware: `code`, `type`, `location`, `controller`, `lockRelay`,
+`lockType`, `dpsInput`, `rexInput`, `dpsContact`, `rexContact` and
+`readerAddress`. No posture, no schedule, no credential, user, group or area.
+It is rewritten only when those fields change.
+
+On a boot where the full cache is off or refused, the controller replays it
+through the same parse path a live sync uses, before the reconcilers start.
+The portal manager arms those portals, which drives each relay to idle: a
+maglock **locked**, a strike unpowered. Nothing else changes:
+
+- Each portal's posture is empty, so every tap denies `deny_point_disabled`.
+- The store still reports `loading`: the snapshot is not policy.
+- The runtime **refuses lock commands** (`cmd.posture`, its `clear`, and
+  `cmd.grant`) until a live sync lands or a full cache loads, logging
+  `refusing command: policy not synced`. Commands are fire-and-forget, so
+  there is no reply. Without the gate, `cmd.posture unlocked` would hold a door
+  open whose policy this box has never seen.
+- No held-open threshold, REX unlock or area membership, so no DOTL alarm, no
+  REX pulse and no intrusion roll-up.
+
+When live policy lands, the portal manager does **not** re-arm these portals:
+the snapshot keeps every field that decides a re-arm (type, reader address,
+relay and input indices, lock type, contact sense), so the live record matches.
+A re-arm would release a maglock for a moment. Posture then applies on the
+normal path, within one hold-eval tick (10 s).
+
+A missing or corrupt snapshot loads nothing, which is the old boot. It has no
+`maxAge`: it grants nothing, and a door whose binding changed while the box was
+down is re-armed by the live record like any binding change. It is written
+`0600` beside the cache.
+
+### 3.5 Reconnect
 
 On every reconnect (and on the first connect after a cold boot that started
 disconnected) the controller:
@@ -239,11 +289,11 @@ Leave `nats.maxReconnects` at its default `-1` (retry forever). An explicit
 `0` means a lost connection is never re-established and the box stays offline
 until restarted.
 
-### 3.5 What works with NATS down
+### 3.6 What works with NATS down
 
 | | With NATS down |
 | :--- | :--- |
-| Tap decisions | **Yes**, on the in-memory graph (or the cached graph after an offline reboot). NATS-published taps cannot arrive, so this applies to OSDP readers. |
+| Tap decisions | **Yes**, on the in-memory graph (or the cached graph after an offline reboot; without a usable cache, the portals are armed from the bindings snapshot and every tap denies). NATS-published taps cannot arrive, so this applies to OSDP readers. |
 | Lock pulses, REX, strike hold | **Yes.** Scheduled posture still flips on the hold-eval tick. |
 | Door monitoring (forced, held, `no_entry`, intrusion) | **Yes**, detected locally. Scheduled auto-arm still resolves locally. |
 | Events (`evt.tap`, `evt.state`, `evt.alarm`, fire) | **Held in memory.** They are core NATS publishes. The NATS client holds publishes made while disconnected in its in-memory reconnect buffer (natsx leaves the client's default size) and sends them on reconnect. Nothing is written to disk: a restart while offline loses them, and a publish that does not fit is logged and dropped. |
@@ -340,6 +390,12 @@ subscribes per location over core NATS:
 Every controller at a location hears every command there and ignores those for
 portals and outputs it does not drive. Payloads are in
 [Command Details](protocol.md#command-details).
+
+Until the store holds policy (a live sync, or a full offline cache load),
+`cmd.posture` and `cmd.grant` are refused for every portal, with
+`refusing command: policy not synced` in the log and no event. That is the
+window where portals may be armed from the
+[bindings snapshot](#34-bindings-snapshot) with no posture loaded.
 
 ### Timers
 
@@ -624,9 +680,12 @@ Lines worth searching for:
 
 | Message | Means |
 | :--- | :--- |
-| `controller started; default-deny until policy syncs` | Startup finished. |
+| `controller started; default-deny until policy syncs` | Startup finished with nothing on disk. Nothing is armed. |
+| `controller started; portals armed from the bindings snapshot, denying every tap and refusing lock commands until policy syncs` | Startup finished from the bindings snapshot. |
+| `controller started on cached config until policy syncs` | Startup finished from the offline cache. |
 | `policy synced; controller live` | The first live sync landed. |
 | `controller operating on CACHED config until policy syncs (NATS may be unreachable)` | Booted from the offline cache. |
+| `refusing command: policy not synced` | A `cmd.posture` or `cmd.grant` arrived before policy. |
 | `policy cache too stale; refusing it (fail-secure default-deny)` | The snapshot was older than `maxAge`. |
 | `NATS not reachable at startup; retrying in background` | Cold boot with no server. |
 | `tap decided` | One per tap: `portal`, `cred`, `allow`, `reason`, `user`. |
