@@ -48,7 +48,8 @@ or configure, such as `is_operator`, `operator_name`, `--operator-org` and
 `operator_jwt`.
 
 These terms come from NATS or the data model. The docs use them without
-explanation.
+explanation. For the NATS terms, [Concepts](./concepts/index.md) explains how
+each one works.
 
 | Term | What it means | More |
 | :--- | :--- | :--- |

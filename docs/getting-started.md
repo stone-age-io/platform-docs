@@ -6,7 +6,9 @@ nav_order: 50
 
 New to the names? The [Glossary](./overview.md#glossary)
 defines the terms this guide uses, including Thing, Account, subject,
-JetStream, KV, leaf, domain and twin.
+JetStream, KV, leaf, domain and twin. New to NATS?
+[Concepts](./concepts/index.md) explains subjects, request and reply, and
+credentials.
 
 ## The short version
 

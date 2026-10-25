@@ -1,6 +1,14 @@
 site_name: Stone-Age.io Docs
 nav:
   - Home: index.md
+  - Concepts:
+    - Concepts: concepts/index.md
+    - Messaging: concepts/messaging.md
+    - NATS Security: concepts/nats-security.md
+    - Persistence: concepts/persistence.md
+    - Message Design: concepts/message-design.md
+    - HTTP API: concepts/http-api.md
+    - Overlay Network: concepts/overlay.md
   - Docs:
     - Overview: overview.md
     - Layers: platform-layers.md
