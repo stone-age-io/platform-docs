@@ -362,7 +362,7 @@ most useful:
   encrypts app settings at rest.
 - `--queryTimeout <seconds>`: default SELECT query timeout.
 
-They apply to all subcommands (`serve`, `migrate`, `bootstrap`, `nats export`,
+They apply to all subcommands (`serve`, `init`, `migrate`, `bootstrap`, `nats export`,
 `superuser upsert`).
 
 ---

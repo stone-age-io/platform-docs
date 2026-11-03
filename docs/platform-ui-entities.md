@@ -88,7 +88,7 @@ Two roles apply to the user account, outside any Membership:
   refuses it, also from a Platform Operator.
 - **SuperUser** (`_superusers` collection) is a service account with full
   database access that ignores API rules. Create it with
-  `./stone-age superuser upsert`. Use it for infrastructure work such as schema
+  `./stone-age init` (or `superuser upsert`). Use it for infrastructure work such as schema
   imports and NATS Operator and System Account seeding. SuperUsers are not
   members of any organization. They sign in at the admin UI (`/_/`).
 

@@ -27,19 +27,16 @@ docker run -d --name stone-age \
 Open the console at `http://localhost:8090` and sign in as `admin@example.com`
 with that password. The admin panel is at `/_/`.
 
-From a binary, run the same five commands the container runs:
+From a binary, run the same two commands the container runs:
 
 ```bash
-./stone-age superuser upsert admin@example.com 'change-me-8-chars-min'
-./stone-age migrate up
-./stone-age bootstrap --email admin@example.com --org "System" --operator-org "Acme MSP"
-./stone-age nats export --output ./nats-config/
+./stone-age init --email admin@example.com --operator-org "Acme MSP"
 ./stone-age serve --nats
 ```
 
-**Run them in this order.** `bootstrap` writes fields that `migrate up`
-creates, and `nats export` needs the data that `bootstrap` seeds. §2 explains
-each command.
+`init` asks for a password, or reads `STONE_AGE_BOOTSTRAP_PASSWORD`. It runs
+the four first-run commands in the one order that works, and does nothing once
+`./nats-config/nats.conf` exists. §2 explains each command.
 
 ---
 
@@ -133,8 +130,22 @@ environment variables. By default it looks for NATS at `nats://localhost:4222`,
 but nothing in this section needs NATS.
 
 This step creates the database, seeds the NATS Operator, System Account and
-System User, and creates your first administrator. It takes three commands, in
-order. None of them needs the server to run. They open the database directly.
+System User, creates your first administrator, and writes the NATS server
+config. One command does all of it:
+
+```bash
+./stone-age init --email admin@example.com --operator-org "Acme MSP"
+```
+
+`init` asks for the password, or reads `STONE_AGE_BOOTSTRAP_PASSWORD`. If you
+omit `--operator-org`, it asks for that too. It does not need the server to run,
+because it opens the database directly. It writes the NATS config where
+`--nats-config` points (`./nats-config/nats.conf` by default), and that file is
+its marker: once it exists, `init` does nothing. A run that fails part-way
+writes no marker, so run `init` again after you fix the cause. Every step is
+safe to repeat.
+
+`init` runs the four steps below, in this order. You can also run them by hand.
 
 ### Step 1: Create the SuperUser (and seed initial data)
 
@@ -189,7 +200,16 @@ From now on, administer the platform as the **Platform Operator** user. Keep the
 SuperUser for infrastructure work: schema imports, NATS Operator key custody,
 and troubleshooting in the admin UI at `/_/`.
 
-> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org` and `is_operator_org`. These fields exist only after Step 2. PocketBase silently drops writes to fields that do not exist, so `bootstrap` refuses to run before the migrations.
+### Step 4: Export the NATS server config
+
+```bash
+./stone-age nats export --output ./nats-config/
+```
+
+This writes the server config that matches the seeded NATS Operator. §3 runs a
+server with it.
+
+> **Why the order matters.** `bootstrap` writes `is_operator`, `is_system_org` and `is_operator_org`. These fields exist only after Step 2. PocketBase silently drops writes to fields that do not exist, so `bootstrap` refuses to run before the migrations. `nats export` needs the operator that `bootstrap` links up, so it comes last. `init` exists so that nobody has to remember this.
 
 ### Checkpoint: a working inventory
 
@@ -249,7 +269,7 @@ to the same record. See [Inventory-as-Identity](./architecture.md#31-inventory-a
 >
 > At startup the Control Plane cannot reach NATS. It logs *"Publisher will continue operating - connection will be established when NATS becomes available"* and enters **bootstrap mode**, with a retry timer and a durable work queue.
 >
-> The database must be seeded before `stone-age nats export` can create a server config, and NATS is not reachable before it runs. Until then, credential work goes into the `nats_publish_queue` collection. The queue drains on the first run that connects. This is how `bootstrap` can create Organizations before a server exists.
+> The database must be seeded before `stone-age nats export` can create a server config, and NATS is not reachable until you start a server with that config in §3. Until then, credential work goes into the `nats_publish_queue` collection. The queue drains on the first run that connects. This is how `bootstrap` can create Organizations before a server exists.
 >
 > Do not run like this for long. The queue grows, and the cluster's claims fall behind the database. Start NATS in §3.
 
@@ -292,12 +312,9 @@ If you run both, a door in one and a Thing in the other are the same door. See
 This section starts depth 2. It gives your inventory records identities on the
 bus, and it drains anything §2 queued.
 
-Export the server config that matches the seeded NATS Operator and System
-Account:
-
-```bash
-./stone-age nats export --output ./nats-config/
-```
+`init` has already exported the server config that matches the seeded NATS
+Operator and System Account, to `./nats-config/`. If you ran the steps of §2 by
+hand, run Step 4 now.
 
 The directory holds the NATS Operator JWT, the operator config and a
 `nats.conf`. Its paths are absolute, so it works from any directory. The JWT
@@ -430,7 +447,7 @@ is free text. See [Thing Types](./thing-types.md).
 
 Consider running a NATS server anyway. The queued account claims apply as soon
 as it is reachable, and the cluster is current on the day you add a device.
-`nats export` and then `serve --nats` is two commands and no extra process.
+`init` has already written the config, so `serve --nats` is one command and no extra process.
 
 - Build Location Types and the location tree, then place Things on floor plans.
   See [Platform Entities & UI](./platform-ui-entities.md).

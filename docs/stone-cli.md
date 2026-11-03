@@ -23,7 +23,7 @@ the console, so it gives no extra access.
 > | Binary | What it is |
 > | :--- | :--- |
 > | **`stone`** (this page) | The **client CLI** you run from a laptop or CI runner. It signs in to the Control Plane over HTTPS and talks to NATS. It never opens the database. |
-> | **`stone-age`** | The **Control Plane** binary. You run `superuser upsert`, `bootstrap` and `serve` on it in [Getting Started](./getting-started.md). It owns the database. |
+> | **`stone-age`** | The **Control Plane** binary. You run `init` and `serve` on it in [Getting Started](./getting-started.md). It owns the database. |
 
 ---
 
