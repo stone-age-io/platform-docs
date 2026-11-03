@@ -24,15 +24,9 @@ variables.
 
 ```yaml
 tenancy:
-  organizations_collection: "organizations"
-  memberships_collection: "memberships"
-  invites_collection: "invites"
   invite_expiry_days: 7
 
 nats:
-  account_collection_name: "nats_accounts"
-  user_collection_name: "nats_users"
-  role_collection_name: "nats_roles"
   operator_name: "stone-age.io"
   server_url: "nats://localhost:4222"       # where THIS PROCESS dials
   websocket_urls: []                        # where a BROWSER dials. Not the same thing.
@@ -47,21 +41,15 @@ nats:
     max_payload: 1048576                    # 1 MiB, nats-server's own default
     max_jetstream_disk_storage: 5368709120  # 5 GiB
     max_jetstream_memory_storage: 67108864  # 64 MiB
-  export_collection_name: "nats_account_exports"
-  import_collection_name: "nats_account_imports"
   embedded: false                             # run NATS inside this process
   embedded_config: "./nats-config/nats.conf"  # the config --nats loads
 
 nebula:
-  ca_collection_name: "nebula_ca"
-  network_collection_name: "nebula_networks"
-  host_collection_name: "nebula_hosts"
   log_to_console: false
   default_ca_validity_years: 10
   encryption_key: ""        # encrypts the CA and host private_key columns at rest
 
 audit:
-  collection_name: "audit_logs"
   log_to_console: false
   retention:
     max_age: ""             # Go duration string, e.g. "720h" for 30 days. "" disables.
@@ -91,9 +79,6 @@ Organizations, memberships and invitations (`hooks/org_membership.go`,
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `organizations_collection` | string | `"organizations"` | Name of the Orgs collection. Change it only if you migrate from a non-default schema. |
-| `memberships_collection` | string | `"memberships"` | Name of the User-to-Org link collection. |
-| `invites_collection` | string | `"invites"` | Name of the pending-invite collection. |
 | `invite_expiry_days` | int | `7` | How long an invite token stays valid. |
 
 Invitation email failures go to the application logger.
@@ -105,9 +90,6 @@ imports, and the System Account connection.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `account_collection_name` | string | `"nats_accounts"` | NATS Account collection name. |
-| `user_collection_name` | string | `"nats_users"` | NATS User collection name. |
-| `role_collection_name` | string | `"nats_roles"` | NATS Role collection name. |
 | `operator_name` | string | `"stone-age.io"` | The NATS Operator name, written into the NATS Operator JWT on first run. |
 | `server_url` | string | `"nats://localhost:4222"` | Where the Control Plane connects to NATS as a System Account client. **Not** the browser address (§2.1). |
 | `websocket_urls` | string list | `[]` | The WebSocket addresses a **browser** connects to. `GET /api/client-config` gives them to the console at runtime (§2.1). |
@@ -121,8 +103,6 @@ imports, and the System Account connection.
 | `default_limits.max_payload` | int | `1048576` | Max payload bytes for new Org accounts (1 MiB, nats-server's own default). |
 | `default_limits.max_jetstream_disk_storage` | int | `5368709120` | JetStream file storage for new Org accounts (5 GiB). This is what a plan sells. |
 | `default_limits.max_jetstream_memory_storage` | int | `67108864` | JetStream memory storage for new Org accounts (64 MiB). A safety limit: keep it small and the same for all plans. |
-| `export_collection_name` | string | `"nats_account_exports"` | Account export collection name. See [Connectivity §1](./connectivity.md). |
-| `import_collection_name` | string | `"nats_account_imports"` | Account import collection name. |
 | `embedded` | bool | `false` | Run a NATS server inside the Control Plane process. Only `serve` uses it. Same as `--nats`. |
 | `embedded_config` | string | `"./nats-config/nats.conf"` | The `nats.conf` that `embedded` loads, which `nats export` writes. Same as `--nats-config`. |
 
@@ -242,9 +222,6 @@ The `pb-nebula` library: CA, network and host certificate management.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `ca_collection_name` | string | `"nebula_ca"` | Certificate Authority collection name. |
-| `network_collection_name` | string | `"nebula_networks"` | Per-CA network collection name. |
-| `host_collection_name` | string | `"nebula_hosts"` | Host certificate collection name. |
 | `log_to_console` | bool | `false` | Verbose Nebula-library logging. |
 | `default_ca_validity_years` | int | `10` | Default validity for new org CAs. |
 | `encryption_key` | string | `""` | 32-character key that encrypts the Nebula **CA and host `private_key` columns** at rest. Empty means plaintext in SQLite. The generated `config_yaml` still contains the host key in plaintext (§2.2). |
@@ -255,7 +232,6 @@ The `pb-audit` library: logs create, update, delete and auth events.
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `collection_name` | string | `"audit_logs"` | Where audit records go. |
 | `log_to_console` | bool | `false` | Also write audit events to stdout. `audit.log_console` also works. |
 | `retention.max_age` | string | `""` | Go duration string (for example `"720h"` = 30 days). Empty turns off age-based pruning. |
 | `retention.max_records` | int | `0` | Max records to keep. `0` turns off count-based pruning. |
