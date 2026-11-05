@@ -187,10 +187,21 @@ file.
 Only Owners and Admins can use both views, **including the lists**. A member,
 viewer or dashboard holder gets an empty result, not a filtered one.
 
+**A private export can grant accounts by key.** An export's
+`allowed_importers` lists the account public keys it grants. For a private
+export (`token_req`), the platform signs the activation token itself for each
+listed account in this deployment that imports it, so nobody pastes a token. An
+account that is not listed gets no token, and the NATS server refuses its
+import. Removing a key from the list revokes it on the export, which also
+reaches a leaf node that preloaded the importer's old account JWT. An import
+from an account outside this deployment still needs a pasted token.
+
 **Platform-managed records are read-only.** When an Organization is flagged
 `managed`, the platform creates a pair of records: a `helpdesk-events` export on
 the tenant's account, and a matching import on the provider's hub account. Both
-show a **Managed** badge and offer **View** instead of Edit or Delete.
+show a **Managed** badge and offer **View** instead of Edit or Delete. Both
+platform exports, this one and each organization's inventory export, are
+private to the one account they serve.
 
 This is not a permission. An Owner can write to the collection. The console
 hides the edit because it would not last. Every save of the Organization record
