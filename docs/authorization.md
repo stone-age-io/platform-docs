@@ -73,7 +73,7 @@ owners.
 | Create / edit Things and Locations | ✅ | ✅ | ✅ | — | — | — | ✅ |
 | Delete a Thing or Location | ✅ | ✅ | — | — | — | — | ✅ |
 | Deactivate / reactivate a Thing (§4.2) | ✅ | ✅ | — | — | — | — | ✅ |
-| Reset a Thing's PocketBase password | ✅ | ✅ | — | — | — | — | ✅ |
+| Reset a Thing's PocketBase password¹⁰ | ✅ | ✅ | — | — | — | — | ✅ |
 | Attach a NATS user / Nebula host to a Thing | ✅ | ✅ | — | — | — | — | ✅ |
 | Read Thing Types, Operations | ✅ | ✅ | ✅ | ✅ | ✅³ | — | ✅ |
 | Manage Thing Types, Operations | ✅ | ✅ | — | — | — | — | ✅ |
@@ -94,7 +94,7 @@ owners.
 | Invite users, manage memberships | ✅ | ✅ | — | — | — | invites only | ✅ |
 | Create / edit an Organization record | — | — | — | — | — | ✅ | ✅ |
 | Suspend / reactivate an Organization (§3.1)⁵ | — | — | — | — | — | ✅ | ✅ |
-| Delete an Organization | — | — | — | — | — | ✅ | ✅ |
+| Delete an Organization (§3)¹¹ | — | — | — | — | — | ✅ | ✅ |
 | Read the org's activity feed (§5.2) | ✅ | ✅ | ✅ | ✅ | ✅⁹ | — | ✅ |
 | Read the audit log (§5.1) | — | — | — | — | — | ✅ | ✅ |
 | Schema imports, NATS Operator key custody | — | — | — | — | — | — | ✅ |
@@ -116,6 +116,10 @@ owners.
 ⁸ Refused with `403` while the identity is suspended (`active = false`). See §4.
 
 ⁹ The API rule allows every role. The console's `/activity` screen is not shown to `dashboard`.
+
+¹⁰ By setting it directly. Password reset by email is refused for every Thing, because a member can choose a Thing's email when creating it, and a reset sent to that address would let the member sign in as the Thing.
+
+¹¹ Only once the organization is suspended and holds no Things, Locations or Nebula hosts.
 
 **Lower roles get an empty list, not a filtered one.** For `nats_users`,
 `nats_roles`, `nats_account_exports`, `nats_account_imports`,
@@ -167,6 +171,14 @@ Location, NATS account and Nebula CA that pointed at it. Those records become
 orphans, and with the blank-matches-blank read in §2 they would be readable
 across tenants. To take a tenant off the bus without deleting anything, suspend
 it (§3.1).
+
+**So a delete needs the organization suspended and empty first.** The platform
+refuses the delete while the organization's NATS account is still active, and
+while the organization still has Things, Locations or Nebula hosts. Suspending
+withdraws the account, and it stays withdrawn after the delete blanks it.
+Nebula hosts must go first because suspension does not touch Nebula, and a host
+certificate keeps working until it expires. The System and operator
+organizations cannot be deleted.
 
 ### 3.1 Suspending an organization
 
