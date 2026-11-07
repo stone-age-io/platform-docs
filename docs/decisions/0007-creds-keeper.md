@@ -4,10 +4,10 @@ nav_order: 70
 ---
 # ADR 0007: creds-keeper, Platform-Managed Credentials for Account Services
 
-**Status:** Proposed
-**Date:** 2026-11-07
+**Status:** Accepted — implemented in [`stone-age-io/services`](https://github.com/stone-age-io/services), with small deviations. See [As implemented](#as-implemented).
+**Date:** 2026-11-07 (implemented 2026-11-06)
 
-> This ADR decides how the processes that run inside an organization's account get their NATS credentials from the platform, instead of by copying `.creds` files around. That covers our own services (the [Watchdog](./0005-watchdog-service.md) and [history-metrics](./0006-history-services.md)) and the third-party ones beside them (Telegraf, rule-router, eKuiper, Benthos). It adds a third program to [`stone-age-io/services`](https://github.com/stone-age-io/services).
+> This ADR decides how the processes that run inside an organization's account get their NATS credentials from the platform, instead of by copying `.creds` files around. That covers our own services, such as the [Watchdog](./0005-watchdog-service.md), and the third-party ones beside them (Telegraf, rule-router, eKuiper, Benthos). It adds a second program to [`stone-age-io/services`](https://github.com/stone-age-io/services).
 
 ---
 
@@ -134,7 +134,7 @@ creds-keeper is the one program in the repository that is **not** a NATS micro s
 - **There is no multi-identity mode.** Handling several Things in one process would need a config file and a loop over identities. A second small process is simpler.
 
 On the platform, a service instance needs:
-- a Thing Type for its kind, such as `watchdog`, `history-metrics`, `telegraf` or `rule-router`;
+- a Thing Type for its kind, such as `watchdog`, `telegraf` or `rule-router`;
 - a NATS role with the permissions that kind needs;
 - a Thing of that type with a password and a NATS identity in that role.
 
@@ -215,3 +215,26 @@ The companion program needs no change to any service.
 - One keeper managing several Things.
 - Nebula certificates and leaf node config for services.
 - Packaging creds-keeper with the services it serves, which waits for the appliance work.
+
+---
+
+## As implemented
+
+creds-keeper shipped in [`stone-age-io/services`](https://github.com/stone-age-io/services) at commit `fca77da`, built on nats.go v1.55.0 and tested against an embedded nats-server 2.15.2 (`credskeeper/`, `cmd/creds-keeper/`, [docs](../vendor/services/docs/creds-keeper.md)). It follows the decision above, with these deviations:
+
+1. **One sync path, also for the first start.** §1 gives bootstrap its own call, `auth-with-password?expand=nats_user`. The implementation has no bootstrap path. A first start is the routine sync with no saved session: sign in without `expand`, probe `updated`, then fetch. That costs two more calls on a first start. The key still crosses the network one time.
+2. **The session file holds the token and the revision only.** §3 also puts the NATS identity id in it. Every auth response already gives the id, so a saved copy could only go stale.
+3. **The password is used only when the platform rejects the token** with `401` or `403`. §1 says "when `auth-refresh` fails". When the platform cannot be reached, the keeper does not try the password, and readiness does not say that the session lapsed. A platform outage then does not tell the operator to set a password.
+4. **A failed sync is tried again after 30 seconds,** not after `SYNC_INTERVAL`. A first start during a short platform outage then does not wait 5 minutes.
+5. **The `credentials` check is "the creds file exists",** read on each request. §5 says it fails until the file has been "written or confirmed once". With the file check, a keeper that restarts during a platform outage does not hold back its service.
+6. **Additions:**
+   - `CREDS_FILE_MODE` refuses a mode that gives other users access.
+   - The keeper does not make directories, because a directory it made could have the wrong owner.
+   - The shared `Dockerfile` now fixes the `service` user's gid at `10001`, and makes `/creds` and `/session` owned by that user. An empty named volume mounted there is then writable by the keeper and readable by the service.
+
+**Verified by tests:**
+
+- §4: nats.go reads the creds file again on every reconnect, and `IgnoreAuthErrorAbort` is necessary. `TestReconnectsWithNewCredsAfterRevoke` revokes a key on an operator-mode server, waits through more than two auth errors, writes a new file, and checks that the client connects as the new user. Without the option, the test fails.
+- §1 and §2: the call sequence, against a fake platform. The routine sync does not fetch the key. A deleted creds file is restored without the password. A lapsed session without a password gives the `fix` text.
+
+**Not yet verified:** a run against a live platform. The calls are the Agent's, which run against the platform today. §8 (the Thing Type, role and Thing that each service instance needs) is still to be confirmed on a live platform.

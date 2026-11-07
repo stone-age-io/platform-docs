@@ -4,10 +4,30 @@ nav_order: 60
 ---
 # ADR 0006: History Services for Metrics and Logs
 
-**Status:** Proposed
-**Date:** 2026-11-07
+**Status:** Deferred. Nothing in this ADR is built. See [Why deferred](#why-deferred).
+**Date:** 2026-11-07 (deferred 2026-11-06)
 
-> This ADR decides how the console and other NATS clients read **long-term** history: months of metrics, and later, searchable logs. It adds two small services to [`stone-age-io/services`](https://github.com/stone-age-io/services), built to the same rules as the [Watchdog (ADR 0005)](./0005-watchdog-service.md). Only `history-metrics` is built now. `history-logs` is designed here so the two match, and waits for a real need.
+> This ADR decides how the console and other NATS clients read **long-term** history: months of metrics, and later, searchable logs. It adds two small services to [`stone-age-io/services`](https://github.com/stone-age-io/services), built to the same rules as the [Watchdog (ADR 0005)](./0005-watchdog-service.md). `history-metrics` and `history-logs` are both designed here so the two match. Neither is built until a real need appears.
+
+---
+
+## Why deferred
+
+The design stays here for when it is needed. We do not build it now, for three reasons:
+
+1. **No tenant has asked for it.** `history-logs` waits for a real need. `history-metrics` must meet the same rule.
+2. **It moves a boundary that the docs state.** [Observability](../observability.md) says the console's dashboards are for live operation, and Perses or Grafana is for history. [ADR 0004](./0004-long-term-data-and-location-path.md) says the same of the dashboard widgets. This ADR reverses both, and the reversal must be a decision of its own.
+3. **It changes the documented TSDB layout.** [Observability](../observability.md) shows one shared VictoriaMetrics with no auth proxy. §2 is safe only with one database per account, or a per-account token behind vmauth. If someone points `history-metrics` at the documented shared database, one tenant can read the data of another tenant.
+
+Until then, Perses or Grafana shows long-term metrics, and JetStream with retention keeps event history (§9).
+
+**Before this ADR is built, do these:**
+
+- Name the tenant need.
+- Update [Observability](../observability.md) and [ADR 0004](./0004-long-term-data-and-location-path.md) to the new boundary.
+- Make the documented TSDB layout one of the two layouts in §2.
+- Set `MAX_POINTS` to a value that fits the 1 MB payload limit for a chart with several series. 11,000 points of Prometheus JSON is approximately 240 KB for each series, so approximately four series reach the limit. A chart is approximately 1,000 pixels wide, so a default near 1,500 is sufficient.
+- Say which console widget uses the service, and what makes the PromQL.
 
 ---
 
@@ -36,7 +56,7 @@ Three decisions were made in discussion before this ADR:
 
 | Service (micro name) | Backend | Endpoints | Status |
 |---|---|---|---|
-| `history-metrics` | Any Prometheus query API: VictoriaMetrics, Prometheus, Mimir | `history.metrics.query`, `history.metrics.query_range` | **Build now** |
+| `history-metrics` | Any Prometheus query API: VictoriaMetrics, Prometheus, Mimir | `history.metrics.query`, `history.metrics.query_range` | Deferred (see [Why deferred](#why-deferred)) |
 | `history-logs` | VictoriaLogs | `history.logs.query` | Deferred until needed |
 
 ### 1. Account-scoped, like the Watchdog
