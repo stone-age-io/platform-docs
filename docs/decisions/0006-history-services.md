@@ -103,7 +103,7 @@ The same contract as every service in the repository: `GET /api/ready` and `GET 
 
 - **Readiness:** two checks, `nats` and `backend`.
   - **How `backend` is probed:** it runs the query `1` through `/api/v1/query`. That works on any Prometheus-compatible backend, where health endpoints differ.
-  - **The probe runs in the background,** every 30s, and the endpoint returns the cached result. It does network I/O, which is the case [Health & Metrics §2](../health-metrics.md) says to cache. The Watchdog's checks only read memory, so this differs from ADR 0005 on purpose.
+  - **The probe runs on each readiness request,** with a 2-second timeout, and nothing is cached. [Health & Metrics §2](../health-metrics.md) caches the Control Plane's checks because they open connections and query the database. One trivial query every 10 to 30 seconds, the usual orchestrator interval, doesn't need a background goroutine and a cache. The timeout keeps a slow backend from making the endpoint slow.
 - **Metrics:**
   - `history_metrics_requests_total{endpoint, outcome}`
   - `history_metrics_request_duration_seconds{endpoint}`

@@ -10,3 +10,4 @@ nav_order: 210
 - [ADR 0004: Long-Term Data Carries Codes; Location Comes From Inventory](decisions/0004-long-term-data-and-location-path.md)
 - [ADR 0005: A Watchdog Service for Message Absence](decisions/0005-watchdog-service.md)
 - [ADR 0006: History Services for Metrics and Logs](decisions/0006-history-services.md)
+- [ADR 0007: creds-keeper, Platform-Managed Credentials for Account Services](decisions/0007-creds-keeper.md)
