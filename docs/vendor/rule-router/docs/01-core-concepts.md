@@ -31,11 +31,12 @@ If no `features` block is present, `router` defaults to `true` for backward comp
 
 ---
 
-All features of rule-router are configured using a shared rule syntax. A **rule** is a YAML object composed of a `trigger`, optional `conditions`, and an `action`.
+All features of rule-router are configured using a shared rule syntax. A **rule** is a YAML object composed of an optional `name`, a `trigger`, optional `conditions`, and an `action`.
 
 ```yaml
 # A rule is defined by a trigger, optional conditions, and an action.
-- trigger:
+- name: "Alert on high temperature"   # optional label: shown in load errors, rule-cli, and the web builder
+  trigger:
     # ... defines what starts the rule evaluation (e.g., a NATS message or an HTTP request)
   conditions:
     # ... defines the logic to determine if the action should run (e.g., field value checks)
@@ -334,7 +335,7 @@ action:
 | `initialDelay` | duration string | `"1s"` | Delay before the second attempt. Format: Go duration (`"500ms"`, `"2s"`, `"1m"`). |
 | `maxDelay` | duration string | `"30s"` | Cap on the backoff. Prevents runaway delays on long retry chains. |
 
-Backoff doubles each attempt (`initialDelay`, `2×`, `4×`, …) up to `maxDelay`, and a small random jitter (≤100ms) is added each round to avoid thundering herds when multiple actions retry simultaneously. Retries are issued for any non-2xx response or transport error. The retry context honors graceful shutdown — in-flight retries are cancelled when the application terminates.
+Backoff doubles each attempt (`initialDelay`, `2×`, `4×`, …) up to `maxDelay`, and a small random jitter (≤100ms) is added each round to avoid thundering herds when multiple actions retry simultaneously. Retries are issued for a 5xx, 408, or 429 response or a transport error. Any other 4xx is permanent and not retried — the request itself is wrong, so repeating it cannot help. The retry context honors graceful shutdown — in-flight retries are cancelled when the application terminates.
 
 The whole retry sequence also has to fit the deadline of the path running it: `nats.consumers.ackWaitTimeout` (default `30s`) for a JetStream-triggered rule, 30 seconds for a `mode: core` trigger, and 10 seconds per action for a schedule rule. Retries still pending at the deadline are abandoned, so size `maxAttempts` and `maxDelay` to fit inside it.
 

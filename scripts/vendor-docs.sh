@@ -78,6 +78,7 @@ access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-contr
 access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|70|
 services|$sv_src|stone-age-io/services|README.md|services|60|access: public
 services|$sv_src|stone-age-io/services|docs/watchdog.md|services/watchdog|10|
+services|$sv_src|stone-age-io/services|docs/creds-keeper.md|services/creds-keeper|20|
 EOF
 }
 
