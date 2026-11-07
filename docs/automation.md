@@ -374,6 +374,18 @@ keep the alarm state in a KV bucket:
 - **Deduplication.** A KV key per event ID stops duplicates across restarts or
   replays.
 
+### Detecting silence
+
+A rule runs when a message arrives, so on its own it cannot notice that
+messages have *stopped*. A TTL key catches a sender that goes quiet, but not one
+that never reports at all, because a key that was never written never expires.
+
+For liveness across a fleet, run the [Watchdog](./vendor/services/docs/watchdog.md).
+It is a small service in the tenant's account that watches the subjects you
+name in a KV bucket, and writes each target's `pending`, `up` or `down` state
+to another KV bucket. A rule on `$KV.watchdog_state.>` then sends the
+notification, the same way the alarm pattern above triggers on `$KV.alarms.>`.
+
 ### Throttle and debounce are built in
 
 Rate limiting and debounce do **not** use KV, because rule templates have no

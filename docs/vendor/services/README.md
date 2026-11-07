@@ -1,0 +1,58 @@
+---
+path: services
+nav_order: 60
+access: public
+---
+# Services
+
+Small, account-scoped NATS services for the [Stone-Age.io](https://stone-age.io) platform.
+
+| Service | What it does |
+|---|---|
+| [Watchdog](docs/watchdog.md) | Reports when targets stop sending messages. |
+
+---
+
+## What every service here has in common
+
+- **Account-scoped.** It connects with one account user's **creds file** and never needs a platform credential.
+- **Environment variables only.** There are no config files.
+- **The platform's health contract.** `GET /api/ready` returns `200` or `503` with a JSON report, and `GET /metrics` serves Prometheus metrics. Neither needs a login.
+- **A NATS micro service.** `nats micro ls` finds it, and `$SRV.PING`, `$SRV.INFO` and `$SRV.STATS` work.
+- **One container image** per service, built from the shared `Dockerfile`.
+
+Shared code lives in `internal/`: `natsconn` (connect, creds, reconnect hooks) and `health` (`/api/ready` and `/metrics`). A service never keeps its own copy of either.
+
+## What belongs here
+
+Simple and easy to maintain beats clever. A service belongs here only if:
+
+1. it needs state over time, arithmetic, or the absence of a message, which rule-router's stateless rules can't express;
+2. rule-router, Benthos or NATS itself doesn't already do the job;
+3. it's useful to any tenant, not one project;
+4. it runs inside a tenant's account with a user creds file.
+
+## Releases
+
+One tag releases every service. Pushing `v1.2.3` publishes:
+
+- a Linux `amd64` and `arm64` binary archive per service on the [releases page](https://github.com/stone-age-io/services/releases);
+- a container image per service, such as `ghcr.io/stone-age-io/watchdog:v1.2.3`.
+
+`:latest` moves only for a tag without a prerelease suffix, so `v1.3.0-rc1` never becomes `:latest`.
+
+## Develop
+
+```bash
+go test -race ./...
+docker build --build-arg SERVICE=watchdog -t watchdog .
+```
+
+The integration tests run an embedded `nats-server`, so you don't need a server.
+
+To add a service:
+
+1. Add `cmd/<service>/main.go` and a `<service>/` package.
+2. Add a build and an archive to `.goreleaser.yaml`.
+3. Add the service to the image matrix in `.github/workflows/release.yml`.
+4. Write `docs/<service>.md` and list it in the table above.
