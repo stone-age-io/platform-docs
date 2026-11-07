@@ -8,8 +8,8 @@ The **rule engine** is Layer 1 of Stone-Age.io: declarative event logic on top
 of NATS, with no state between messages.
 
 This page covers the engine's three features (router, gateway, scheduler), the
-patterns that use NATS KV for state, and when to use a stream processor
-instead. See [Platform Layers](./platform-layers.md) for the layer model.
+patterns that use NATS KV for state, the patterns that combine the engine with
+the platform's other parts, and when to use a stream processor instead. See [Platform Layers](./platform-layers.md) for the layer model.
 
 ```mermaid
 flowchart TD
@@ -385,6 +385,7 @@ It is a small service in the tenant's account that watches the subjects you
 name in a KV bucket, and writes each target's `pending`, `up` or `down` state
 to another KV bucket. A rule on `$KV.watchdog_state.>` then sends the
 notification, the same way the alarm pattern above triggers on `$KV.alarms.>`.
+§6 builds escalation, silences and inactivity timers on top of it.
 
 ### Throttle and debounce are built in
 
@@ -409,7 +410,189 @@ bucket's TTL expire it.
 
 ---
 
-## 6. Rule-Writing Best Practices
+## 6. Patterns Built From Existing Parts
+
+Some needs look like they call for a new service, but the parts you already run
+cover them. Each pattern below combines the rule engine with one other part:
+the [Watchdog](./vendor/services/docs/watchdog.md), the
+[Helpdesk](./vendor/helpdesk/README.md), a KV bucket, or NATS message
+scheduling. Reach for a new service only when none of them fits.
+
+| Need | Built from |
+| :--- | :--- |
+| Escalation and acknowledgement | Watchdog or alarm → rule → Helpdesk ticket |
+| Silencing alerts during maintenance | A KV key per check, with a TTL, read by the alert rule |
+| "Do this after N minutes of inactivity" | A Watchdog check, plus a rule on its state |
+| "Do this at a time the message names" | NATS message scheduling, set by a rule |
+
+### Escalation and Acknowledgement
+
+A notification is easy to miss. A **ticket** has an owner, a status and a
+history, and stays open until someone resolves it. The Helpdesk already takes
+machine-generated tickets over NATS, so a rule can turn a Watchdog `down`, or
+any alarm, into one:
+
+```yaml
+- trigger:
+    nats:
+      subject: "$KV.watchdog_state.>"
+  conditions:
+    operator: and
+    items:
+      - field: "{state}"
+        operator: eq
+        value: "down"
+  action:
+    nats:
+      subject: "helpdesk.tickets.create"
+      mode: core
+      payload: |
+        {
+          "title": "{target} stopped reporting ({check})",
+          "body": "Down since {since}. Last message: {last_seen}.",
+          "priority": "high",
+          "dedupe_key": "watchdog-{check}-{target}",
+          "thing": "{target}"
+        }
+```
+
+- **`dedupe_key` stops ticket storms.** While a ticket with the same key is
+  open, a repeat only increases that ticket's repeat count. Once the ticket is
+  resolved, the next `down` opens a new one. A flapping target is one ticket,
+  and a failure that returns after the fix is a new ticket.
+- **`mode: core` is required.** The stream that stores tickets is in the
+  operator's hub account, reached through the platform's export and import. No
+  stream in the tenant's account covers the subject, so a JetStream action
+  would be rejected when the rule loads.
+- **The ticket does not close itself.** Helpdesk takes only the `create` verb
+  today, so a target that comes back `up` does not resolve its ticket. Whoever
+  works the ticket resolves it. A second rule can still send an `up`
+  notification.
+- **`thing_code` links the ticket to inventory.** If your targets are Thing
+  codes, add `"thing_code": "{target}"`, and the ticket is joined to the Thing
+  for reporting. See the Helpdesk [wire protocol](./vendor/helpdesk/docs/protocol.md#2-nats-ticket-events).
+
+Escalation then happens where people work: the ticket's priority, assignee and
+the Helpdesk's own notifications. The rule's only job is to open it once.
+
+### Silencing Alerts During Maintenance
+
+Planned work makes devices go quiet on purpose. Put a key in a `silences`
+bucket for each check being worked on, and have the alert rule skip any check
+that has one:
+
+```bash
+# Once: a bucket that allows a TTL on each key
+nats kv add silences
+nats kv edit silences --marker-ttl 1m
+
+# Silence the "gateways" check for two hours
+nats kv create silences gateways '{"reason": "firmware upgrade, ticket #42"}' --ttl 2h
+```
+
+```yaml
+  conditions:
+    operator: and
+    items:
+      - field: "{state}"
+        operator: eq
+        value: "down"
+      - field: "{@kv.silences.{check}}"
+        operator: not_exists
+```
+
+- **The silence ends by itself.** The key's TTL removes it, so nobody has to
+  remember to turn alerts back on. To end it early, `nats kv del silences gateways`.
+- **The TTL is fixed when the key is created.** `put` and `update` remove it, so
+  to extend a silence, delete the key and create it again.
+- **Only alerts are silenced, not detection.** The Watchdog still records every
+  state change while the silence is on, so the state is correct the moment it
+  ends.
+- **The value says why,** so the next person who looks knows. The rule only
+  checks that the key exists.
+
+### Inactivity Timers
+
+"Turn the lights off after 10 minutes with no motion" is the Watchdog's job
+under another name: a target that stops sending messages. Point a check at the
+motion subject, and turn the `down` state into a command:
+
+```bash
+nats kv put watchdog_checks rooms '{
+  "subject": "room.*.motion",
+  "target_token": 1,
+  "timeout": "10m"
+}'
+```
+
+```yaml
+- trigger:
+    nats:
+      subject: "$KV.watchdog_state.rooms.*"
+  conditions:
+    operator: and
+    items:
+      - field: "{state}"
+        operator: eq
+        value: "down"
+  action:
+    nats:
+      subject: "room.{target}.lights"
+      payload: '{"on": false}'
+```
+
+- **Turn the lights on from the motion itself,** with an ordinary rule on
+  `room.*.motion`. The Watchdog only marks the room `up` on the next
+  evaluation, and only writes when the state changes.
+- **The timer is coarse.** A room goes `down` up to one evaluation interval
+  (10s by default) after the timeout. The shortest timeout is three evaluation
+  intervals, 30s by default. For a door held open for 15 seconds, use
+  something that runs at the door, such as the Access Control controller.
+- **A room is learned from its first motion.** A room that never reports isn't
+  tracked unless it's listed in `expected`.
+
+### Actions at a Time the Message Names
+
+Sometimes the time to act is in the message: a booking ends at 17:00, a
+temporary credential expires at midnight. NATS message scheduling (nats-server
+2.12 and later) holds a message in a stream and publishes it at that time. A
+rule sets the schedule with two headers:
+
+```yaml
+- trigger:
+    nats:
+      subject: "bookings.*.created"
+  action:
+    nats:
+      subject: "schedules.booking.{@subject.1}"
+      headers:
+        Nats-Schedule: "@at {ends_at}"
+        Nats-Schedule-Target: "bookings.{@subject.1}.ended"
+      payload: '{"booking": "{@subject.1}"}'
+```
+
+At `ends_at`, the stream publishes the payload to `bookings.{id}.ended`, where
+another rule acts on it.
+
+- **The stream needs scheduling turned on.** Create a stream with
+  `allow_msg_schedules: true` whose subjects cover both the schedule subjects
+  (`schedules.>`) and the targets (`bookings.*.ended`). Scheduling can't be
+  turned off on a stream once it's on.
+- **Each schedule has its own subject.** Publishing again to the same schedule
+  subject replaces the earlier schedule, which is how a rule extends a booking.
+- **To cancel,** publish any message to another subject in the stream with the
+  headers `Nats-Schedule-Next: purge` and `Nats-Scheduler: schedules.booking.{id}`.
+  The schedule is removed only if that publish succeeds.
+- **The time must be in the message, in RFC 3339.** Templates have no arithmetic,
+  so a rule can't compute "now plus 10 minutes". For a delay relative to the
+  last message, use an [inactivity timer](#inactivity-timers). For a fixed time
+  of day, use the [scheduler](#4-feature-scheduler-cron-to-natshttp). Otherwise,
+  have the publisher put the time in the payload.
+- **A time in the past fires immediately,** for example after a long outage.
+
+---
+
+## 7. Rule-Writing Best Practices
 
 - **Use specific subjects.** Do not trigger on `>`. Use narrow subjects such as
   `telemetry.*.temp`.
@@ -424,7 +607,7 @@ bucket's TTL expire it.
 
 ---
 
-## 7. When to Use Something Else
+## 8. When to Use Something Else
 
 **Use a stream processor (Layer 2) when:**
 
@@ -449,13 +632,14 @@ threshold. Both use the same bus, and neither needs to know how the other works.
 - The declarative tools work against you.
 
 A small Go service that reads from and publishes to NATS works with the rest of
-the platform.
+the platform. The [services repository](./vendor/services/README.md) holds the
+ones that are useful to every tenant, such as the Watchdog.
 
 See [Stream Processing](./stream-processing.md) for Layer 2.
 
 ---
 
-## 8. What the Rule Engine Does Well
+## 9. What the Rule Engine Does Well
 
 The rule engine fits any problem of the form "when X happens (on subject A, by
 webhook B or at cron time T), check Y (with KV state if needed), do Z (publish,
