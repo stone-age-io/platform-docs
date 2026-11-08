@@ -210,11 +210,11 @@ sensors.{{device_id}}.temp
 
 When you change the value, every widget that uses it resolves again, so one
 dashboard covers a whole fleet. An unknown name stays as the literal text
-`{{device_id}}`, so a typo is visible. **One exception:** a Markdown widget's
-KV key does not resolve variables.
+`{{device_id}}`, so a typo is visible.
 
 Variables are saved in the dashboard, so a shared dashboard includes them. Each
-viewer's *current selections* are their own.
+viewer's *current selections* are their own, and are not saved: a reload starts
+from each variable's default.
 
 ---
 
