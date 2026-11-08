@@ -40,7 +40,8 @@ without building it on that screen.
   write the bucket can edit or delete every shared dashboard in it. Give an
   appliance login a read-only NATS role so it cannot change the layout.
 - **Key names can contain dots**, which the sidebar shows as folders
-  (`site-a.lobby`).
+  (`site-a.lobby`). The sidebar lists each dashboard by its name; renaming it
+  keeps its key.
 - **Two editors cannot overwrite each other.** When someone else saves a newer
   version, an **Update** button replaces **Save**. A save based on an old
   version is refused with a conflict.
@@ -54,8 +55,10 @@ JSON file.
 
 ## 2. Building a dashboard
 
-A dashboard is **locked** (view only) or **unlocked** (edit). Unlock it with the
-padlock in the toolbar, then:
+A dashboard is **locked** (view only) or **unlocked** (edit). Every dashboard
+opens locked, except one you have just created. The lock is not saved with the
+dashboard, so one editor's save never leaves it unlocked for everyone else.
+Unlock it with the padlock in the toolbar (`U`), then:
 
 - **+ Widget** opens the palette.
 - Drag a widget by its header to move it, and drag its corner to resize it.
@@ -64,9 +67,10 @@ padlock in the toolbar, then:
 - The column selector sets the grid width: 12 columns by default; 4, 6, 8, 10,
   16 or 20; or *Auto*.
 
-Changes are not saved until you press **Save** (or `S`). The browser warns you
-before you leave with unsaved changes. **Refresh** (`R`) drops every widget's
-data and subscribes again.
+A local dashboard saves each change as you make it. A shared one waits for
+**Save** (`S`), and the console asks before you open another dashboard, load a
+newer version or leave the page with its changes unsaved. **Refresh** (`R`)
+drops every widget's data and subscribes again.
 
 The **debug panel** (the bug icon) shows the NATS connection, the active
 subscriptions and each widget's buffer. Press `?` for the full list of keyboard
@@ -252,15 +256,16 @@ credential, not the widget list, is what limits it.
 
 To set up the screen:
 
-1. **Lock the dashboard**, so a touch cannot move widgets.
-2. **Set it as the startup dashboard**, so a reboot opens the right view. This
+1. **Set it as the startup dashboard**, so a reboot opens the right view. This
    is saved in **that browser**, not on the login, so set it on the screen
-   itself. Without one, the browser reopens the dashboard it showed last.
-3. **Give the login its own NATS identity with a read-only role.** The console
+   itself. Without one, the browser reopens the dashboard it showed last. It
+   opens locked, so a touch cannot move widgets.
+2. **Give the login its own NATS identity with a read-only role.** The console
    role limits *screens*. What the browser can do on the bus comes only from
    the linked `nats_users` role. A wall display must not hold a credential that
-   can publish to `cmd.>`.
-4. **Check for WebGL** if the dashboard has a Map. Its basemap draws on a WebGL
+   can publish to `cmd.>`, or one that can write the `dashboards` bucket. The
+   lock stops accidental touches, not edits: anyone can unlock it.
+3. **Check for WebGL** if the dashboard has a Map. Its basemap draws on a WebGL
    canvas and shows nothing without it.
 
 ---
