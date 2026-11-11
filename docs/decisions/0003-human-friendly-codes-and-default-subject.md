@@ -182,7 +182,7 @@ The stricter alternative, uppercasing every code on save, was rejected: it drops
 - **Client-side generators.** Two implementations drift, and only the server can check for collisions.
 - **Uppercasing every code on save.** It reverses the deliberate mixed-case rule to fix a problem the index already fixes.
 - **Requiring a prefix.** A blank prefix costs nothing; the generator produces `XXX-XXX`.
-- **A location twin key maintained by the platform.** The platform writes only to the system account, so keeping a per-organization KV key current would mean every client chaining an HTTP call and a NATS call on every move, with no recovery when the second fails. See [ADR 0004](./0004-long-term-data-and-location-path.md).
+- **A location twin key maintained by the platform.** The platform writes only to the system account, so keeping a per-organization KV key current would mean every client chaining an HTTP call and a NATS call on every move, with no recovery when the second fails. See [ADR 0004](./0004-long-term-data-and-location-path.md). *(Amended 2026-11-11: "only to the system account" is no longer true. Since v0.15.0 the platform can publish inventory events in the operator organization's account; see the amendment at the top of ADR 0004. The rejection stands: those events are not stored, so they do not keep a KV key current.)*
 - **A reserved `app.` root for applications.** It protects against a clash that only the organization's own admin can cause, and it costs every application a token.
 
 ---

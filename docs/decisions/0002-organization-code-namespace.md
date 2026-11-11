@@ -57,7 +57,7 @@ Rule 2 is the keystone, and it is narrower than it first looks. **Mutability was
 {app}.{org}.{domain}.{verb}
 ```
 
-Two tokens are worth stating explicitly because both have already caused an argument.
+Two tokens are worth stating explicitly because both have already caused an argument. This ADR numbers tokens from **1**, so token 1 is the first. ADR 0003, ADR 0004, [Thing Types](../thing-types.md) and rule-router's `{@subject.N}` number them from 0.
 
 **Token 1 is the app.** It keeps each sibling app's stream subjects disjoint on the shared hub account.
 
@@ -105,7 +105,7 @@ The label sits outside both, which is the point: it carries the least context of
 The helpdesk's ingest filter is `helpdesk.*.tickets.>` (`internal/subjects`, `StreamWildcards`). **Token 2 is a wildcard.** Both the id-rooted and code-rooted subject shapes match the same filter, so:
 
 - No stream reconfiguration.
-- No flag day. The consumer resolves token 2 as "try `code`, fall back to `platform_org_id`" and drops the fallback once every org has a code.
+- No flag day. The consumer resolves token 2 as "try `code`, fall back to `platform_org_id`" and drops the fallback once every org has a code. *(Amended 2026-11-11: the fallback is gone. The helpdesk resolves token 2 by `customers.code` only, and `platform_org_id` is not consulted for routing.)*
 - No coordination between the platform and its consumers about when to switch.
 
 The security property is unchanged. Provenance comes from the rewrite being signed by the **NATS Operator**, not from what the token contains — a publisher can no more forge `acme` than it could forge an org id. Ingestion still parses the organization from the subject and never from the payload.

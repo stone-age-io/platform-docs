@@ -211,8 +211,8 @@ JWT, use **Revoke** on the NATS user
   it. Before nats-server 2.12.3, add `$MQTT.sub.>` to the subscribe allow list.
 
 **MQTT listens at the hub.** The Agent's generated leaf config has no `mqtt`
-block, and the Agent writes that file again at each refresh, so an edit there
-does not last.
+block, and the Agent rewrites that file whenever the generated content changes,
+for example after the account JWT changes, so an edit there does not last.
 
 See [Messaging §7](./concepts/messaging.md#7-if-you-know-mqtt) for how MQTT
 terms map to NATS terms, and the

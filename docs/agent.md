@@ -29,8 +29,10 @@ The Agent is one Go binary with no external dependencies.
 - **Reconnects by itself:** it handles NATS reconnection and backoff.
 - **Cross-platform:** Windows services, Linux systemd and FreeBSD rc.d.
 
-A gateway, the box that runs a leaf node, needs only the Agent. It bootstraps and can host
-the leaf server. See [Leaf Nodes](./leaf-nodes.md).
+A gateway, the box that runs a leaf node, needs no software from the platform
+beyond the Agent. The Agent bootstraps, writes the leaf config, and can host the
+leaf server itself (`nats.server_config`). By default the leaf runs as a
+separate stock `nats-server` process beside it. See [Leaf Nodes](./leaf-nodes.md).
 
 ### Getting the binary
 
@@ -259,8 +261,9 @@ gateway is whatever these capabilities make it. A separate flag could disagree
 with them: `edge.enabled: false` next to `sync.twin: true` has no correct
 meaning. See [Leaf Nodes](./leaf-nodes.md).
 
-The Agent **rejects** the key `twin.enabled` at config load. Use `sync:`
-instead ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)).
+The key `twin.enabled` does nothing. Since v0.6.0 the Agent starts with it
+and ignores it, so a config that still carries it syncs no buckets. Use
+`sync: { twin: true }` instead ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)).
 
 **Local health is on every Agent.** `observability.addr` serves `/ready` and
 `/metrics` on every Agent, by default on `127.0.0.1:9100`. `cmd.health` goes
@@ -367,7 +370,9 @@ nats micro stats stone-agent       # requests, errors and timings per command
   `$SRV.>` on publish, which the seeded `console-operator` role has and
   `console-readonly` does not.
 - **The Agent's NATS role needs `$SRV.>` on subscribe.** The demo seed's `device`
-  and `gateway` roles have it. Without it, commands still work, but the Agent is
+  and `gateway` roles have it. They do not cover the Agent's own subjects
+  under the default `subject_prefix: agents`, so either set the prefix to a
+  subtree the role allows or add `agents.>` to the role. Without it, commands still work, but the Agent is
   not in the list and its `nats_permissions` check warns.
 - **Behind a leaf, the uplink needs it too.** A request from the hub crosses the
   leaf connection only if the leaf's own credential allows `$SRV.>` ([Leaf

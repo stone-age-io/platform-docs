@@ -164,7 +164,7 @@ pattern is an exception that uses KV in a complex-looking but sound way.
 
 This example adds Layer 2 to the access-control reference architecture in
 [Platform Layers §8](./platform-layers.md#8-reference-architecture-all-four-layers).
-Layers 0, 1 and 3 stay as they are.
+The other layers stay as they are.
 
 **Goal:** flag access events that are unusual for the user, such as access
 outside their normal hours, to doors they rarely use, or in an unusual order.
@@ -173,17 +173,21 @@ outside their normal hours, to doors they rarely use, or in an unusual order.
 history. That is stateful, windowed computation, which rules cannot express
 well.
 
-1. **Layer 1** publishes `access.decision.granted.{door_id}.{direction}` events,
-   as before.
-2. **Layer 2** (eKuiper or a custom Go processor) reads
-   `access.decision.granted.>`. It keeps rolling statistics per user over the
-   last 30 days: hour-of-day distribution, door use and sequences. For each new
-   event it computes a score against the baseline. When the score crosses a
-   threshold, it publishes to `access.anomaly.{user_id}`.
-3. **Layer 1** (another rule) reads `access.anomaly.>`, adds the user's contact
-   details from KV, and publishes to `notify.security-team` through the gateway.
+1. **The edge controllers** publish each decision on
+   `acc.{location}.{type}.{thing}.evt.tap`, with `user`, `allow` and `ts` in the
+   payload ([Access Control wire protocol](./vendor/access-control/docs/protocol.md)).
+   The `ACC_EVENTS` stream stores them.
+2. **Layer 2** (eKuiper or a custom Go processor) reads the granted taps from
+   `acc.*.*.*.evt.tap` through a JetStream consumer. It keeps rolling
+   statistics per user over the last 30 days: hour-of-day distribution, door
+   use and sequences. For each new event it computes a score against the
+   baseline. When the score crosses a threshold, it publishes to
+   `anomaly.acc.{user}`. The subject is outside the `acc.` tree, so
+   `ACC_EVENTS` does not capture it.
+3. **Layer 1** (a rule) reads `anomaly.acc.>`, adds the user's contact details
+   from KV, and calls the security team's webhook through the gateway.
 
-The existing rules do not change, and the access decision path is not touched.
+Nothing in the access path changes, and the decision is not touched.
 If the anomaly detector fails or is stopped for maintenance, access control
 keeps working. Only the anomaly signal stops, and the processor catches up from
 JetStream when it returns.

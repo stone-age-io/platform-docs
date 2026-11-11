@@ -24,7 +24,9 @@ job. This page tells you which layer should solve a given problem.
   provisions the identities the Data Plane uses. It is also a narrow NATS client
   on the System Account: it publishes credential updates on subjects such as
   `$SYS.REQ.CLAIMS.UPDATE`. It does not carry tenant traffic such as telemetry,
-  rule traffic or device commands.
+  rule traffic or device commands. The one exception is optional: inventory
+  events, published in the operator organization's account
+  ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports)).
 - **The Control Plane's access control is rule-based.** PocketBase API rules on
   each collection decide who can read or change a record, from five roles per
   organization and a Platform Operator flag. One hook also refuses any relation
@@ -290,12 +292,14 @@ logic in rules.
 ## 8. Reference Architecture — All Four Layers
 
 This example uses all four layers. The domain is physical access control for an
-organization with several sites.
+organization with several sites, as the
+[Access Control](./vendor/access-control/README.md) app does it.
 
 ```mermaid
 flowchart LR
-    subgraph Device["Edge Device"]
-        Reader["Card Reader"]
+    subgraph Device["Edge"]
+        Reader["Card reader"]
+        Ctrl["access-controller<br/>decides in memory"]
     end
 
     subgraph L0["Layer 0"]
@@ -303,8 +307,7 @@ flowchart LR
     end
 
     subgraph L1["Layer 1"]
-        RR1["Rule: authorize request"]
-        RR2["Rule: dispatch unlock"]
+        RR1["Rule: alarm to ticket or webhook"]
     end
 
     subgraph L2["Layer 2"]
@@ -317,37 +320,40 @@ flowchart LR
         GR["Grafana"]
     end
 
-    Reader -->|"access.request.*"| NATS
+    Reader --> Ctrl
+    NATS -->|"ACC_POLICY KV"| Ctrl
+    Ctrl -->|"acc.….evt.tap, evt.alarm"| NATS
     NATS --> RR1
-    RR1 -->|"access.decision.*"| NATS
-    NATS --> RR2
-    RR2 -->|"hardware.door.*.unlock"| NATS
-    NATS --> Reader
-
     NATS --> EK
-    EK -->|"access.anomaly.*"| NATS
-
+    EK -->|"anomaly.acc.*"| NATS
     NATS --> TG
     TG --> VM
     VM --> GR
 ```
 
-**Layer 0** carries every message. The KV bucket holds credentials, users,
-roles, schedules and a precomputed permissions view.
+**Layer 0** carries every message. The `ACC_POLICY` KV bucket holds users,
+credentials, roles, access groups, portals and schedules. The `ACC_EVENTS`
+stream stores what the controllers report.
 
-**Layer 1** handles the fast path. A rule reads
-`access.request.{door_id}.{direction}` and looks up credential, user, role, door
-and schedule in KV. It then publishes `access.decision.granted.*` or
-`access.decision.denied.*`. A second rule turns granted decisions into unlock
-commands.
+**The decision is not in a layer.** A tap must open the door when the site's
+link is down, so the edge controller decides it: a pure function over the
+policy it mirrors from KV into memory. It then publishes the outcome on
+`acc.{location}.{type}.{thing}.evt.tap`. A rule engine could make the same
+decision from KV lookups, but only while it can reach the bus. This is the rule
+of thumb for any application: logic that must keep working offline belongs in a
+process at the edge, and the layers react to what it reports.
 
-**Layer 2** is optional and can come later. An eKuiper pipeline watches all
-access decisions and keeps a baseline for each user. It publishes
-`access.anomaly.*` when someone uses a door they rarely use, at an unusual hour
-or in an unusual order.
+**Layer 1** reacts to events. A rule on `acc.*.*.*.evt.alarm` (door forced or
+held open) can open a [Helpdesk](./vendor/helpdesk/README.md) ticket or call a
+webhook.
 
-**Layer 3** runs Telegraf on `access.decision.>` and `access.anomaly.>`, writing
-to VictoriaMetrics. Grafana shows access volume, deny reasons, use per door and
+**Layer 2** is optional and can come later. An eKuiper pipeline watches the tap
+events and keeps a baseline for each user. It publishes an anomaly when someone
+uses a door they rarely use, at an unusual hour or in an unusual order
+([Stream Processing §6](./stream-processing.md#6-a-worked-example-anomaly-detection-on-access-events)).
+
+**Layer 3** runs Telegraf on the `acc.>` events and the anomalies, writing to
+VictoriaMetrics. Grafana shows access volume, deny reasons, use per door and
 anomaly trends. vmalert can alert when the deny rate for a door rises sharply.
 
 The layers share only NATS subjects. You can redeploy, scale or replace any one

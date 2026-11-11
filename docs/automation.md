@@ -48,8 +48,9 @@ You can run the rule engine:
 The engine keeps no state between messages and scales horizontally. To get more
 throughput, run another instance on the same NATS cluster. Durable state is in
 NATS KV, not in the engine. The one exception: **throttle windows** (§5) are in
-each instance's memory. Two instances keep two sets of windows, and a restart
-or rule reload clears them.
+each instance's memory. Two instances keep two sets of windows. A restart
+clears them all. A rule reload clears the leading-edge windows only: a trailing
+value that is waiting still fires when its window closes.
 
 How instances share work depends on the trigger's transport. The default
 JetStream trigger is a durable consumer named from the subject and the
@@ -169,7 +170,7 @@ The gateway connects HTTP and NATS in both directions, with the same engine.
 
 Devices or services that cannot use NATS send HTTP POSTs to a configured path.
 The gateway evaluates rules on the request and publishes the result to NATS. By
-default it replies at once (`200 {"accepted"}`) and processes the request
+default it replies at once (`200 {"status":"accepted"}`) and processes the request
 asynchronously on the NATS side.
 
 Two options change this:
@@ -180,7 +181,8 @@ Two options change this:
   GitHub, Shopify and most generic HMAC webhooks. For providers that sign a
   timestamp with the body, set `scheme: stripe`, `slack` or `standardwebhooks`
   (Svix, Clerk, Resend and others) and only a `secret`. A timestamp more than
-  five minutes old is rejected. Put signature verification on
+  five minutes from the gateway's clock, in either direction, is rejected, so
+  keep the clock NTP-synced. Put signature verification on
   every endpoint the internet can reach. Without it, anyone who learns the path
   can publish into your bus.
 - **Synchronous routes.** A rule with a `respond` action returns its result as
@@ -292,6 +294,12 @@ At 8:00 AM Eastern every weekday, this rule reads a door list from the
 `config.door_list` KV key and publishes one unlock command per door. To add or
 remove doors, update the KV entry. You do not change the rule or restart
 anything.
+
+The subjects here are illustrative, for door hardware driven by its own
+controller. The [Access Control](./vendor/access-control/README.md) app does
+not take commands like this: its controllers run scheduled postures themselves,
+and operator commands use its own subjects
+([Wire Protocol](./vendor/access-control/docs/protocol.md)).
 
 ### Example: Daily Report POST
 
@@ -405,8 +413,9 @@ room:
 Put the throttle on the **action**, not the trigger. A trigger throttle skips
 evaluation, so a normal reading can use up the window and the engine never
 evaluates the alarming reading after it. The windows are in the instance's
-memory (§1). A restart or reload resets them, and a trailing value that is
-waiting at a crash is lost. If suppression must survive a restart, gate the rule
+memory (§1). A restart resets them, and so does a reload for leading-edge
+windows. A trailing value that is waiting survives a reload and is flushed on a
+clean shutdown (`SIGTERM`), but is lost in a crash. If suppression must survive a restart, gate the rule
 on a KV key with `not_exists`, have its action write that key, and let the
 bucket's TTL expire it.
 
@@ -465,7 +474,7 @@ any alarm, into one:
 - **`mode: core` is required.** The stream that stores tickets is in the
   operator's hub account, reached through the platform's export and import. No
   stream in the tenant's account covers the subject, so a JetStream action
-  would be rejected when the rule loads.
+  would wait for an ack that never comes and log an ack timeout on every fire.
 - **The ticket does not close itself.** Helpdesk takes only the `create` verb
   today, so a target that comes back `up` does not resolve its ticket. Whoever
   works the ticket resolves it. A second rule can still send an `up`

@@ -42,7 +42,7 @@ a different role in each.
 | :--- | :--- |
 | `owner` | Full tenant authority. The same as `admin` in every API rule. |
 | `admin` | Full tenant authority. |
-| `member` | Manages inventory: creates and edits Things and Locations, reads contracts, has its own NATS credential. Cannot read or write infrastructure collections. |
+| `member` | Manages inventory: creates and edits Things and Locations, reads contracts, has its own NATS credential. Cannot read or write the NATS and Nebula infrastructure collections, apart from reading the org's NATS Account and Nebula CA and its own linked NATS identity. |
 | `viewer` | Read-only staff. Inventory screens and dashboards, no writes. Has its own NATS credential. |
 | `dashboard` | A login for an unattended screen. The Visualizer at `/` and its own `/settings`, nothing else. No write capability. |
 
@@ -87,7 +87,7 @@ owners.
 | Read own linked NATS identity | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Clear own membership's NATS identity link | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Choose which NATS identity a membership links to (§4) | ✅ | ✅ | — | — | — | — | ✅ |
-| Rotate own NATS credential (§4)⁸ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| Rotate own NATS credential (§4)⁸ | ✅ | ✅ | ✅ | ✅ | ✅ | — | —¹² |
 | Revoke-and-replace, suspend or reactivate a NATS identity | ✅ | ✅ | — | — | — | — | ✅ |
 | Manage JetStream streams and KV buckets⁴ | ✅ | ✅ | — | — | — | — | — |
 | Use dashboards | ✅ | ✅ | ✅ | ✅ | ✅⁷ | — | ✅ |
@@ -120,6 +120,8 @@ owners.
 ¹⁰ By setting it directly. Password reset by email is refused for every Thing, because a member can choose a Thing's email when creating it, and a reset sent to that address would let the member sign in as the Thing.
 
 ¹¹ Only once the organization is suspended and holds no Things, Locations or Nebula hosts.
+
+¹² `POST /api/me/nats-creds/rotate` accepts only a `users` or `things` session, and a SuperUser has no linked identity of its own. A SuperUser can still rotate any identity by setting `regenerate` on its `nats_users` record.
 
 **Lower roles get an empty list, not a filtered one.** For `nats_users`,
 `nats_roles`, `nats_account_exports`, `nats_account_imports`,

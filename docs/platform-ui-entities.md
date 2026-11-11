@@ -37,8 +37,9 @@ Organizations.
     code that is already in use and does not invent `acme-2`, because the code
     goes into signed account JWTs and printed labels.
   - See [ADR 0002](./decisions/0002-organization-code-namespace.md).
-- **Ownership:** an Organization has an **Owner**, who has full tenant
-  authority and cannot leave it. Only a **Platform Operator** can create, edit
+- **Ownership:** an Organization has an **Owner** field. The field grants
+  nothing by itself: setting it gives that user an `owner` membership, and the
+  membership role is the authority. An `owner` cannot leave the organization. Only a **Platform Operator** can create, edit
   or delete the Organization record. The record holds the tenancy flags and
   drives NATS Account and Nebula CA provisioning. Deleting it does not cascade:
   it orphans the whole inventory. See [Authorization §3](./authorization.md#3-cross-organization-identities).
@@ -62,7 +63,7 @@ A Membership links a User to an Organization with one of five roles:
 | :--- | :--- |
 | `owner` | Full tenant authority. **The same as `admin` in every API rule.** The one difference: an Owner cannot leave their own organization. |
 | `admin` | Full tenant authority: members and invites, NATS and Nebula infrastructure, types and contracts, and the identity links on a Thing. |
-| `member` | Creates and edits Things and Locations. Reads Thing Types and Operations. Cannot delete a Thing or Location, attach identities, or read the infrastructure collections. |
+| `member` | Creates and edits Things and Locations. Reads Thing Types and Operations. Cannot delete a Thing or Location, attach identities, or read the six NATS and Nebula infrastructure collections listed under [Permissions](#permissions). |
 | `viewer` | Read-only staff. Browses inventory and uses dashboards. Writes nothing. |
 | `dashboard` | A login for an unattended screen. Sees only the Visualizer and its own settings page. Writes nothing. |
 
@@ -207,8 +208,9 @@ record and nothing more.
 - **Identity:** Things are an auth collection, so a Thing can sign in to the
   PocketBase API to fetch its own configuration. If the password is lost, an
   Owner or Admin can set a new one in the **Authentication** card on the
-  Thing's edit form. Type it and save. The platform shows a Thing password only
-  once, when it generates one at creation.
+  Thing's edit form. Type it and save. The platform shows a generated Thing
+  password only once, at creation, and only to an Owner or Admin. A `member`
+  who creates a Thing never sees its password.
 - **Thing code:** the same character rules as the Location code. It is used in
   NATS subjects (for example `camera.CA-9KD-4PX`), as the join key for sibling
   apps, and as the payload of the device's [QR label](#5-codes-and-qr-labels).

@@ -174,7 +174,7 @@ You add a Thing's photo **on edit only**. Creation goes through
 `POST /api/org/things`, a JSON route that cannot carry a multipart body. Create
 the Thing, then add the photo. On edit, the photo is sent in its own request.
 The rest of the Thing update stays JSON, because the member branch of
-`things.updateRule` requires `nats_user` and `nebula_host` to be unchanged, and
+`things.updateRule` requires `nats_user`, `nebula_host` and `active` to be unchanged, and
 JSON can leave a field out. A multipart body cannot leave a field out, so a
 member's normal edit would be refused. A Location's photo also works on create,
 because Locations use the plain record API.

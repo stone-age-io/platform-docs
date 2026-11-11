@@ -76,6 +76,8 @@ Because the embedded server is an ordinary server reading an ordinary config, th
 
 Rung 2 is reached by adding a `cluster` block to both configs. Rung 3 is reached by turning `--nats` off.
 
+> **Amended 2026-11-11:** neither move is only a config edit. Rung 1 to rung 2 loses JetStream data (see the amendment at the top), and leaving a cluster takes the multi-step procedure in [Operations §5.5](../operations.md#removing-the-embedded-node-from-a-cluster-you-already-run).
+
 <center>
 ```mermaid
 graph LR

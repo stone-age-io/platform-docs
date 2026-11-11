@@ -21,7 +21,7 @@ PocketBase has three types of collection:
 | :--- | :--- | :--- |
 | **Base** | Normal records. | `locations`, `thing_types`, `memberships` |
 | **Auth** | Records that can sign in. Each has a password and gets tokens. | `users` for people, `things` for devices |
-| **View** | A read-only collection built from a SQL query. | None. The platform uses no view collections. |
+| **View** | A read-only collection built from a SQL query. Its rule replaces the rules of the tables it reads. | `org_stats`, the only one: counts per organization, readable by Platform Operators only |
 
 A **relation** field holds the id of a record in another collection. For
 example, `things.location` holds the id of a `locations` record. A rule can
@@ -89,7 +89,7 @@ Query parameters on a list:
 | `fields` | Returns only these fields | `id,code,name` |
 | `page`, `perPage` | Selects a page | `page=2&perPage=100` |
 
-Stone-Age.io adds ten routes for the jobs that a collection cannot do. See
+Stone-Age.io adds eleven routes for the jobs that a collection cannot do. See
 [API Reference](../api-reference.md). The `stone` CLI is a client of the same
 API ([Stone CLI](../stone-cli.md)).
 
@@ -109,7 +109,7 @@ own secret. So only the server can check it.
   deactivate a Thing.
 - **A token is not a file token.** To download a protected file, get a
   short-lived file token from `POST /api/files/token`. See
-  [Platform Entities §5](../console.md#7-photos-and-file-fields).
+  [The Console §7](../console.md#7-photos-and-file-fields).
 
 ---
 
@@ -145,16 +145,21 @@ A rule expression uses these names:
 | `:isset`, `:changed` | Whether the request sends a field, or changes it |
 | `?=` | "Any of": true if at least one of many values matches |
 
-This is a shortened form of the list rule on `things`:
+This is the people branch of the list rule on `things`:
 
 ```
 @request.auth.collectionName = "users" &&
+@request.auth.current_organization != "" &&
 organization = @request.auth.current_organization &&
 @request.auth.memberships_via_user.organization ?= @request.auth.current_organization
 ```
 
-It reads: the caller is a person, the Thing is in the caller's active
-organization, and the caller has a membership in that organization.
+It reads: the caller is a person, the caller has an active organization, the
+Thing is in that organization, and the caller has a membership in it. The
+second line is not redundant. In PocketBase an empty string equals an empty
+string, so without it a caller with no active organization would match every
+Thing whose `organization` is blank. The full rule has a second branch that
+lets a Thing read its own record.
 
 ### What a failed rule returns
 

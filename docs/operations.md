@@ -82,9 +82,10 @@ Plane instead, from the same `nats.conf` that `nats export` writes
 ([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
 
 This is a valid production option, but it changes the first row of that table.
-There are three options. You move between them by editing config, with one
-exception: a server that already holds JetStream data loses it when it first
-joins a cluster ([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)).
+There are three options. You move between them by editing config, with two
+exceptions: a server that already holds JetStream data loses it when it first
+joins a cluster, and removing the embedded node from a cluster takes several
+steps ([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)).
 
 | | What runs | A Control Plane restart costs | Use when |
 | :--- | :--- | :--- | :--- |
@@ -484,7 +485,7 @@ on a later version says so.
 | `stone` CLI | v0.6.0 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.6.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
-| Services (Watchdog, creds-keeper) | v0.1.0 | [Services docs](./vendor/services/README.md) |
+| Services | Watchdog v0.1.0. creds-keeper is not in a release yet: the docs describe commit `fca77da` on `main`, which has no tag | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
 | Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
 

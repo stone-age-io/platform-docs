@@ -62,7 +62,7 @@ ORG_ID=$(curl -s -X POST http://localhost:8090/api/collections/organizations/rec
 ::: warning Send `"active": true`
 An Organization created through the API with no `active` field starts
 **suspended**. Its NATS account is withdrawn, and a later
-`POST /api/org/things` with `nats.mode: "auto"` returns `400` ("No active NATS
+`POST /api/org/things` with `nats.mode: "auto"` returns `400` ("no active NATS
 account for this organization"). To repair it, set `active` to `true` on the
 Organization record.
 :::

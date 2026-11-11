@@ -37,7 +37,7 @@ follows from that.
   read access to the inventory, and has none.
 
 **A Thing Type does not say "gateway" either.** A `thing_types` record has
-`name`, `description`, `code`, `subject_prefix`, `operations` and
+`name`, `description`, `code`, `prefix`, `subject_prefix`, `operations` and
 `metadata_schema`, and no gateway flag. An organization can name one of its
 types "Gateway", but the platform does not read that name. There is no field to
 check, to filter a list by, or to tell a screen which Things should have a leaf
@@ -392,7 +392,9 @@ An Agent behind a leaf answers a request from the hub only if **two**
 credentials allow `$SRV.>` on subscribe: the Agent's own, and the leaf's uplink
 credential. The leaf connection filters `$SRV` like any other subject. On a
 gateway that runs its own leaf, both are the same Thing's credential, and the
-demo seed's `gateway` role allows it. A platform test checks this against a real
+demo seed's `gateway` role allows `$SRV.>`. It does not allow the default
+`agents.>` prefix, so see [The Agent §3](./agent.md#3-capabilities) for
+the heartbeat and command subjects. A platform test checks this against a real
 hub with a real leaf.
 
 ### Per-gateway health, in detail

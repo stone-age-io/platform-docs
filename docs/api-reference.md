@@ -24,7 +24,7 @@ cannot express what it does.
 | [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to run a NATS leaf server |
 | [`/api/me/account-jwt`](#get-apimeaccount-jwt) | `GET` | any `things` session | The caller's account JWT, so a gateway can tell when its leaf config is out of date |
 | [`/api/me/nats-creds/rotate`](#post-apimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
-| [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any authenticated caller | Redeem an invitation token |
+| [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any `users` session | Redeem an invitation token |
 | [`/api/org/things`](#post-apiorgthings) | `POST` | `member` and up for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
 | [`/api/org/nats-account/keys`](#post-apiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
 | [`/api/org/nebula-ca/rotate`](#post-apiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA in three steps |
@@ -45,16 +45,18 @@ Two more endpoints are not in the table, because they do not replace a rule:
   `/api/files/...` accepts only a short-lived *file* token (`?token=`) from this
   endpoint and checks it against the collection's view rule. **An auth token is
   not a file token.** A URL with an auth token returns `404`. See
-  [Platform Entities §5](./console.md#7-photos-and-file-fields).
+  [The Console §7](./console.md#7-photos-and-file-fields).
 
 ---
 
 ## 2. Three rules that apply to all of them
 
 **No route takes a record id.** Every `/api/me/*` route targets the caller's own
-record. Every `/api/org/*` route targets the caller's active organization. The
-target comes from the session, never from the request, so no route can target
-another tenant. The missing id parameter is the security property.
+record. Every `/api/org/*` route targets the caller's active organization, with one
+exception: `invites/accept` joins the organization the invitation names, and
+the invitation must match the caller's email address. The target comes from
+the session or from a server-side record, never from an id in the request, so
+no route can target another tenant. The missing id parameter is the security property.
 
 **A route that writes with `app.Save()` skips every API rule.** So each route
 repeats the checks the rules would make. For example, `POST /api/org/things`
@@ -223,8 +225,9 @@ new key pair (owner/admin).
 
 ### `POST /api/org/invites/accept`
 
-Redeem an invitation token. Any authenticated caller can call it. The
-invitation must match the caller's email address, ignoring case.
+Redeem an invitation token. Only a person can call it: a `users` session. A
+Thing token gets `403`. The invitation must match the caller's email address,
+ignoring case.
 
 ```json
 { "token": "8f3a…" }
@@ -309,8 +312,11 @@ This route sets the email to `<thing code>@<organization code>.thing.local`. It 
 organization's **code**, not its name, because a name is not unique and can
 change.
 
-**The password is returned only once.** PocketBase stores only its hash, so
-record it from this response.
+**The password is returned only once, and only to an Owner or Admin.**
+PocketBase stores only its hash, so record it from this response. When a
+`member` creates the Thing, the response has no `password` field. An Owner or
+Admin sets one later. Only they can (`things.manageRule`), and a password a
+`member` sends to the record API is replaced.
 
 **This is a route because one operation needs two authority levels.** A
 `member` can create inventory but cannot attach an identity.

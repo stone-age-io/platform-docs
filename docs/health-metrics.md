@@ -394,7 +394,7 @@ A gateway (an Agent that runs a leaf) has these as well:
 |---|---|---|
 | `nats_local` | **fail** | The agent is not connected to the local leaf, the bus that this site's devices use. |
 | `hub_uplink` | **warn** | No outbound leaf connection to the hub. The gateway is *cut off*. |
-| `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
+| `sync` | **warn** | A declared KV bucket could not be brought up and is not syncing. A relay backlog alone does not trip it ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
 | `leaf_preload` | **warn** | The leaf's loaded account JWT differs from the latest one. The leaf is behind, and can still accept a credential the hub refuses ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). |
 
 `nats_local`, `hub_uplink` and `sync` exist only where the Agent runs the leaf
@@ -404,8 +404,8 @@ a leaf you supervise separately.
 
 **A cut-off edge warns. It does not fail.** Local NATS still works and devices
 keep running, which is why a leaf node exists. A `503` would make an
-orchestrator restart a gateway that is working correctly. `sync` warns for the same
-reason: a relay backlog on a cut-off gateway is expected.
+orchestrator restart a gateway that is working correctly. A relay backlog on a
+cut-off gateway is expected, and no check trips on it.
 
 Metrics: every Agent exports `agent_ready`, `_check_state`,
 `_check_timestamp_seconds` and `_build_info`. A gateway adds
