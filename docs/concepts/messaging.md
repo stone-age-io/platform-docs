@@ -224,9 +224,9 @@ so MQTT devices and NATS clients use the same bus.
 - **The server supports MQTT 3.1.1.**
 - **MQTT needs JetStream.** Turn on JetStream on each server, cluster or leaf
   node that accepts MQTT.
-- **MQTT clients use the same identity as NATS clients.** A client sends its
-  user JWT as a bearer token, and the same subject permissions apply. See
-  [Architecture §6](../architecture.md#mqtt).
+- **MQTT clients use the same identity as NATS clients.** A client sends a
+  bearer-token user JWT as its MQTT password, and the same subject permissions
+  apply. See [Connectivity §1](../connectivity.md#mqtt-clients) for the steps.
 
 ---
 

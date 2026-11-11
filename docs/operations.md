@@ -272,8 +272,9 @@ never disagree.
 
 To upgrade:
 
-1. **Read the release notes.** Before 1.0, a release can have breaking changes.
-   The notes list them.
+1. **Read the release notes**, in the platform's
+   [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md).
+   Before 1.0, a release can have breaking changes. The notes list them.
 2. **Back up.** Run `pb backup create --name "pre-upgrade-vX.Y.Z"`, take a ZFS
    snapshot, or both.
 3. **Replace the binary.**
@@ -454,7 +455,7 @@ other's code.
 | **Agent** | PocketBase auth API (bootstrap only) and NATS protocol | After bootstrap it is a plain NATS client. |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Any modern NATS 2.x with JetStream and JWT/operator-mode auth. Follow upstream support guidance. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §6](./automation.md#6-patterns-built-from-existing-parts)). Platform v0.16.0 embeds nats-server 2.15.2 for `serve --nats`. For an external server, use the same version or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
 - **Upgrade the Control Plane first** when a release changes the schema. `stone`

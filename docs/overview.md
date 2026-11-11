@@ -20,7 +20,7 @@ into a full private IoT and event-driven system. See
 
 ## Glossary
 
-The docs use these ten names with exact meanings. Do not interchange them.
+The docs use these fourteen names with exact meanings. Do not interchange them.
 
 | Name | What it means | What it is *not* |
 | :--- | :--- | :--- |
@@ -32,6 +32,10 @@ The docs use these ten names with exact meanings. Do not interchange them.
 | **NATS Operator** | The root key and JWT of the NATS trust chain. The Control Plane holds it and signs each organization's NATS Account with it. Config key: `operator_name`. | Not a person. Nobody signs in as the NATS Operator. |
 | **Platform Operator** | A user account with `is_operator = true`. Creates and edits Organizations, invites users into any org, reads the audit log. | Not a tenant role. It is a flag on the user, separate from any Membership. |
 | **the provider** | Whoever runs this deployment for its tenants: an MSP, an integrator or an internal IT group. | Not a database record. The provider's own organization is the one `--operator-org` creates. |
+| **operator organization** | The provider's own Organization, which `--operator-org` creates (`is_operator_org`). The first Platform Operator works in it. | Not the NATS Operator, and not a tenant you can suspend or delete. |
+| **System organization** | The Organization that `bootstrap` links to the NATS System Account (`is_system_org`). Use it for cluster-level NATS work only. It has no JetStream. | Not a place for daily work, devices or dashboards. |
+| **hub account** | The operator organization's NATS Account. Shared provider services run in it, and a managed organization's export arrives in it. | Not "the hub", which is the central NATS server or cluster that leaf nodes connect to. |
+| **managed organization** | An Organization with the `managed` flag. The platform exports its `nats.managed_export_subject` subtree into the hub account, with the organization's code in the subject. | Not a different level of isolation. Only that one subtree crosses the account boundary. |
 | **site** | A physical place you manage: a building, a campus, a store or a colo cage. It is a [Location](./platform-ui-entities.md#2-locations), at the level the map draws one pin for. Its devices can reach the platform through a gateway, through a vendor's cloud or directly. It is the same site whichever way they connect. | Not a Thing, a gateway or a leaf node. A campus with three gateways is one site. A VPS or a cloud network is not a site. |
 | **gateway** (site gateway) | A Thing whose Agent runs a leaf node, so the devices behind it keep working when the link to the hub fails. Usually a box at a site. It can also be a VPS or a VM in a cloud network. | Not a site, and not a record type. Nothing in the schema marks a Thing as a gateway ([Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)). |
 

@@ -121,7 +121,10 @@ and [Getting Started](./getting-started.md).
 - **The Control Plane is an admin-only NATS client.** PocketBase connects on the
   System Account and publishes account and credential changes
   (`$SYS.REQ.CLAIMS.UPDATE` and related admin subjects). It does not publish or
-  subscribe on tenant subjects. With NATS as its own process, a PocketBase
+  subscribe on tenant subjects. One optional feature is an exception:
+  [inventory events](./connectivity.md#cross-account-subject-sharing-imports-exports)
+  are published in the operator organization's account, and NATS exports
+  deliver them to each tenant. With NATS as its own process, a PocketBase
   restart pauses new provisioning but does not stop tenant traffic. With
   `serve --nats`, a restart is a short outage of the whole bus.
 - **Every runtime component is a NATS client.** Agents publish telemetry. The
@@ -456,9 +459,10 @@ receives data can connect. Webhooks, WebSockets and MQTT clients all work.
 
 ### MQTT
 
-NATS has native MQTT support through JetStream. Enable MQTT on your server,
-cluster or leaf node. MQTT clients send their JWT as a bearer token and use the
-same auth as NATS clients.
+NATS has native MQTT support through JetStream. Enable the MQTT listener on
+your hub server or cluster. An MQTT client sends a bearer-token user JWT as its
+password, and the same subject permissions apply. See
+[Connectivity §1](./connectivity.md#mqtt-clients) for the steps.
 
 ---
 

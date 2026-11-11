@@ -70,6 +70,10 @@ check, the route would let a caller steal another tenant's credential.
 | One operation needs two authority levels | `org/things` |
 | The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `account-jwt`, `nebula/cert-audit`, `client-config` |
 
+Three routes are not in the table. `invites/accept` creates a membership for a
+caller who has no role in the organization yet. `/api/ready` and `/metrics`
+serve callers that have no session.
+
 ---
 
 ## 3. Identity routes (`/api/me/*`)

@@ -393,6 +393,15 @@ nats micro stats stone-agent       # requests, errors and timings per command
   `nats_roles`, and `nats_users` is almost as closed: each console user reads
   only their own linked identity, and a Thing only its own. The reason is that
   the platform copies a role's permission fields into the JWT it signs.
+- **Commands are not signed:** the platform does not sign or verify a command.
+  The NATS subject permission on `{prefix}.{code}.cmd.*` decides who can send
+  one, and the Agent's allowlists (§3) decide what it will run. If your
+  application needs proof of who sent a command, the application must sign the
+  payload and check it.
+- **Runs as root or LocalSystem:** the Agent needs that privilege to read and
+  control system services. On Linux and FreeBSD it runs as root. On Windows the
+  service runs as LocalSystem. So keep `commands.allowed_commands`,
+  `allowed_services` and the scripts directory as narrow as the device needs.
 - **Nebula encryption:** admin traffic between your workstation and the host,
   such as SSH, can go end to end through the Nebula mesh, off the public
   internet. With `nebula.enabled`, the Agent runs the mesh host **in-process**

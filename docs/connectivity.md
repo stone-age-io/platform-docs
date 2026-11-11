@@ -152,6 +152,73 @@ up in their own direction: hub to edge by mirror, edge to hub by relay.
 The box that runs a leaf is a **gateway**: an ordinary **Thing**, whose Agent sets up the
 leaf server and can host it. See [Leaf Nodes](./leaf-nodes.md).
 
+### MQTT Clients
+
+The NATS server accepts MQTT 3.1.1 clients on its own listener. It refuses an
+MQTT 5 client. An MQTT device and a NATS client then use the same subjects,
+streams and permissions.
+
+**Turn the listener on.** The exported `nats.conf` has the block commented out.
+Remove the comment marks and restart the server:
+
+```
+mqtt {
+  port: 1883
+}
+```
+
+Add a `tls { ... }` block inside it for production. MQTT stores its sessions
+and retained messages in JetStream, in the account of the user that connects.
+So the organization's account needs JetStream storage
+([Configuration §2](./configuration.md#2-section-reference)), and MQTT state
+counts against that storage limit.
+
+**Give the device a bearer-token identity.** An MQTT client cannot sign the
+NATS connection challenge, so the user JWT alone is the credential:
+
+1. On the device's NATS user, tick **Enable Bearer Token**
+   (`nats_users.bearer_token`).
+2. In the MQTT client, set the **password** to the user JWT. The JWT is the
+   first block of the `.creds` file. The username can be any text that is not
+   empty.
+
+The server refuses a JWT that is not a bearer token with CONNACK code 5, "not
+authorized".
+
+::: warning A bearer JWT works without the seed
+Anyone who has the JWT can connect as that user. Use TLS on the MQTT listener.
+Give each MQTT device its own NATS user and a narrow role. To stop a leaked
+JWT, use **Revoke** on the NATS user
+([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+:::
+
+**Topics become subjects.** The server changes `/` to `.`, so the topic
+`camera/CA-9KD-4PX/motion` is the subject `camera.CA-9KD-4PX.motion`.
+
+| MQTT | NATS | Note |
+| :--- | :--- | :--- |
+| `camera/CA-9KD-4PX/motion` | `camera.CA-9KD-4PX.motion` | A Thing's code is one topic level. |
+| `camera/+/motion` | `camera.*.motion` | One level. |
+| `camera/#` | `camera.>` and `camera` | `#` also matches the parent level. |
+
+- Do not start or end a topic with `/`, and do not use an empty level. The
+  server maps each of these to a subject that no Thing Type resolves to.
+- The server refuses a topic that contains a space.
+- NATS role permissions apply to the converted subjects. A device that
+  subscribes to `camera/#` needs both `camera.>` and `camera` in its subscribe
+  allow list.
+- Do not put `$MQTT.sub.>` in a deny list. A subscription with QoS 1 or 2 uses
+  it. Before nats-server 2.12.3, add `$MQTT.sub.>` to the subscribe allow list.
+
+**MQTT listens at the hub.** The Agent's generated leaf config has no `mqtt`
+block, and the Agent writes that file again at each refresh, so an edit there
+does not last.
+
+See [Messaging §7](./concepts/messaging.md#7-if-you-know-mqtt) for how MQTT
+terms map to NATS terms, and the
+[NATS MQTT documentation](https://docs.nats.io/running-a-nats-service/configuration/mqtt)
+for QoS, sessions and retained messages.
+
 ### Cross-Account Subject Sharing (Imports & Exports)
 
 NATS Accounts are isolated by default. Account B cannot see subjects in
@@ -213,6 +280,23 @@ deletes both.
 The export is on the tenant's own account, so a managed tenant's Owner sees it
 under Exports. The import is on the provider's hub account, so only members of
 the provider's organization (created by `--operator-org`) see it under Imports.
+
+**Inventory events use the second platform export.** With
+`nats.inventory_events_enabled: true`, the Control Plane publishes each create,
+update and delete of a Thing or Location in the operator organization's
+account. A private export and import pair for each organization delivers that
+organization's events to its own account, on
+`stone-age.inventory.<kind>.<action>`:
+
+- `<kind>` is `thing` or `location`. `<action>` is `created`, `updated` or
+  `deleted`.
+- The payload is the record (`code`, `name`, `type`, `location` and other
+  inventory fields, with relations as codes) and a `changed` list.
+- The events are core NATS and are not stored. A failed publish never fails the
+  save, so treat an event as a notification, not as a record.
+- The feature is off by default. `nats.inventory_local_subject` changes the
+  `stone-age.>` prefix
+  ([Configuration §2](./configuration.md#2-section-reference)).
 
 **Use imports and exports for:**
 

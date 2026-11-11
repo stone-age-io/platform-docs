@@ -96,7 +96,7 @@ do not rewrite the inventory.
 
 > **Stop here if** you need a shared, permissioned, multi-tenant record of what you own and where it is. Examples are asset tracking, site surveys, and an equipment register that field techs edit from a phone.
 
-### 2. A control plane
+### 2. Identities
 
 Turn on identities. When you create an Organization, the platform provisions an
 isolated NATS Account and a private Nebula CA. When you create a Thing, the
