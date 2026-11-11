@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.6.0
+VERSION=0.6.0   # the stone version in Operations §6.1
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -348,9 +348,14 @@ you set a non-empty `password`, the CLI also sets `passwordConfirm` and
 For headless provisioning, let the CLI create the password:
 
 ```sh
-stone thing create --email reader-01@things.example.com --code reader-01 \
+stone thing create --email reader-01@acme.thing.local --code reader-01 \
     --type <thing_type_id> --random-password -o json 2> reader-01.pw
 ```
+
+Typed CRUD writes the collection directly, so you supply the email. Use the
+same `<thing code>@<organization code>.thing.local` form that
+[`POST /api/org/things`](./api-reference.md) mints, so the Agent's
+`platform.identity` follows one rule.
 
 `--random-password` makes a 32-character URL-safe password and prints it
 **once to stderr**, so stdout stays clean for `jq`. Use exactly one of

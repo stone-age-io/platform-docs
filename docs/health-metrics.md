@@ -10,6 +10,9 @@ connection:
 - `GET /api/ready`: a readiness report in JSON, `200` or `503`.
 - `GET /metrics`: a Prometheus exposition.
 
+The Agent is the one exception to the path: it serves `/ready` with no `/api`
+prefix, on its own `observability.addr` ([§5](#5-the-edge-agent)).
+
 [Observability](./observability.md) covers the history of your *telemetry*.
 This page covers the *processes*: can the Control Plane do its job, and is the
 edge agent still syncing?
@@ -164,7 +167,7 @@ columns and rules it does not know, with unpredictable results.
 `server_url` is the TCP address the Control Plane connects to. `websocket_urls`
 is the address a *browser* connects to, on another port and often another host.
 Never compute one from the other. See
-[Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses).
+[Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses).
 
 ### The prober caches; the endpoint never runs checks
 
@@ -245,8 +248,9 @@ last values.
 | `stone_age_http_request_duration_seconds` | histogram | `route`, `method` | Request latency. |
 | `stone_age_collector_errors` | gauge | | Collectors that failed **during this scrape**. |
 
-`stone_age_nats_*` series appear only when the bus runs in-process with
-`serve --nats` (below).
+`stone_age_nats_users_revoked` comes from the database and is always present.
+The other `stone_age_nats_*` series describe the server itself and appear only
+when the bus runs in-process with `serve --nats` (below).
 
 Before you build a dashboard on these:
 
@@ -289,9 +293,11 @@ has the details.
 ### Embedded NATS series
 
 With `serve --nats`, the in-process bus exports its own counters:
-`stone_age_nats_embedded_up`, `_connections`, `_cluster_routes`,
-`_leafnode_connections`, `_slow_consumers_total`, `_msgs_total{direction}`,
-`_bytes_total{direction}`, `_jetstream_bytes{tier}`.
+`stone_age_nats_embedded_up`, `stone_age_nats_connections`,
+`stone_age_nats_cluster_routes`, `stone_age_nats_leafnode_connections`,
+`stone_age_nats_slow_consumers_total`, `stone_age_nats_msgs_total{direction}`,
+`stone_age_nats_bytes_total{direction}` and
+`stone_age_nats_jetstream_bytes{tier}`.
 
 With an **external** NATS server, these series are absent, not zero, so a quiet
 bus and a missing one look different. Scrape an external server with
@@ -304,9 +310,11 @@ more.
 
 ## 4. Certificate Expiry
 
-Nebula certificate expiry is the **one** expiring credential the Control Plane
-can check itself. Every other one is in a tenant's NATS account or on an edge
-box. The Control Plane signed the Nebula certificates and stores them, with
+The check and the metric below cover **Nebula** certificates, which always
+expire. A NATS user JWT expires only if it was given an expiry, and those show
+only on the console's NATS Users list ([Operations §7](./operations.md#7-production-checklist)).
+Credentials created outside the Control Plane, in a tenant's NATS account or
+on an edge box, are outside its view. The Control Plane signed the Nebula certificates and stores them, with
 their expiry, in its own database.
 
 A Nebula certificate fails silently, on a date nobody watches, and all at once.
@@ -380,7 +388,7 @@ Every Agent has these checks, gateway or not:
 | `nebula` | **warn** | The overlay is enabled but not running, is using its cached config, or has no tunnels. Skipped when the overlay is off. |
 | `platform_sync` | **warn** | No recent successful credential sync with the platform. The session token expires after seven days without one. Skipped when the agent does not get its credentials from the platform. |
 
-A gateway (an Agent that runs a leaf) has four more:
+A gateway (an Agent that runs a leaf) has these as well:
 
 | Check | State when it trips | Notes |
 |---|---|---|
@@ -389,7 +397,10 @@ A gateway (an Agent that runs a leaf) has four more:
 | `sync` | **warn** | A declared KV bucket is not syncing, or a relay has a backlog ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)). |
 | `leaf_preload` | **warn** | The leaf's loaded account JWT differs from the latest one. The leaf is behind, and can still accept a credential the hub refuses ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). |
 
-These four exist only where there is a leaf.
+`nats_local`, `hub_uplink` and `sync` exist only where the Agent runs the leaf
+edge. `leaf_preload` is registered on every Agent and reports *skipped* when
+there is no generated `nats-leaf.conf` beside the creds file, so it also covers
+a leaf you supervise separately.
 
 **A cut-off edge warns. It does not fail.** Local NATS still works and devices
 keep running, which is why a leaf node exists. A `503` would make an

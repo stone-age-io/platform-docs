@@ -305,7 +305,7 @@ Each identity block has a `mode`:
 }
 ```
 
-The email is `<thing code>@<organization code>.thing.local`. It uses the
+This route sets the email to `<thing code>@<organization code>.thing.local`. It uses the
 organization's **code**, not its name, because a name is not unique and can
 change.
 

@@ -218,6 +218,13 @@ record's details as labels.
 `location_path` is the Location's [path](platform-ui-entities.md#2-locations):
 its code and each ancestor's, from the root down, such as `/KC/BD-3/RM-204/`.
 
+::: note Not yet run end to end
+The inventory half of this pipeline has been run. The Telegraf and
+VictoriaMetrics half, including the `@ end()` queries and the series names, is
+written from their documentation and has not been run yet
+([ADR 0004, As implemented](./decisions/0004-long-term-data-and-location-path.md#as-implemented)).
+:::
+
 ### The pipeline
 
 It runs inside the tenant's own account, with tools the tenant already runs. It

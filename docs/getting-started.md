@@ -378,7 +378,7 @@ active organization**. It needs an address and an identity.
    if set, or the default `ws://localhost:9222`. For a local install, add
    nothing. A URL you add here **replaces** the list, on this browser only. Use
    it to point one device at a local leaf node
-   ([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
+   ([Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses)).
 2. **The identity.** Your operator organization has a NATS account but no
    identity in it yet. Under **NATS → Roles**, create a **Role** (the
    permission template). **Fill in its permissions.** The form starts with

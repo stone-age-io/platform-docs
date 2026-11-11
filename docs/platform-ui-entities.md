@@ -30,7 +30,9 @@ Organizations.
     digit is valid (`816tech`).
   - The managed-org subject rewrite, sibling apps and external data joins all
     use it to name the tenant.
-  - It is optional, but **you cannot change it once set**. Creation refuses a
+  - Every Organization has one: a create hook fills it in when you leave it
+    blank (on other records a code is optional). **You cannot change it once
+    set**. Creation refuses a
     code that is already in use and does not invent `acme-2`, because the code
     goes into signed account JWTs and printed labels.
   - See [ADR 0002](./decisions/0002-organization-code-namespace.md).

@@ -154,7 +154,7 @@ Roughly in this order. Each step is useful on its own and none of them requires 
 - The ordering problem disappears at rung 1. So does the class of bug the port mismatch belongs to: the server and the client are configured from one artifact.
 - Getting Started gets **shorter**. §3 loses its second process and §4 folds into it, at the cost of one extra command.
 - Tests get a real bus in-process. `scripts/test-authz.sh` and any integration test can start a genuine NATS server with no external dependency — worth having even if nobody runs `--nats` in production.
-- Moving between topologies is config editing, not data migration.
+- Moving between topologies is config editing, not data migration. *(Amended 2026-11-10: not when a server that holds JetStream data joins a cluster; it loses that data. See the amendment at the top.)*
 - `nats export` stops being a step people run once and forget.
 
 ### Costs we are accepting

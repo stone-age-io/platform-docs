@@ -39,7 +39,7 @@ Linux amd64/arm64, Windows amd64 and FreeBSD amd64. Each has the binary, example
 configs per OS under `configs/`, and install guides under `docs/`:
 
 ```sh
-VERSION=0.6.0
+VERSION=0.6.0   # the Agent version in Operations §6.1
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
@@ -408,8 +408,10 @@ nats micro stats stone-agent       # requests, errors and timings per command
   and keeps its config current, so revocation, renewal and CA rotation reach the
   device. If a new config cannot reach a lighthouse, the Agent restarts it and
   then rolls back to the last config that worked, so a bad config cannot take a
-  fleet off the network. The Agent's own NATS traffic is outbound and uses TLS
-  either way.
+  fleet off the network. The Agent's own NATS traffic is outbound. It uses TLS
+  when the server requires it or the URL is `tls://`. The example below uses
+  plain `nats://` for brevity; use TLS in production (`nats.tls` in the
+  [Linux guide](./vendor/agent/docs/linux.md)).
 
 ---
 

@@ -45,7 +45,8 @@ a record or a payload is an addition, not a break.
 | `GET /api/ready` | The response fields, the four states, the check names, and `503` only on `fail` | [Health & Metrics §2](./health-metrics.md#2-get-apiready) |
 | `GET /metrics` | The metric names, types and labels | [Health & Metrics §3](./health-metrics.md#3-get-metrics) |
 | The record API | The collection names and field names that the Agent, `stone` and sibling apps read. The record API itself is PocketBase's. | [HTTP API](./concepts/http-api.md) |
-| The device sign-in path | `things` auth with a password, `auth-refresh`, and the `nats_user` relation with its `creds_file` and `updated` fields | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
+| The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file` and `updated` fields, and the `nebula_host` relation the Agent reads its Nebula config from | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
+| MQTT bearer tokens | `nats_users.bearer_token`, and that the user JWT is accepted as the MQTT password when it is set | [Connectivity §1](./connectivity.md#mqtt-clients) |
 
 ### Authorization
 
@@ -68,6 +69,7 @@ a record or a payload is an addition, not a break.
 | A QR label's payload | The bare code | [Platform Entities §5](./platform-ui-entities.md#codes-and-qr-labels) |
 | A Location's `path` | Codes from the root down, with `/` between them and at both ends | [Platform Entities §2](./platform-ui-entities.md#2-locations) |
 | Platform subjects in a tenant's account | The managed export subtree and the inventory events subtree, each as configured | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
+| Inventory events | The `<kind>.<action>` tokens (`thing` or `location`; `created`, `updated` or `deleted`), the payload's field names and the `changed` list, and that the events are core NATS and not stored | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
 
 ### Configuration and commands
 
@@ -86,6 +88,10 @@ The Agent has its own repository and version numbers. Its stable surfaces are:
 | Surface | What is stable | Reference |
 | :--- | :--- | :--- |
 | Subjects | `{prefix}.{code}.heartbeat`, `.telemetry.*` and `.cmd.*` | [The Agent §3](./agent.md#3-capabilities) |
+| Payload fields | `code`, `location` and `ts` on the heartbeat and on every telemetry payload | [The Agent §3](./agent.md#3-capabilities) |
+| Error replies | The `Nats-Service-Error` header, `400` for a refused request and `500` for failed work | [The Agent §3E](./agent.md#e-service-discovery) |
+| CLI flags | `-config`, `-leaf-config`, `-version`, and `-service` with `install`, `uninstall`, `start`, `stop` and `restart` | [The Agent §1](./agent.md#getting-the-binary) |
+| The generated leaf config | The file name `nats-leaf.conf`, beside the creds file, and that a stock `nats-server -c` runs it | [Leaf Nodes §5](./leaf-nodes.md#5-deploy-flow) |
 | Commands | The command names, the request fields and the reply fields | [Agent docs](./vendor/agent/README.md) |
 | The micro service name | `stone-agent` | [The Agent §3E](./agent.md#e-service-discovery) |
 | `config.yaml` keys | The key names, their meaning and their defaults | [Agent docs](./vendor/agent/README.md) |

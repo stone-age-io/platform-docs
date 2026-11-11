@@ -46,8 +46,9 @@ is no proprietary protocol and no fork to maintain.
 
 Other tools connect to the same bus. [Telegraf](./observability.md) sends
 JetStream data to the time-series database you choose.
-[eKuiper or Benthos](./stream-processing.md) run windowed aggregations and
-anomaly detection, and publish the results back for the rules to act on.
+[Stream processors](./stream-processing.md) such as eKuiper (windowed
+aggregations and anomaly detection) or Benthos (transforming and routing
+events) publish their results back for the rules to act on.
 
 ### Protocols
 

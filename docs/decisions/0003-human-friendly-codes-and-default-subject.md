@@ -161,7 +161,7 @@ The stricter alternative, uppercasing every code on save, was rejected: it drops
 
 ### The sharp edge
 
-**A Thing Type's own `subject_prefix` is still editable.** Freezing `things.type` fixes which template a Thing uses, but not what the template says. Editing a Thing Type's prefix moves the subjects of every instance at once. That is out of scope here and worth deciding before there is production data behind it.
+**A Thing Type's own `subject_prefix` is still editable.** Freezing `things.type` fixes which template a Thing uses, but not what the template says. Editing a Thing Type's prefix moves the subjects of every instance at once. That is out of scope here and worth deciding before there is production data behind it. *(Amended 2026-11-11: still undecided. As of v0.16.0 the `thing_types` update rule freezes `code` but not `subject_prefix`. [Thing Types §6](../thing-types.md) now warns about it.)*
 
 ---
 

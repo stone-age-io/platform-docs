@@ -101,7 +101,8 @@ Every rule has the same **Trigger, Condition, Action** structure:
 For the full YAML syntax, variables and functions, `forEach` over arrays,
 payload modes (`passthrough`, `merge`) and signature verification, see the
 [rule-router documentation](./vendor/rule-router/README.md). This page
-describes rule-router **v0.22.0**.
+describes the rule-router version in
+[Operations §6.1](./operations.md#61-the-versions-these-docs-describe).
 
 ---
 

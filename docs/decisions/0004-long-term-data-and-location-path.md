@@ -13,6 +13,10 @@ nav_order: 40
 
 ---
 
+> **Amended 2026-11-11: the platform now publishes into tenant accounts, for one feature.** The Context says "The platform writes only to the system account". That was true when this was decided. Since v0.15.0, optional [inventory events](../connectivity.md#cross-account-subject-sharing-imports-exports) (`nats.inventory_events_enabled`) are published in the operator organization's account and exported to each tenant. They push the Thing and Location changes that the poll in this ADR fetches. The poll still works and is still what the demo runs; it remains the choice when inventory events are off. The first rejected option, a per-Thing location twin key, is still rejected for its other reasons: two writes per move and no recovery when the second fails.
+
+---
+
 ## Context
 
 Long-term trending lives in a TSDB. The demo uses VictoriaMetrics, fed by Telegraf from NATS and read by Grafana or Perses. The demo Telegraf config tags every reading with `location` by reading subject token 2. After ADR 0003 there is no token 2 to read.
@@ -206,7 +210,7 @@ Working around that takes a trick that picks the newest info series for each `th
 2. **Demo seed:** a `viewer` service user per demo organization.
 3. **Demo rules:** poll and fan-out rules for `things` and `locations`, plus the truncation guard, in `demo/rules/northwind`. Add nats-auth-manager config beside them. *(Amended: in `demo/inventory`, run as a separate rule-router.)*
 4. **Demo Telegraf:** collapse to one reading parser (`kind`, `thing`), and add the two inventory inputs.
-5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-label_replace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces. *(Open: the queries are written, in `demo/telegraf/README.md`, and not yet run.)*
+5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-labelreplace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces. *(Open: the queries are written, in `demo/telegraf/README.md`, and not yet run.)*
 6. **Docs:** [Observability](../observability.md) gains the inventory pipeline and the join. [Platform Entities & UI](../platform-ui-entities.md) documents `path`.
 
 ---

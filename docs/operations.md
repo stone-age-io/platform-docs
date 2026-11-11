@@ -370,7 +370,9 @@ restart does not stop the bus.
 
 #### Path B: a cluster, by backup and restore
 
-A cluster needs three or more nodes ([§2.1](#21-where-the-nats-server-runs)).
+This path applies to any cluster, including the two-node cluster of option 2
+in [§2.1](#21-where-the-nats-server-runs). Streams and buckets with
+`replicas: 3` need three or more nodes.
 The streams on the embedded server do not survive the change, so back them up
 and restore them. Do this in a maintenance window, because a message stored
 after the backup is not in the backup.
@@ -455,7 +457,7 @@ other's code.
 | **Agent** | PocketBase auth API (bootstrap only) and NATS protocol | After bootstrap it is a plain NATS client. |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §6](./automation.md#6-patterns-built-from-existing-parts)). Platform v0.16.0 embeds nats-server 2.15.2 for `serve --nats`. For an external server, use the same version or a newer one. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §6](./automation.md#6-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([§6.1](#61-the-versions-these-docs-describe)) or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
 - **Upgrade the Control Plane first** when a release changes the schema. `stone`
@@ -493,6 +495,9 @@ Platform v0.16.0 is built on these upstream versions:
 | PocketBase | v0.41.1 |
 | nats-server (embedded with `serve --nats`) | v2.15.2 |
 | Nebula | v1.11.0 |
+| pb-nats | v0.4.0 |
+| pb-nebula | v0.5.0 |
+| pb-audit | v0.3.0 |
 
 Each vendored section has a `SOURCE` file in the docs repository with the exact
 commit of its copy.
@@ -507,7 +512,8 @@ commit of its copy.
 - [ ] **Backups scheduled** in the admin UI, **with S3 offsite**, and a restore
   actually rehearsed (§4).
 - [ ] **Readiness probe connected** to whatever runs the process:
-  `GET /api/ready` returns `503` only when something is broken, so a load
+  `GET /api/ready` returns `503` only when something is broken (or before
+  the first probe completes, at startup), so a load
   balancer can use it. Point your scraper at `GET /metrics`. Both are
   unauthenticated by default. `metrics.token` protects `/metrics`, and a proxy
   can protect either ([Health & Metrics](./health-metrics.md)).

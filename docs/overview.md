@@ -7,7 +7,8 @@ nav_order: 20
 Stone-Age.io is one HTTP API for the things and places you manage. The same API
 mints the credentials those things use to reach each other. A small set of
 independent components runs around it. Each is a single binary, and they
-connect over NATS. There is no service mesh and no orchestrator.
+connect over NATS. There is no service mesh (in the Istio sense: no sidecars
+or proxies) and no orchestrator. Nebula is a mesh *VPN*, a network layer.
 
 The equipment on your sites stays as it is. Door controllers, cameras, kiosks,
 sensors and machines reach the same bus over NATS, MQTT or HTTP.

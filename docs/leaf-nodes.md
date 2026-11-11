@@ -328,10 +328,13 @@ run `agent -leaf-config` again. That change also invalidates every generated
 Ask NATS. No field or screen answers this for you. Build the question as a
 [dashboard widget](./dashboards.md).
 
-There is **no heartbeat and no status field** for a gateway. A heartbeat would
-travel over the same link whose failure it reports, so a missing beat could not
-tell "edge box down" from "WAN down" from "agent crashed". The Control Plane
-also cannot read tenant data (§2).
+The platform keeps **no status field** for a gateway and does not watch its
+heartbeat. The Agent does publish one (`{prefix}.{code}.heartbeat`, see
+[Agent](./agent.md)), and the [Watchdog](./vendor/services/docs/watchdog.md)
+service can alert when it stops. A heartbeat travels over the same link whose
+failure it reports, though, so a missing beat cannot tell "edge box down" from
+"WAN down" from "agent crashed". The Control Plane also cannot read tenant data
+(§2).
 
 The hub always knows which leaf connections it holds, so ask the hub, over the
 browser's own NATS connection in the account. Use a **Button** or **Publisher**
