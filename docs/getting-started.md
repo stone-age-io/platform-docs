@@ -4,7 +4,7 @@ nav_order: 50
 ---
 # Getting Started
 
-New to the names? The [Glossary](./overview.md#glossary)
+New to the names? The [Glossary](./glossary.md)
 defines the terms this guide uses, including Thing, Account, subject,
 JetStream, KV, leaf, domain and twin. New to NATS?
 [Concepts](./concepts/index.md) explains subjects, request and reply, and
@@ -443,7 +443,7 @@ is free text. See [Thing Types](./thing-types.md).
 - Put your config in git. `stone pull` writes every tenant record to YAML that
   you can diff and review. See [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply).
 - Read [Platform Layers](./platform-layers.md) for the full model, and
-  the [Glossary](./overview.md#glossary) for the names.
+  the [Glossary](./glossary.md) for the names.
 
 ### If you stopped at §2 (inventory)
 

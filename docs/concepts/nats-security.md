@@ -100,7 +100,7 @@ flowchart TD
 | **User** | The account, or one of its signing keys | One identity that connects: its permissions and limits. | One for each Thing with a NATS identity, and one for each Membership that links one. |
 
 The NATS Operator is a key. It is not the Platform Operator, who is a person.
-See the [Glossary](../overview.md#glossary).
+See the [Glossary](../glossary.md).
 
 **The server never needs a user JWT in advance.** It needs the Operator's
 public key and the account JWTs. Each client brings its own user JWT. So the

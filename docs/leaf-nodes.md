@@ -16,7 +16,7 @@ inventory, identity model and API rules as everything else.
 > ## Four related terms
 >    | Term | What it is |
 >    | :--- | :--- |
->    | **A site** | The place: a Location, not a Thing. A site can have several gateways, or none when its devices reach the platform through a vendor's cloud. See the [Glossary](./overview.md#glossary). |
+>    | **A site** | The place: a Location, not a Thing. A site can have several gateways, or none when its devices reach the platform through a vendor's cloud. See the [Glossary](./glossary.md). |
 >    | **NATS leaf node** | The stock `nats-server` in leaf mode on the gateway, connected outbound to the hub. A Layer 0 transport. See [Connectivity](./connectivity.md#leaf-nodes). |
 >    | **A gateway** | The *platform's* model of the box that runs the leaf: an ordinary **Thing**, with one NATS identity and optionally a Nebula host. Nothing in the schema marks it as a gateway (§1). This page covers how you configure one and how you check that it is up. |
 >    | **The [Agent](./agent.md)** | The binary on the box. It manages the device and, if configured, bootstraps and hosts the leaf node. |

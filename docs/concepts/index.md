@@ -29,4 +29,4 @@ read the pages in order, or before you start.
 A Concepts page covers a technology or a pattern that also applies outside
 Stone-Age.io, such as NATS, JWTs, PocketBase or Nebula. A name that exists only
 in the platform, such as Thing, twin, org code or gateway, belongs in the
-[Glossary](../overview.md#glossary).
+[Glossary](../glossary.md).
