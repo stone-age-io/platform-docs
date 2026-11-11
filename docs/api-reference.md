@@ -137,16 +137,10 @@ agent writes it into `server_name` and `jetstream { domain }`.
 the setting, rather than serve a config the agent would reject.
 
 **The route checks only that the caller is an authenticated Thing.** Everything
-it returns is public trust material or the caller's own credential. Every
-server in the network already validates the operator, account and `$SYS`
-account JWTs. The caller must already hold its credential to connect. A Thing
-that never runs a leaf node learns nothing new from it.
-
-The route does **not** return account seeds, signing keys or any `$SYS` *user*
-credential. Only superusers can read `nats_system_operator`. The server reads
-the secret collections with its own privileges and returns ten named fields,
-never whole records. A leaked edge credential exposes only those ten values,
-whatever the collection rules become later.
+it returns is public trust material or the caller's own credential. It does
+**not** return account seeds, signing keys or any `$SYS` *user* credential.
+[Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) describes each field
+and gives the reasons for the missing check.
 
 ::: warning Do not add a device read branch to `nats_*` or `nebula_*`
 Extend this route instead. The route keeps the edge's exposure to a fixed list
@@ -383,14 +377,10 @@ The route allows the three steps. pb-nebula checks each *transition*, and on a
 `400` the route returns pb-nebula's message unchanged, because that message
 tells you what to do.
 
-**The wait between steps is the point.** Nebula checks certificates in both
-directions, and hosts pull their config. If one write changed trust and
-certificates together, a host with a new-CA certificate would meet a host that
-has not fetched yet, and the handshake would fail both ways. `prepare` makes the
-new trust reach every host first.
-
-The tenant controls this, because only the fleet's operator knows when the
-fleet has caught up. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
+**The wait between steps is the point.** `prepare` makes the new trust reach
+every host before issuance moves.
+[Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca) explains why
+the roll takes three steps and why the tenant controls it.
 
 ### `GET /api/org/nebula/cert-audit`
 

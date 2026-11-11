@@ -225,18 +225,10 @@ bus. This is [depth 1](./index.md#start-where-you-need-to). A `member` can
 create and edit inventory, but only an Owner or Admin can attach identities.
 
 **One action changes the asset and the credential.** When you clear `active` on
-a Thing:
-
-1. The device cannot sign in again.
-2. Every session it holds is signed out immediately.
-3. Its NATS identity is suspended. The key is revoked and nothing is reissued.
-   This takes effect at the hub at once, and on a site's leaf node at its next
-   refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-4. Its Nebula certificate goes on every peer's blocklist. This takes effect as
-   each peer's config is redeployed.
-
-When you reactivate the Thing, it gets a *new* `.creds` file and the old one
-stays revoked. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+a Thing, the platform ends its API sessions, suspends its NATS identity and
+blocklists its Nebula certificate, in the same operation.
+[Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service) has
+the four effects and when each one applies.
 
 The same idea applies to Organizations (**Infrastructure-as-Tenant**). Creating
 an Organization provisions its NATS Account and Nebula CA, and the record and

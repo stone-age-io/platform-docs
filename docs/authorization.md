@@ -470,9 +470,8 @@ GET /api/me/leaf-config
 ```
 
 It is bound to `things` and takes **no record id**. It targets the caller's own
-record, like `POST /api/me/nats-creds/rotate`. It returns ten named fields:
-`code`, `domain`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`,
-`sys_account_jwt`, `sys_account_pub`, `hub_leaf_url` and `hub_domain`.
+record, like `POST /api/me/nats-creds/rotate`. It returns ten named fields
+([Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) lists them).
 
 The server reads the secret collections with its own privileges and returns
 named fields, never whole records. So **a device identity never gets access to
@@ -480,20 +479,10 @@ the secret collections**. A leaked edge credential exposes those ten values,
 whatever the collection rules become later.
 
 **The route has no permission check, on purpose.** Everything it returns is
-public trust material or the caller's own credential. Every server in the
-network already validates the Operator, account and `$SYS` account JWTs. The
-caller must already hold its credential to connect at all. A Thing that never
-runs a leaf node learns nothing new from it. A permission check here would guard
-data that is not secret, and it would need the gateway flag that
-[Leaf Nodes §1](./leaf-nodes.md) explains is absent.
-
-::: note Why the `$SYS` **account** JWT is safe to serve
-The NATS Operator JWT names a system account. The leaf's `resolver: MEMORY`
-cannot fetch it, so without the `$SYS` account JWT preloaded, `nats-server`
-stops with `error resolving system account` before JetStream starts. Preloading
-it grants nothing. To connect **as** `$SYS` you need a `$SYS` **user**
-credential, and the platform never serves one.
-:::
+public trust material or the caller's own credential.
+[Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) gives the reasons, and
+[§4](./leaf-nodes.md#4-two-required-directives) explains why the `$SYS`
+account JWT is safe to serve.
 
 This path never serves account **seeds** or signing keys, and only superusers
 can read `nats_system_operator`.

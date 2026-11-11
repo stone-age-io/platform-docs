@@ -471,6 +471,34 @@ other's code.
 
 ---
 
+### 6.1 The versions these docs describe
+
+The pages in the Platform section describe these versions. A page that depends
+on a later version says so.
+
+| Component | Version | Where its own docs are |
+| :--- | :--- | :--- |
+| Control Plane and console (`stone-age`) | v0.16.0 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
+| `stone` CLI | v0.6.0 | [Stone CLI](./stone-cli.md) |
+| Agent | v0.6.0 | [Agent docs](./vendor/agent/README.md) |
+| `rule-router` | v0.22.0 | [Rule Router docs](./vendor/rule-router/README.md) |
+| Services (Watchdog, creds-keeper) | v0.1.0 | [Services docs](./vendor/services/README.md) |
+| Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
+| Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
+
+Platform v0.16.0 is built on these upstream versions:
+
+| Upstream | Version |
+| :--- | :--- |
+| PocketBase | v0.41.1 |
+| nats-server (embedded with `serve --nats`) | v2.15.2 |
+| Nebula | v1.11.0 |
+
+Each vendored section has a `SOURCE` file in the docs repository with the exact
+commit of its copy.
+
+---
+
 ## 7. Production Checklist
 
 - [ ] **TLS on everything outward-facing:** HTTPS in front of the Control Plane,
@@ -533,13 +561,10 @@ other's code.
     Set the CA alert in particular, because every host certificate chains to it.
     See [Health & Metrics §4](./health-metrics.md#4-certificate-expiry).
 - [ ] **A decommissioning procedure agreed:** clearing `active` on a Thing cuts a
-  device off, gateways included. It refuses new logins, ends every session,
-  suspends the NATS identity, and blocklists the Nebula host as peers get their
-  next config. The hub refuses the NATS identity at once. A site's leaf node
-  refuses it after its next refresh
-  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-  Reactivating issues a **new** `.creds` for the device
+  device off, gateways included
   ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+  A site's leaf node applies the NATS suspension only at its next refresh
+  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
   **Deactivate, never delete:** a delete does not touch either identity.
 - [ ] **A tenant-suspension procedure agreed:** clearing `active` on an
   **organization** withdraws its NATS account, so every device, agent and

@@ -367,19 +367,12 @@ stone thing update reader-01 --active=true         # return to service
 ```
 
 ::: warning `--active=false` is not a status label
-It is the same as the console's Deactivate button, with the same four effects:
-
-1. The device cannot sign in again.
-2. Every session it holds ends at once.
-3. Its linked **NATS identity is suspended**: the key is revoked and nothing is
-   reissued. The hub applies this at once, and a site's leaf node at its next
-   refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-4. Its linked **Nebula host is deactivated**, and its certificate goes on every
-   peer's blocklist when those configs are redeployed.
-
-Reactivating issues a *new* `.creds` file. The old one stays revoked, so give
-the device the new file. Owner/Admin only. See
-[Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+It is the same as the console's Deactivate button. It ends the device's
+sessions, suspends its NATS identity and blocklists its Nebula certificate.
+Reactivating issues a *new* `.creds` file, so give the device the new file.
+Owner/Admin only.
+[Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service) has
+the four effects and when each one applies.
 
 This matters most for `apply`. `pull` writes `active` into the workspace YAML,
 so a file with `active: false` decommissions real hardware on the next `apply`.
@@ -400,11 +393,8 @@ stone nebula ca-rotate finish       # drop the outgoing CA
 stone nebula cert-audit             # hosts whose certificate does not match their network
 ```
 
-**`ca-rotate` has three steps, and you must wait between them.** Each Nebula
-peer checks the other against its *own* local CA pool, with no chain and no
-fallback, and hosts pull their config on their own schedule. If one write
-changed trust and certificates together, a host with a new-CA certificate would
-meet a host that has not fetched yet, and the handshake would fail both ways.
+**`ca-rotate` has three steps, and you must wait between them.**
+[Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca) explains why.
 
 - `prepare` changes no issuance and is fully reversible. Wait here until every
   host has fetched.

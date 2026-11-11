@@ -414,14 +414,12 @@ reason a leaf node exists.
 - The gateway holds **public trust material** (Operator JWT, account JWT, `$SYS`
   account JWT) and its own user's creds. It **cannot create account users**.
 - **To take a gateway out of service, clear `active` on its Thing** (Owner/Admin
-  only). This does four things at once:
-  1. The agent can no longer sign in.
-  2. Its current session token stops working immediately.
-  3. The gateway's NATS credential is suspended (revoked, nothing reissued).
-  4. Its Nebula host is deactivated, and the certificate is blocklisted across
-     the CA when peer configs are redeployed.
+  only). A gateway is a Thing, so the four effects in
+  [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)
+  apply to it.
 
-  So the config pull, the leaf remote connection and the overlay all stop.
+  For a gateway, the config pull, the leaf remote connection and the overlay
+  all stop.
   Local traffic on the site continues, because the leaf checks credentials
   against its own copy of the account JWT (§8.1). The Agent can no longer
   refresh that copy, because it has no session. Deactivation sets `active`,

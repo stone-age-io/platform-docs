@@ -129,13 +129,10 @@ POST /api/me/nats-creds/rotate
 ```
 
 It takes **no id**. It always targets the caller's own linked identity. After
-the call, read your own record again to get the new `.creds`.
-
-This is a route, not an update rule, because a PocketBase rule cannot allow
-only one field. The field that must stay closed is
-`nats_users.publish_permissions`, which the platform copies into the JWT it
-signs. A **suspended** identity (`active = false`) gets `403`, because a new
-credential would be issued after the revocation cutoff and end the suspension.
+the call, read your own record again to get the new `.creds`. A **suspended**
+identity gets `403`.
+[Authorization §4](./authorization.md#self-service-rotation) explains why this
+is a route and why a suspended identity cannot rotate.
 
 Suspending, reactivating and revoking are Owner/Admin actions. On a NATS user's
 detail view and a Thing's page, **Revoke** is for *leaked* credentials. It
@@ -244,16 +241,14 @@ record and nothing more.
 - **Metadata:** device data that changes rarely, such as hardware revision,
   install date or calibration offsets.
 - **Active:** an Owner/Admin switch that takes the device out of service and
-  keeps its record and history. **Deactivation is a real decommission.** The
-  device is signed out immediately and cannot sign in again. Its NATS identity
-  is suspended: at the hub at once, and on a site's leaf node at its next
-  refresh ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-  Every peer blocklists its Nebula certificate when its config is
-  redeployed. The detail view shows a banner, and the list greys the row.
-  Reactivating issues a *new* `.creds` file, and the old one stays revoked.
+  keeps its record and history. **Deactivation is a real decommission.** It
+  ends the device's sessions, suspends its NATS identity and blocklists its
+  Nebula certificate. The detail view shows a banner, and the list greys the
+  row.
   - **Deactivate a Thing. Do not delete it.** A delete does not touch either
     identity, so its credential keeps working and its certificate stays trusted.
-  - See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+  - [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)
+    has the four effects, when each one applies, and what reactivation does.
 
 ### Infrastructure Binding
 
