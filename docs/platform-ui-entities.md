@@ -341,8 +341,8 @@ It has two tabs, one for each [bucket](./architecture.md#41-two-buckets-one-writ
 - **Reported** (`twin`) is what the device says. It is **read-only**, because
   the edge overwrites it on the next sync.
 - **Desired** (`twin_desired`) is what you want, and you can edit it. Put
-  setpoints and configuration here. Send commands such as `reboot` as a message
-  on `cmd.>` instead. Put thresholds and alarm ranges in
+  setpoints and configuration here. Send commands such as `reboot` as a NATS
+  message instead. Put thresholds and alarm ranges in
   [rules](./automation.md) over reported state.
 
 Where the two differ, the row shows both values, for example

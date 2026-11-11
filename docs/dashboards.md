@@ -263,7 +263,7 @@ To set up the screen:
 2. **Give the login its own NATS identity with a read-only role.** The console
    role limits *screens*. What the browser can do on the bus comes only from
    the linked `nats_users` role. A wall display must not hold a credential that
-   can publish to `cmd.>`, or one that can write the `dashboards` bucket. The
+   can publish to command subjects, or one that can write the `dashboards` bucket. The
    lock stops accidental touches, not edits: anyone can unlock it.
 3. **Check for WebGL** if the dashboard has a Map. Its basemap draws on a WebGL
    canvas and shows nothing without it.

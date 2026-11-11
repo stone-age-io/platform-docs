@@ -168,9 +168,10 @@ provisioning. `organizations.createRule` is also Platform-Operator-only.
 `organizations` are not cascade and not required. When an organization is
 deleted, PocketBase **blanks** the `organization` field on every Thing,
 Location, NATS account and Nebula CA that pointed at it. Those records become
-orphans, and with the blank-matches-blank read in §2 they would be readable
-across tenants. To take a tenant off the bus without deleting anything, suspend
-it (§3.1).
+orphans. The membership clause in §2 stops a tenant from reading a record with
+a blank organization, but an orphan is still data that no tenant owns, and only
+a SuperUser can remove it. To take a tenant off the bus without deleting
+anything, suspend it (§3.1).
 
 **So a delete needs the organization suspended and empty first.** The platform
 refuses the delete while the organization's NATS account is still active, and

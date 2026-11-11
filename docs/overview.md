@@ -60,7 +60,7 @@ each one works.
 | **KV** (key-value bucket) | A JetStream stream used as a key-value store. It keeps the latest value for each key. The twin is in KV. | [Connectivity §1](./connectivity.md#key-value-buckets-live-state) |
 | **leaf** (leaf node) | A NATS server that connects out to the central cluster, usually at a site. Local devices keep working when the link is down. It runs on a gateway. | [Leaf Nodes](./leaf-nodes.md) |
 | **domain** (JetStream domain) | The name that separates the JetStream data on one server from another's, so a leaf and the hub can each have a bucket with the same name. A leaf's domain is its Thing's code. | [Leaf Nodes §3](./leaf-nodes.md#the-domain-is-the-code-computed-and-never-stored) |
-| **twin** (reported / desired) | The live state of a Thing or Location, in two KV buckets with one writer each. `twin` holds **reported** state, written by the device. `twin_desired` holds **desired** state, written by a console user. The platform delivers a desired value but does not apply it. | [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) |
+| **twin** (reported / desired) | The live state of a Thing or Location, in two KV buckets with one writer each. `twin` holds **reported** state, written by the device. `twin_desired` holds **desired** state, written at the hub by people and rules. The platform delivers a desired value but does not apply it. | [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state) |
 
 ---
 

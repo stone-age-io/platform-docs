@@ -82,7 +82,9 @@ Plane instead, from the same `nats.conf` that `nats export` writes
 ([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
 
 This is a valid production option, but it changes the first row of that table.
-There are three options, and you move between them by editing config:
+There are three options. You move between them by editing config, with one
+exception: a server that already holds JetStream data loses it when it first
+joins a cluster ([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)).
 
 | | What runs | A Control Plane restart costs | Use when |
 | :--- | :--- | :--- | :--- |
@@ -111,7 +113,8 @@ flowing.
 
 > **Devices must know both URLs.** A device with only the embedded node's URL still disconnects when that node restarts.
 
-Moving from option 2 to option 3 is the one step that is not only additive
+Two moves are not only additive: a server with data that joins a cluster, and
+the embedded node leaving one
 ([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)). The reasons are in
 [ADR 0001](./decisions/0001-embedded-nats-server.md).
 
@@ -327,47 +330,73 @@ not code (§6):
 
 ### 5.5 Moving the NATS server out of the Control Plane
 
-This moves you from `serve --nats` to a standalone `nats-server`
-([§2.1](#21-where-the-nats-server-runs)). Most of it costs nothing. The NATS
-Operator JWT, every account and every user credential are in the Control Plane
-database and are generated again, not migrated. Devices keep their credentials.
+This moves you from `serve --nats` to a `nats-server` that runs as its own
+process ([§2.1](#21-where-the-nats-server-runs)). Most of it costs nothing. The
+NATS Operator JWT, every account and every user credential are in the Control
+Plane database and are generated again, not migrated. Devices keep their
+credentials.
 
-**JetStream data is the exception.** Streams, consumers and the KV buckets with
-twin state are in the embedded server's store directory. An R1 stream on the
-embedded node is lost with that node. Plan for it before you start.
+**JetStream data is the exception.** Streams, consumers and KV buckets, the twin
+included, are in the server's store directory.
 
-> **If you expect to leave embedded mode, do not put JetStream on the embedded node.** Add the external node early and keep `jetstream: {}` out of the embedded config. Then this section is only a config edit.
+::: danger A server that joins a cluster deletes the streams it already has
+A `nats-server` with no `cluster` block runs JetStream in standalone mode. When
+you add a `cluster` block and restart it, the cluster does not know its
+existing streams. The server logs `Detected orphaned stream ... will cleanup`
+and deletes them, KV buckets included. In a rehearsal on nats-server 2.14.2,
+the server deleted them about 30 seconds after the restart.
 
-Otherwise, replicate before you drain:
+You cannot add a node to a server that holds data and keep the data. Use path
+A, which adds no node. For a cluster, back up first (path B).
+:::
 
-1. **Add the external node.**
-    - Give both NATS configs a matching `cluster` block, with the same `name` in
-      both, and point each one's routes at the other.
-    - Restart both servers.
-    - Check the route: `nats server list` must show two servers in the cluster.
+> **If you expect to need a cluster, form it before you create streams and buckets.** A new install that starts as a cluster has nothing to lose, and this section is then only a config edit.
 
-2. **Raise replicas on everything you want to keep.** Nothing is safe to drain
-   until it is replicated.
-    - Set `replicas: 2` on every stream on the embedded node:
-      `nats stream update <name> --replicas 2`.
-    - Set `replicas: 2` on every KV bucket on the embedded node.
-    - Check that each shows the new peer as **current**, not catching up:
-      `nats kv status <bucket>`.
+#### Path A: one external server, and no data moves
 
-3. **Drain the embedded node.** This moves JetStream leadership off it in a
-   controlled way.
-    - Step down its raft leadership: `nats server raft step-down`.
+The embedded server and a `nats-server` process read the same `nats.conf` and
+the same store directory. Only the process that runs the file changes.
 
-4. **Stop the embedded server.**
-    - Remove `--nats`, or set `nats.embedded: false`.
-    - Point `nats.server_url` at the external node.
-    - Restart the Control Plane.
+1. Stop the Control Plane. The bus stops with it.
+2. Start `nats-server -c ./nats-config/nats.conf` under your service manager.
+   Use a `nats-server` version that is the same as, or newer than, the one in
+   your `stone-age` release.
+3. Remove `--nats`, or set `nats.embedded: false`. Start the Control Plane.
+4. Check that devices reconnect and twins update.
 
-5. **Set replicas back to the value you want.** One remaining node cannot hold
-   `replicas: 2`. Do one of these:
-    - Set the replica count back to `1` on every stream and bucket you changed in
-      step 2.
-    - Add the third node now, then set the replica count to `3`.
+The outage is as long as one Control Plane restart. After this, a Control Plane
+restart does not stop the bus.
+
+#### Path B: a cluster, by backup and restore
+
+A cluster needs three or more nodes ([§2.1](#21-where-the-nats-server-runs)).
+The streams on the embedded server do not survive the change, so back them up
+and restore them. Do this in a maintenance window, because a message stored
+after the backup is not in the backup.
+
+1. **Back up every stream and KV bucket.** A KV bucket is a stream with the
+   prefix `KV_`, so the `twin` bucket is the stream `KV_twin`.
+
+    ```sh
+    nats stream backup <stream> ./backup/<stream>
+    ```
+
+    A backup reads from inside one account. The Control Plane has no credential
+    in an organization's account, so each organization needs an Owner or Admin
+    credential for this step.
+
+2. **Stop the Control Plane.**
+3. **Start the cluster nodes.** Give every node the exported `nats.conf`, its
+   own `server_name`, an empty store directory and a matching `cluster` block.
+   Check that `nats server list` shows every node.
+4. **Start the Control Plane against the cluster.** Remove `--nats`, or set
+   `nats.embedded: false`, and point `nats.server_url` at the cluster.
+5. **Restore, then raise the replicas.**
+
+    ```sh
+    nats stream restore ./backup/<stream>
+    nats stream update <stream> --replicas 3
+    ```
 
 6. **Verify before you delete anything.**
     - Check that devices reconnect and twins update.
@@ -376,7 +405,40 @@ Otherwise, replicate before you drain:
     - Remove the old store directory. Do this last, and only when both checks
       pass.
 
-> **Rehearse this on a copy first** (§5.3). Steps 2 and 3 lose data if the peer was not really current. A matching message count is the proof, not "it looked fine".
+#### Removing the embedded node from a cluster you already run
+
+If you run option 2, the embedded node is a cluster member and can hold stream
+replicas. Remove it in this order:
+
+1. **Add the other external nodes first.** The cluster must keep a quorum
+   without the embedded node.
+2. **Move each stream off the embedded node while every node is up.**
+    - Make an external node the stream's leader. Run
+      `nats stream cluster step-down <stream>` until `nats stream info` shows
+      an external leader.
+    - Set the replica count you want. A stream that goes to `replicas: 1` stays
+      on its leader.
+    - Check that `nats stream info` no longer lists the embedded node.
+3. **Stop the embedded server.** Remove `--nats`, or set `nats.embedded: false`,
+   point `nats.server_url` at an external node, and restart the Control Plane.
+4. **Remove the embedded node from the cluster's peer list.** Use a System
+   Account credential:
+
+    ```sh
+    nats server cluster peer-remove <embedded server name>
+    ```
+
+Two things fail if you change the order:
+
+- **Do not stop the embedded node while a stream has `replicas: 2` on the two
+  nodes.** The stream loses its quorum and refuses writes. The JetStream API
+  also refuses the change back to `replicas: 1`, because the cluster has no
+  leader.
+- **Do not leave one clustered node to run alone.** In the rehearsal, a node
+  with a `cluster` block waited for its route after a restart, and JetStream
+  did not start.
+
+> **Rehearse this on a copy first** (§5.3). The results above come from a rehearsal with `nats-server` 2.14.2 and `nats` CLI 0.3.0. Check them against the version you run. A matching message count is the proof, not "it looked fine".
 
 ---
 

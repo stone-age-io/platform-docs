@@ -326,7 +326,7 @@ Each organization has **two** KV buckets, split by who writes the data:
 | Bucket | Who writes it | Direction |
 | :--- | :--- | :--- |
 | `twin` | the device | edge to hub (**reported** state) |
-| `twin_desired` | a console user | hub to edge (**desired** state) |
+| `twin_desired` | people and rules, at the hub | hub to edge (**desired** state) |
 
 Keys are `<kind>.<code>.<prop>`, for example `thing.S01.temp` or
 `location.CHI-W-A.occupancy`. The two buckets use the *same* key for a
@@ -334,7 +334,9 @@ property. The bucket gives the direction, so keys carry no sync data. These
 buckets are per organization, keyed by code. There is no bucket per Location or
 Thing.
 
-**One writer per bucket is what keeps the data safe.** If both ends write one
+**One writer per bucket is what keeps the data safe.** "One writer" means one
+end of the leaf link: the edge writes `twin`, and the hub writes
+`twin_desired`. If both ends write one
 bucket, a conflict has no winner. The two values swap back and forth across the
 leaf link with no end.
 
@@ -354,7 +356,7 @@ is the writable bucket.
 | :--- | :--- |
 | Reported state | `twin` KV, written by the device |
 | Setpoints and configuration | `twin_desired` KV. It is durable, so a device that boots after three days offline reads the current value from its local mirror. |
-| Commands (`reboot`) | A NATS message on `cmd.>`, **not** a KV value. A "reboot now" that stays in a bucket is a bug. |
+| Commands (`reboot`) | A NATS message on a command subject, such as `camera.CA-9KD-4PX.cmd.ptz`, **not** a KV value. A "reboot now" that stays in a bucket is a bug. |
 | Ranges, thresholds, alarms, hysteresis | A [rule](./automation.md) over `twin`, not a desired value. |
 
 **Pair a desired key with an echo, not a measurement.** Put a desired value on

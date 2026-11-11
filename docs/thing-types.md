@@ -62,7 +62,7 @@ Shared verbs. Each record is one thing a Thing Type can do on the bus.
 | Field | Purpose |
 |---|---|
 | `name` | Operation identifier, lowercase snake_case, for example `motion`, `heartbeat`, `ptz`. |
-| `capability` | One of `publish`, `subscribe`, `request`, `reply`. |
+| `capability` | One of `publish`, `subscribe`, `request`, `reply`, read from the Thing's side: `publish` is a subject the Thing sends on, and `subscribe` is one it listens on. |
 | `subject_suffix` | Added after the Thing Type's `subject_prefix` to make the full subject. Stored as typed. It can use the same variables as the prefix (§3). |
 | `description` | What the operation is for. |
 
@@ -356,6 +356,18 @@ subject_suffix:    cmd.ptz
 `snapshot_request` and `snapshot_reply` are two operations with the same
 suffix. A Thing Type that *offers* snapshots links `snapshot_reply`. A Thing
 Type that *asks for* them links `snapshot_request`.
+
+**Every operation resolves in the Thing's own subjects.** The capability is
+read from the device's side, and the subject comes from that Thing's prefix and
+code. So `snapshot_reply` on the camera resolves to
+`camera.CA-9KD-4PX.snapshot`, where the camera answers. `snapshot_request` on a
+kiosk resolves to `kiosk.K-1.snapshot`, where the kiosk sends a request and a
+service that subscribes to `kiosk.*.snapshot` answers. The two do not meet.
+
+A `request` operation therefore describes a Thing that asks a service for
+something on its own subject. To call *another* Thing, a client sends a request
+to that Thing's `reply` subject. The caller needs no operation for this, only a
+NATS role that allows the publish.
 
 ### The Thing Type record
 

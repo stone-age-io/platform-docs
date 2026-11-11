@@ -344,7 +344,9 @@ nats-server -c ./nats-config/nats.conf
 
 The bus keeps running while the Control Plane restarts. `serve` without
 `--nats` expects a server like this. You can also cluster the embedded server
-with an external `nats-server` for planned upgrades. Full high availability
+with an external `nats-server` for planned upgrades. Do that before you create
+streams and buckets, because a server that joins a cluster deletes the ones it
+already has. Full high availability
 needs three or more external nodes. [Operations §2.1](./operations.md#21-where-the-nats-server-runs)
 describes the three options and how to move between them.
 

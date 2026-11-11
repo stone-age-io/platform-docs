@@ -11,6 +11,10 @@ nav_order: 10
 
 ---
 
+> **Amended 2026-11-10: the topology ladder is not free of data migration.** A rehearsal on nats-server 2.14.2 showed that a standalone server that gains a `cluster` block deletes its existing streams and KV buckets as orphans. So rung 1 to rung 2 loses JetStream data, not only rung 2 to rung 3 as [The sharp edge](#the-sharp-edge) says. The prototype in [Verification](#verification) joined a second node to a server with no stored data. The runbook in [Operations §5.5](../operations.md#55-moving-the-nats-server-out-of-the-control-plane) has the tested paths.
+
+---
+
 ## Context
 
 The Control Plane and the NATS server are configured separately today. `stone-age nats export` reads the NATS Operator JWT and System Account out of the database and writes an `operator.jwt`, an `operator.conf`, and a `nats.conf`; you then run `nats-server -c nats.conf` yourself. That is [Getting Started §3](../getting-started.md#3-start-the-nats-server), and §4 exists only because §3 does.
