@@ -96,61 +96,37 @@ allow list empty instead.
 
 ### JetStream
 
-Core NATS does not store messages. For history and at-least-once delivery, use
-**JetStream**.
-
-- **Streams** store messages published to given subjects.
-- **Consumers** read back history. Dashboards use them to fill charts when you
-  open them.
-
-JetStream also protects you from Layer 3 outages. Telemetry kept in a stream
-reaches the TSDB when Telegraf reconnects, with no data loss, **if Telegraf
-reads it through a JetStream consumer that keeps its position**. A plain
-subject subscription, with or without a queue group, is core NATS: Telegraf
-never sees what was published while it was down.
+Core NATS stores nothing. Streams, consumers and their delivery guarantees are
+explained in [Persistence](./concepts/persistence.md). One point matters for
+the platform: telemetry reaches the TSDB after a Layer 3 outage only if
+Telegraf reads it through a durable JetStream consumer. A plain subscription,
+with or without a queue group, misses what was published while Telegraf was
+down ([Observability §3](./observability.md#3-data-flow-architecture)).
 
 ### Key-Value Buckets (Live State)
 
-KV buckets are JetStream streams built for frequent updates. The platform uses
-them for two things:
+The platform uses KV for the digital twin
+([Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state))
+and for rule state such as alarm status and presence keys
+([Automation §5](./automation.md#5-stateful-patterns-via-kv)). Both share the
+org's NATS Account as their isolation boundary. How buckets work is in
+[Persistence §3](./concepts/persistence.md#3-kv-buckets).
 
-- **The digital twin:** live state per entity (temperature, online status,
-  setpoints) that the console reads and writes over WebSocket. PocketBase holds
-  the static data (name, serial, location). See
-  [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
-- **Layer 1 rule state:** alarm status, presence keys, last-known values. Rules
-  keep no state between messages, and KV holds the state. See
-  [Automation §5](./automation.md#5-stateful-patterns-via-kv). Debounce and rate
-  limiting do not use KV. The rule engine has a per-rule `throttle`, and its
-  windows are in each instance's memory, lost on restart. See
-  [Automation](./automation.md#throttle-and-debounce-are-built-in).
-
-Both uses share the same buckets and the same isolation boundary, the org's
-NATS Account.
+Debounce and rate limiting do not use KV. The rule engine has a per-rule
+`throttle`, and its windows are in each instance's memory, lost on restart. See
+[Automation](./automation.md#throttle-and-debounce-are-built-in).
 
 ### Leaf Nodes
 
-A **leaf node** is a NATS server or cluster at a customer site that connects to
-a central cluster with an outbound connection only. For a small site, it can run
-on a cellular router or gateway such as Cradlepoint or Peplink. For a large
-site, it can be a separate cluster for low latency and redundancy.
+A **leaf node** is a NATS server at a customer site that connects to the hub
+with an outbound connection only. During a WAN outage, local devices, streams,
+KV buckets and any rule engine or stream processor at the edge keep working.
+After it, only stored data crosses: a stream the hub sources from, or a synced
+KV bucket. Plain core NATS messages from the outage are not replayed
+([Persistence §4](./concepts/persistence.md#4-leaf-nodes-and-domains)).
 
-- **Local autonomy:** if the internet connection fails, local devices still
-  talk to each other, and local JetStream streams and KV buckets keep storing
-  data.
-- **Reconnection:** when the link returns, subject interest propagates again and
-  traffic flows to and from the central cluster. Messages published *during*
-  the outage cross only if something stored them: a stream at the leaf that the
-  hub sources from, or a KV bucket synced across the link. Plain core NATS
-  messages from the outage are not replayed.
-
-Higher layers can also run at the edge. A rule engine next to a leaf node keeps
-evaluating rules against local KV during a WAN outage. A stream processor at the
-edge keeps producing aggregates. When the link returns, synced KV buckets catch
-up in their own direction: hub to edge by mirror, edge to hub by relay.
-
-The box that runs a leaf is a **gateway**: an ordinary **Thing**, whose Agent sets up the
-leaf server and can host it. See [Leaf Nodes](./leaf-nodes.md).
+The box that runs a leaf is a **gateway**: an ordinary **Thing**, whose Agent
+sets up the leaf server and can host it. See [Leaf Nodes](./leaf-nodes.md).
 
 ### MQTT Clients
 
@@ -313,25 +289,14 @@ to share all traffic, use one account.
 
 ## 2. Nebula
 
-Nebula is an overlay network. Devices talk as if they were on one local network,
-even on different continents behind strict firewalls. This is a short overview.
-See the [Nebula documentation](https://nebula.defined.net/docs/) for detail.
+Nebula is the overlay network that reaches devices on IP. Certificates,
+lighthouses, relays, firewall groups and revocation are explained in
+[Overlay Network](./concepts/overlay.md). This section covers the platform's
+Nebula records and fields.
 
 > **Who can manage Nebula:** only Owners and Admins can read or write `nebula_networks` and `nebula_hosts`, because a host's `config_yaml` contains its private key. Every lower role gets an empty list. A Thing can read the Nebula host assigned to it, and a host can read its own record. Any role can read the org's `nebula_ca` record, and only a Platform Operator can write it. Owners and Admins roll the CA through a three-step route, `POST /api/org/nebula-ca/rotate`. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
-### Mesh VPN Fundamentals
-
-Nebula builds a **peer-to-peer** network. After two devices connect, traffic
-goes directly between them, with no VPN concentrator in the path.
-
 ### Lighthouses & Discovery
-
-Edge devices are often behind NAT and have no static IP.
-
-- **Lighthouse:** a server with a static IP that acts as a directory.
-- **Discovery:** when *Host A* wants to reach *Host B*, it asks the lighthouse
-  for *Host B*'s current public address. The two hosts then punch a hole
-  through their firewalls and talk directly.
 
 To make a host a lighthouse, set `is_lighthouse` on its Nebula Host record and
 give it a **`public_host_port`** (`1.2.3.4:4242`). Peers read that address from
@@ -339,10 +304,8 @@ their static host map.
 
 ### Relays
 
-On some networks, such as strictly monitored corporate networks, hole punching
-fails. Then Nebula sends the traffic through a host marked `is_relay`.
-
-A relay does not appear by itself. You must mark a host `is_relay`.
+Where hole punching fails, Nebula sends the traffic through a relay. A relay
+does not appear by itself. You must mark a host `is_relay`.
 
 - **A relay needs a `public_host_port` too.** Without one, the host listens on a
   random port while peers already have it as a path, so the path does not work.
@@ -351,9 +314,8 @@ A relay does not appear by itself. You must mark a host `is_relay`.
   so you can turn relaying on and off with no re-issue. `unsafe_networks` below
   is the opposite case.
 
-**Lighthouse and relay are separate roles**, and one host can be both. A
-lighthouse tells peers *where* a host is. A relay carries packets when peers
-cannot reach each other directly. The host list shows a badge for each.
+One host can be both a lighthouse and a relay. The host list shows a badge for
+each.
 
 ### Reaching subnets that are not on the mesh
 
@@ -406,12 +368,9 @@ traffic.
 
 ### Host-Based Firewalls
 
-Nebula security is **based on identity**, not IP address.
-
-- Each host's Nebula binary enforces firewall rules defined in YAML.
-- You define **groups**, such as `sensors`, `gateways` and `admins`.
-- **Example:** "Allow the `admins` group to SSH into the `gateways` group, and
-  let `sensors` talk only to `gateways`."
+Firewall rules match **groups** signed into each peer's certificate, not IP
+addresses. See [Overlay Network §4](./concepts/overlay.md#4-firewall-by-group)
+for an example.
 
 ::: note Group membership is in the certificate, so a change needs a re-issue
 Four host fields are signed into the certificate: **`hostname`, `overlay_ip`,

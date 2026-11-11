@@ -170,24 +170,15 @@ The gateway connects HTTP and NATS in both directions, with the same engine.
 
 Devices or services that cannot use NATS send HTTP POSTs to a configured path.
 The gateway evaluates rules on the request and publishes the result to NATS. By
-default it replies at once (`200 {"status":"accepted"}`) and processes the request
-asynchronously on the NATS side.
+default it replies at once with `200` and processes the request asynchronously.
+A rule with a `respond` action, or a NATS action with `request: true`, answers
+synchronously instead.
 
-Two options change this:
-
-- **Signature verification.** An HTTP trigger can have an `hmac` block (header,
-  secret, algorithm, encoding, optional prefix). If the signature is missing or
-  wrong, the gateway returns `401` and does not evaluate the rule. This covers
-  GitHub, Shopify and most generic HMAC webhooks. For providers that sign a
-  timestamp with the body, set `scheme: stripe`, `slack` or `standardwebhooks`
-  (Svix, Clerk, Resend and others) and only a `secret`. A timestamp more than
-  five minutes from the gateway's clock, in either direction, is rejected, so
-  keep the clock NTP-synced. Put signature verification on
-  every endpoint the internet can reach. Without it, anyone who learns the path
-  can publish into your bus.
-- **Synchronous routes.** A rule with a `respond` action returns its result as
-  the HTTP response. A NATS action with `request: true` sends a NATS request and
-  returns the reply (`503` if nothing answers, `504` on timeout).
+**Put signature verification on every endpoint the internet can reach.**
+Without it, anyone who learns the path can publish into your bus. An `hmac`
+block covers GitHub, Shopify and most generic webhooks, and `scheme: stripe`,
+`slack` or `standardwebhooks` covers providers that sign a timestamp. See
+[Verifying webhook signatures](./vendor/rule-router/docs/02-gateway.md#verifying-webhook-signatures-hmac).
 
 ```yaml
 - trigger:
@@ -225,33 +216,10 @@ HTTP.
 ### Outbound: NATS to HTTP
 
 The gateway also listens on NATS subjects and turns matching messages into HTTP
-calls. Outbound calls can retry with exponential backoff, for unreliable
-third-party APIs.
-
-```yaml
-- trigger:
-    nats:
-      subject: "alerts.>"
-  action:
-    http:
-      url: "https://hooks.slack.com/services/T00000000/B00000000/XXX"
-      method: "POST"
-      headers:
-        Content-Type: "application/json"
-      payload: |
-        {
-          "text": "🚨 Alert on {@subject}: {message}"
-        }
-      retry:
-        maxAttempts: 5
-        initialDelay: "1s"
-        maxDelay: "30s"
-```
-
-Every message on `alerts.>` becomes a Slack notification. With the retry block,
-a short Slack outage does not lose alerts. Retries are durable and respect
-graceful shutdown. The engine does not retry a `4xx` response other than `408`
-or `429`, because a second attempt cannot succeed.
+calls, such as every message on `alerts.>` into a Slack notification. A `retry`
+block retries with exponential backoff, so a short outage of the third-party API
+does not lose messages. See
+[Outbound: NATS → HTTP](./vendor/rule-router/docs/02-gateway.md#outbound-nats-http).
 
 ### Use the gateway for
 
@@ -301,41 +269,13 @@ not take commands like this: its controllers run scheduled postures themselves,
 and operator commands use its own subjects
 ([Wire Protocol](./vendor/access-control/docs/protocol.md)).
 
-### Example: Daily Report POST
-
-```yaml
-- trigger:
-    schedule:
-      cron: "0 23 * * *"
-      timezone: "UTC"
-  action:
-    http:
-      url: "https://reports.internal.example.com/daily"
-      method: "POST"
-      headers:
-        Authorization: "Bearer ${REPORTS_API_TOKEN}"
-      payload: |
-        {
-          "report_date": "{@date.iso}",
-          "generated_at": "{@timestamp()}"
-        }
-      retry:
-        maxAttempts: 3
-        initialDelay: "5s"
-```
-
-The engine reads `${REPORTS_API_TOKEN}` from an environment variable when it
-loads the rule, so the secret is not in the YAML.
-
 ### Scheduler Semantics
 
-- A scheduled rule has **no incoming message**. Conditions can use time
-  variables (`{@time.*}`, `{@day.*}`), KV lookups (`{@kv.*}`) and template
-  functions (`{@uuid7()}`, `{@timestamp()}`), but not message fields or headers.
-- Timezones are IANA names (for example `America/New_York`). With no timezone,
-  the engine uses system local time.
-- NATS and HTTP actions both work. HTTP actions have the same retry options as
-  the gateway.
+A scheduled rule has **no incoming message**, so its conditions can use time
+variables, KV lookups and template functions, but not message fields or headers.
+With no `timezone`, the engine uses system local time. NATS and HTTP actions
+both work. See [Scheduler](./vendor/rule-router/docs/03-scheduler.md) for
+sub-minute schedules, overlapping fires and polling an API on a schedule.
 
 ### Use the scheduler for
 
@@ -401,23 +341,18 @@ notification, the same way the alarm pattern above triggers on `$KV.alarms.>`.
 
 Rate limiting and debounce do **not** use KV, because rule templates have no
 arithmetic and cannot increment a counter. Each rule takes a `throttle` block
-with a `window` and an optional `key` template, for one window per device or
-room:
-
-- **`mode: leading`** (default) fires the first match in the window and drops
-  the rest. Use it for alerts: one page, now.
-- **`mode: trailing`** keeps the latest match and fires it when the window
-  closes. Use it for real debounce, such as a dial being turned or a setpoint
-  being edited.
+with a `window` and an optional `key` for one window per device or room.
+`mode: leading` (the default) fires the first match, for alerts. `mode: trailing`
+fires the last one when the window closes, for real debounce.
 
 Put the throttle on the **action**, not the trigger. A trigger throttle skips
 evaluation, so a normal reading can use up the window and the engine never
-evaluates the alarming reading after it. The windows are in the instance's
-memory (§1). A restart resets them, and so does a reload for leading-edge
-windows. A trailing value that is waiting survives a reload and is flushed on a
-clean shutdown (`SIGTERM`), but is lost in a crash. If suppression must survive a restart, gate the rule
-on a KV key with `not_exists`, have its action write that key, and let the
-bucket's TTL expire it.
+evaluates the alarming reading after it. The windows are in each instance's
+memory (§1), so a restart resets them. If suppression must survive a restart,
+gate the rule on a KV key with `not_exists`, have its action write that key, and
+let the bucket's TTL expire it. See
+[Throttle](./vendor/rule-router/docs/01-core-concepts.md#4-throttle) for the
+modes and reload behaviour in full.
 
 ---
 

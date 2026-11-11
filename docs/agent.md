@@ -314,33 +314,20 @@ terminal.
 ### C. Command & Script Execution
 
 `cmd.exec` runs a local script or an allowlisted shell command, and nothing
-else:
+else. A script is requested by bare filename (`deploy.sh`) and must be a file
+directly inside `commands.scripts_directory`. Any other request must match a
+line of `commands.allowed_commands`, and the Agent runs the allowlist entry, not
+the request. The reply comes once, when the command finishes or
+`commands.timeout` (30s) kills it. `cmd.logs` reads only files that
+`commands.allowed_log_paths` names.
 
-- **Scripts are files, named bare.** A script request is a bare filename with
-  the platform's script extension (`.sh`, or `.ps1` on Windows). It must name a
-  regular file directly inside `commands.scripts_directory`. The Agent refuses
-  any request with a separator, a drive letter or `..`. It builds the path
-  itself and starts the file directly, with no shell. Scripts are checked first
-  and never go through `allowed_commands`.
-- **Commands are allowlist entries.** Any other request must match a line of
-  `commands.allowed_commands` (whitespace-normalized). The Agent runs **the
-  allowlist entry**, not the request, so a newline in a request cannot split one
-  allowed line into two commands. Linux runs it through `/bin/bash`, FreeBSD
-  through `/bin/sh`.
-- **The reply comes once, when the command finishes.** It is request/reply, not
-  a stream. It has the combined output and an `exit_code` whenever the command
-  ran (0 included). A failure keeps its output, so you get the stderr that
-  explains it. `commands.timeout` (30s by default) kills everything the command
-  started (its process group, or `taskkill /T` on Windows). A timed-out command
-  returns the output it printed.
-- **Log retrieval:** `cmd.logs` reads a file only if it exactly matches a file
-  that `commands.allowed_log_paths` names. Only the allowlist decides, so keep
-  the pattern narrow.
-- **Overlay control:** with `nebula.enabled`, `cmd.nebula` takes `sync` (fetch
-  the host's config now, not at `nebula.sync_interval`) or `restart`. It is the
-  one handler that **replies before it acts**, because both actions can break the
-  tunnel the request came through. `accepted` means the work started. Check the
-  result with `cmd.health`.
+With `nebula.enabled`, `cmd.nebula` takes `sync` or `restart`. It **replies
+before it acts**, because both actions can break the tunnel the request came
+through, so check the result with `cmd.health`.
+
+The exact matching rules, reply format and timeout behaviour are in
+[Script Development](./vendor/agent/docs/script-development.md) and the
+Agent's [architecture](./vendor/agent/docs/architecture.md).
 
 ### D. Credential Upkeep
 

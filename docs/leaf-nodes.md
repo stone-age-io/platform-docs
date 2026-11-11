@@ -115,24 +115,16 @@ remove.
 
 ## 4. Two required directives
 
-A generated `nats-leaf.conf` must pass NATS operator-mode validation:
+The Agent generates `nats-leaf.conf` from the ten fields above. Operator mode
+requires two directives in it: an `account` key on every leaf remote, and the
+`$SYS` account JWT in `resolver_preload`. That is why the route serves the
+`$SYS` **account** JWT. It is public trust material and grants nothing. To
+connect *as* `$SYS` you need a `$SYS` **user** credential, and the platform
+never serves one. See [Agent: leaf node §2](./vendor/agent/docs/leaf-node.md#2-two-directives-that-are-not-optional)
+for the error each one prevents and the test that checks the generated file.
 
-1. **Every leaf remote needs an `account` key** that names the local account.
-2. **`resolver_preload` needs the `$SYS` account JWT**, not only the
-   organization's. The Operator JWT names a system account, and
-   `resolver: MEMORY` cannot fetch it. Without it the server stops with
-   `error resolving system account: account missing`, *before JetStream starts*.
-
-::: note Preloading the `$SYS` **account** JWT grants nothing
-It is public trust material, like the Operator JWT. To connect *as* `$SYS`, you
-need a `$SYS` **user** credential, and the platform never serves one.
-:::
-
-The generator is in the Agent (`internal/edge/leafconf.go` in the agent
-repository). A test (`TestBuildLeafConfIsAcceptedByNATSServer`) runs its output
-through the real `nats-server` config parser. A substring check cannot prove
-that the server accepts a file. The platform tests its side of the contract,
-the ten field names, separately. Keep both tests if you change either side.
+The platform tests its side of the contract, the ten field names, separately.
+Keep both tests if you change either side.
 
 ---
 
@@ -188,42 +180,25 @@ Then, for each gateway:
     `/opt/agent/scripts`, which must exist. The install steps in
     [The Agent §1](./agent.md#getting-the-binary) create it.
 
-3. Run `agent -leaf-config`. It writes `nats-leaf.conf` (0644) and the creds
-   (0600) in the same directory. Every path inside the file (`credentials`,
-   `store_dir`, `pid_file`) is absolute and points into that directory, because
-   `nats-server` resolves a relative path against its working directory, not
-   the file's. The leaf needs write access to that directory. It needs the same
-   access to create its JetStream store there.
-4. Start the leaf in one of two ways:
-    - **Two processes (default):** run `nats-server -c /etc/agent/nats-leaf.conf`
-      under systemd or Docker. The bus then stays up when the agent restarts,
-      which matters when you upgrade the agent on a live site.
-    - **One process:** set `nats.server_config` to that path, and the agent
-      hosts the server. `nats.urls` must name the port in that config. The agent
-      refuses to start if they differ.
+3. Run `agent -leaf-config` once, on its own. It writes `nats-leaf.conf` and
+   the creds in the same directory, and the leaf needs write access to that
+   directory.
+4. Start the leaf, either as its own `nats-server -c /etc/agent/nats-leaf.conf`
+   under systemd or Docker (the default, so the bus stays up when the agent
+   restarts), or hosted by the agent with `nats.server_config`.
 5. Run `agent -service install && agent -service start`.
 6. Point any site-local [rule engine](./automation.md) at the same creds file.
 
-::: note Bootstrapping and running are two separate commands
-A separately supervised `nats-server` needs its config file *before* it starts,
-which is before the agent has a server to connect to. So `-leaf-config` runs
-once, on its own.
-:::
-
 **After that, the running Agent keeps the leaf config current.** Every
-`platform.leaf_refresh_interval` (`5m` by default, `0` turns it off), it asks
-`GET /api/me/account-jwt` for the account JWT. That route returns no secret. If
-the JWT changed, the Agent fetches `GET /api/me/leaf-config` again, rewrites
-`nats-leaf.conf` and reloads the leaf:
-
-- **One process:** the Agent reloads the server it hosts.
-- **Two processes, on Linux or FreeBSD:** the Agent sends the leaf a SIGHUP,
-  through the server's `pid_file`.
-- **Two processes, on Windows:** the leaf does not reload. Restart it to load
-  the new file.
-
+`platform.leaf_refresh_interval` (`5m` by default), it checks
+`GET /api/me/account-jwt`. If the account JWT changed, it fetches
+`GET /api/me/leaf-config` again, rewrites `nats-leaf.conf` and reloads the leaf.
+A separately supervised leaf on Windows does not reload, so restart it.
 `cmd.leaf_refresh` runs a refresh at once. This refresh is how a revocation
 reaches the site (§8.1).
+
+The two ways of running the leaf, the reload on each OS, and the file layout
+are in [Agent: leaf node §3](./vendor/agent/docs/leaf-node.md#3-running-the-server).
 
 ---
 
@@ -264,55 +239,27 @@ buckets:
 | `twin` | the device, at the edge | edge to hub | relay |
 | `twin_desired` | people and rules, at the hub | hub to edge | JetStream **mirror** |
 
-The rules below apply to the twin and to every bucket a gateway declares.
-
-**One writer per bucket is what keeps the data safe.** If both ends write one
-bucket, a conflict has no winner. Two values for one key swap across the link,
-then swap back, and each write causes the next one, with no end. You could put
-the owner in the key (`thing.S01.state.temp`) instead, but then every key in
-firmware, rules and widgets needs it, and a mistyped token never syncs, with no
-error.
-
-The agent **refuses to start** if a bucket appears in both directions, and
-names the bucket.
-
-Desired state is a **mirror** because it has one origin, and the edge never
-writes it. The edge reads the last known values locally, which is what you
-need when the link is down. Reported state needs a **relay**. To combine N
-gateways with native sourcing, you would need N sources all named `KV_twin`,
-which the client library cannot express. The other choice, a different bucket
-name on each gateway, would push the problem into every rule that reads one.
-
 Sync is off by default, because it adds Data Plane traffic, and an upgrade must
 not start that silently.
 
 ### 6.1 Three things to know before you declare a bucket
 
-- **`keys:` is a KV key pattern in both directions**: `line-a.>`, never
-  `$KV.recipes.line-a.>`. The agent adds the `$KV.<bucket>.` prefix to a
-  mirror's subject filter, and rejects a `$KV.` that you write.
+- **Each bucket has one writer.** If both ends write one bucket, two values for
+  one key swap across the link without end. The agent refuses to start if a
+  bucket appears in both directions.
+- **You cannot narrow a mirror's `keys:` later.** `nats-server` rejects the
+  change, so you would delete and recreate the bucket on every gateway. Scope it
+  before rollout.
+- **For any bucket but the two presets, the hub side must already exist.** The
+  agent creates only the local side. The Control Plane cannot create it either,
+  because it holds the NATS Operator and no credential inside an organization's
+  account ([Health & Metrics §1](./health-metrics.md#1-why-this-exists-at-all)).
+  Create it with a *user* credential: the console, or `stone kv bucket create`.
+  Until it exists, the agent's `sync` readiness check warns.
 
-- **You cannot narrow a mirror's filter later.** `nats-server` rejects any change
-  to a mirror block on an existing stream. To change `keys:` on a mirror, delete
-  and recreate that bucket *on every gateway*. Scope it before rollout. The agent
-  reports a mismatch but cannot repair it.
-
-- **The agent creates hub-side buckets only for the two presets.** It creates
-  the local side of any declared bucket, but the hub side only of `twin` and
-  `twin_desired`. A typo that creates a stray local bucket affects one gateway.
-  A stray hub bucket would affect everyone, with retention one gateway guessed. For
-  any other bucket, the hub side must already exist. The Control Plane cannot
-  create it, because it holds the NATS Operator and no credential inside an
-  organization's account
-  ([Health & Metrics §1](./health-metrics.md#1-why-this-exists-at-all)). A
-  holder of a *user* credential must create it: the console, or
-  `stone kv bucket create`.
-
-If a declared bucket has no hub side, the agent reports it and does not create
-it. `agent_edge_sync_up{bucket,direction}` goes to `0`, and the agent's `sync`
-readiness check warns. It **warns**, not fails, because a cut-off edge with a
-backlog is working as designed. Watch `agent_edge_relay_pending{bucket}` for the
-backlog depth.
+Why desired state is a mirror and reported state a relay, the relay's retry
+and delete handling, and the sync metrics are in
+[Agent: leaf node §4](./vendor/agent/docs/leaf-node.md#4-kv-sync).
 
 ::: note `hub_domain` is cached
 Edge sync needs the hub's JetStream domain. The agent caches it in its platform

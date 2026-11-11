@@ -6,6 +6,8 @@ The pages are published to pb-wiki. Each file starts with frontmatter giving its
 
 `docs/vendor/` holds copies of the [agent](https://github.com/stone-age-io/agent), [rule-router](https://github.com/skeeeon/rule-router), [helpdesk](https://github.com/stone-age-io/helpdesk), [access-control](https://github.com/stone-age-io/access-control) and [services](https://github.com/stone-age-io/services) repository docs, published as the `agent`, `rule-router`, `helpdesk`, `access-control` and `services` wiki sections. Do not edit them here: change the docs upstream, then run `scripts/vendor-docs.sh` (it reads `../agent`, `../rule-router`, `../helpdesk`, `../access-control` and `../services` by default) and commit the result. Each `SOURCE` file records the commit the copies came from.
 
+Each topic has one owning page. Another page that needs it gives a sentence or two and links to the owner, rather than explaining it again. Generic NATS, JetStream, Nebula and PocketBase material belongs in `docs/concepts/`. How the Agent, rule-router and other vendored components work inside belongs in their vendored docs; a platform page covers only what the platform adds and links there for the rest.
+
 `docs/operations.md` §6.1 is the one table of the versions these docs describe. Update it in the same commit when you re-vendor, or when a page changes to follow a new release. Do not add a new version number to another page if a link to that table does the job.
 
 `docs/stability.md` lists the surfaces that 1.0 will keep stable. When a change touches one of them (a custom route, a `leaf-config` field, a config key, an Agent subject, a CLI command), update that page and the platform CHANGELOG in the same change.

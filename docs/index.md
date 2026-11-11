@@ -29,7 +29,7 @@ can adopt only what you need now.
 - **Enterprise IT** teams who manage infrastructure across buildings, offices,
   factories or cloud providers and must keep their data under their own control.
 
-## Where to start
+## Your first page
 
 | | Start here |
 | :--- | :--- |
@@ -159,25 +159,15 @@ events) publish their results back for the rules to act on.
 
 ### Deployment
 
-Each component is a single binary. Start with the Control Plane:
-`./stone-age init`, then `./stone-age serve --nats`, and open your browser
-([Getting Started](./getting-started.md)). The database, REST API and console
-are inside the binary, and `--nats` starts a NATS server inside it too, so the
-smallest working deployment is one process
-([ADR 0001](./decisions/0001-embedded-nats-server.md)).
-
-Add Nebula, `rule-router` and the Agent when you need them, on bare metal,
-containers or VMs. Run the Control Plane centrally, the Agent at the edge, and
-the rule engine where it suits your operations. NATS connects them. With
-`nebula.enabled` the Agent runs the device's Nebula host in-process, and with
-`nats.server_config` it also runs a leaf `nats-server`, so a gateway can run
-one binary. NATS and Nebula also run as their own upstream binaries when you
-want them separate. The Control Plane runs on Linux, macOS and Windows. The
-Agent and `rule-router` also run on FreeBSD.
-
-The Control Plane is a single-writer SQLite database and scales vertically. It
-stores low-traffic metadata, and device traffic never reaches it. Size it for
-console and API load, not for fleet size.
+Each component is a single binary, and the smallest working deployment is one
+process: `./stone-age init`, then `./stone-age serve --nats`
+([Getting Started](./getting-started.md)). Add Nebula, `rule-router` and the
+Agent when you need them, on bare metal, containers or VMs. A gateway can also
+run one binary, the Agent, which can host the Nebula host and the leaf server
+([The Agent](./agent.md)). The Control Plane runs on Linux, macOS and Windows.
+The Agent and `rule-router` also run on FreeBSD. See
+[Architecture §2](./architecture.md#2-component-topology) for every component,
+when to add it, and how each one scales.
 
 Self-hosted and hosted accounts run the same binaries, so you can move between
 them without a rebuild. Where a feature applies only to hosted accounts, the

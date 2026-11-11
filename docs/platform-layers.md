@@ -13,35 +13,17 @@ job. This page tells you which layer should solve a given problem.
 
 > **Planes describe *what the platform does*. Layers describe *how the runtime is composed*.**
 
-- **The Control Plane** (PocketBase) is the management side: identity,
-  inventory, provisioning and the embedded UI. It is the source of truth for
-  organizations, users, things, locations and credentials.
-- **The Data Plane** (NATS, JetStream, KV, Nebula) is the runtime. All
-  telemetry, commands and live state go through it.
-- **The Data Plane has four layers** (0 to 3). Layer 0 is always on. You add
-  Layers 1 to 3 when you need them.
-- **The Control Plane sits beside the Data Plane**, not in a layer. It
-  provisions the identities the Data Plane uses. It is also a narrow NATS client
-  on the System Account: it publishes credential updates on subjects such as
-  `$SYS.REQ.CLAIMS.UPDATE`. It does not carry tenant traffic such as telemetry,
-  rule traffic or device commands. The one exception is optional: inventory
-  events, published in the operator organization's account
-  ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports)).
-- **The Control Plane's access control is rule-based.** PocketBase API rules on
-  each collection decide who can read or change a record, from five roles per
-  organization and a Platform Operator flag. One hook also refuses any relation
-  into another Organization's records. The Data Plane's boundary is
-  cryptographic (NATS accounts, Nebula CAs). See [Authorization & Roles](./authorization.md).
+The **Control Plane** (PocketBase) manages identity, inventory and
+credentials. The **Data Plane** (NATS, JetStream, KV, Nebula) carries all
+telemetry, commands and live state. The Control Plane sits beside the Data
+Plane, not in a layer: it provisions the identities the Data Plane uses. See
+[Architecture §1](./architecture.md#1-control-plane-vs-data-plane) for the
+split, and [Key Properties of This Topology](./architecture.md#key-properties-of-this-topology)
+for what each plane does when the other restarts.
 
-If NATS runs as its own process, a PocketBase upgrade does not stop the Data
-Plane, and devices keep talking. In the one-process deployment (`serve --nats`,
-[ADR 0001](./decisions/0001-embedded-nats-server.md)) NATS runs inside the
-Control Plane binary. A restart of that binary is then a short outage of the
-whole bus. Run NATS separately to avoid this. If a Layer 3 TSDB goes offline,
-the Control Plane and the rest of the Data Plane are not affected.
-
-See [Architecture](./architecture.md) for the Control Plane and Data Plane in
-detail.
+This page is about the Data Plane's **four layers** (0 to 3). Layer 0 is always
+on. You add Layers 1 to 3 when you need them, and a Layer 3 outage does not
+affect the layers below it.
 
 ---
 
