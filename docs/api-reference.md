@@ -10,7 +10,7 @@ Most of the Stone-Age.io API is stock PocketBase REST on a collection, such as
 control it ([Authorization & Roles](./authorization.md)). The
 [PocketBase API docs](https://pocketbase.io/docs/api-records/) describe it.
 
-This page covers the **ten endpoints the platform adds**: nine under `/api/`,
+This page covers the **eleven endpoints the platform adds**: ten under `/api/`,
 and `/metrics`. Each application route exists because a PocketBase API rule
 cannot express what it does.
 
@@ -68,11 +68,14 @@ check, the route would let a caller steal another tenant's credential.
 | :--- | :--- |
 | A rule cannot allow only one field. The alternative is `:isset = false` on every other field, a deny-list that opens silently when someone adds a field. | `nats-creds/rotate`, `nats-account/keys`, `nebula-ca/rotate` |
 | One operation needs two authority levels | `org/things` |
-| The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `nebula/cert-audit`, `client-config` |
+| The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `account-jwt`, `nebula/cert-audit`, `client-config` |
 
 ---
 
 ## 3. Identity routes (`/api/me/*`)
+
+`GET /api/client-config` is not under `/api/me/`. It is in this section because
+it also depends only on the caller's session.
 
 ### `GET /api/client-config`
 
@@ -433,7 +436,7 @@ Unauthenticated, and **always on**. You cannot disable it.
 {
   "ready": true,
   "state": "warn",
-  "version": "0.8.0",
+  "version": "v0.16.0",
   "uptime": "4h12m",
   "took": "3ms",
   "checked": "2026-09-18T09:14:02Z",

@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.5.1
+VERSION=0.6.0
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -280,8 +280,8 @@ stone nebula-host edit edge-west                             # opens $EDITOR as 
   prefix.
 - A code, and a Thing's or Location's `--type`, are frozen once set. An update
   that changes the type returns 404. To fix a wrong type, delete and recreate.
-- `provision` without `--code`, `--prefix`, and lookups that ignore case need a
-  `stone` build newer than 0.5.1.
+- `provision` without `--code`, `--prefix`, and lookups that ignore case need
+  `stone` 0.6.0 or later.
 
 ### Provisioning a real device
 
@@ -535,29 +535,32 @@ stone nats pub demo.hello @msg.json --js      # JetStream publish, prints the ac
 stone nats sub 'demo.>'
 stone nats req demo.echo 'ping' --timeout 5s
 
-# KV data plane
-stone kv get twins device.42
-stone kv put twins device.42 '{"online":true}'
-stone kv put twins device.42 @./twin.json
-stone kv del twins device.42
-stone kv ls twins
-stone kv watch twins
+# KV data plane. Twin keys are <kind>.<code>.<prop>.
+stone kv get twin thing.S01.temp                     # reported state, written by the device
+stone kv put twin_desired thing.S01.setpoint '21'    # desired state
+stone kv put twin_desired thing.S01.config @./config.json
+stone kv del twin_desired thing.S01.setpoint
+stone kv ls twin
+stone kv watch twin
 
 # KV bucket lifecycle
 stone kv bucket ls
-stone kv bucket create twins --history 5 --ttl 720h
-stone kv bucket info twins
-stone kv bucket delete twins
+stone kv bucket create recipes --history 5 --ttl 720h
+stone kv bucket info recipes
+stone kv bucket delete recipes
 
 # JetStream streams
 stone js stream ls
-stone js stream create twins --subject 'twins.>' --max-age 24h --storage file
-stone js stream create twins --config stream.yaml      # advanced config from a file
-stone js stream info twins
-stone js stream view twins --last 20                  # newest first (alias: tail)
-stone js stream purge twins
-stone js stream delete twins
+stone js stream create CAMERA --subject 'camera.>' --max-age 24h --storage file
+stone js stream create CAMERA --config stream.yaml     # advanced config from a file
+stone js stream info CAMERA
+stone js stream view CAMERA --last 20                  # newest first (alias: tail)
+stone js stream purge CAMERA
+stone js stream delete CAMERA
 ```
+
+Do not write the `twin` bucket by hand. The device is its one writer
+([Architecture §4.1](./architecture.md#41-two-buckets-one-writer-each)).
 
 The console's digital twin and KV Dashboard use the same buckets and streams,
 and so do the rule engine and stream processors. See
@@ -616,14 +619,15 @@ service:
 ```sh
 stone nats-user update device-01 --revoke        # leaked: kill every copy, issue a replacement
 stone thing update reader-01 --active=false      # a device: suspend through the Thing (§4)
+stone nats-user update svc-01 --active=false     # an identity with no Thing (owner/admin)
 ```
 
-::: note No `--active` flag on `nats-user` in 0.5.1
+::: note Suspend a device through its Thing
 For a device, suspend the **Thing**. Its `active` flag suspends the linked NATS
-identity, its sessions and its Nebula host. For an identity with no Thing, run
-`stone nats-user edit <username>`, set `active: false` in the YAML, and save
-(owner/admin). `stone nats-user update <username> --active=false` is on
-stone-cli's main branch and not released yet. `pull` leaves out `active` on
+identity, its sessions and its Nebula host. While the Thing is deactivated, the
+server refuses a change to `active` on its NATS user. Use
+`stone nats-user update <username> --active=false` only for an identity with no
+Thing. The flag needs `stone` 0.6.0 or later. `pull` leaves out `active` on
 `nats_users`, so `apply` cannot change it.
 :::
 
@@ -724,7 +728,7 @@ When command shapes change, update both files.
 - `nats-account` and `nebula-ca` are read-only for every tenant role. Only a
   Platform Operator can update them. Owners and admins manage signing keys with
   `stone nats account-keys`, not `stone nats-account update`.
-- `auth login` is always interactive.
+- `auth login` prompts unless you pass both `--email` and `--password`.
 - There is no CLI upload for file fields: a Thing's and a Location's `photo`, a
   Location's `floorplan`, an Organization's `logo` and a user's `avatar`. Set
   them in the console. All are **protected**, so reading one needs a file token,

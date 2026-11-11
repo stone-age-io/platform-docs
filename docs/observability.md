@@ -147,6 +147,11 @@ flowchart LR
 Configure Telegraf with a NATS input and a VictoriaMetrics output:
 
 ```toml
+## One Telegraf process serves one organization. This tag puts the
+## organization's code on every series, and the join in §5 uses it.
+[global_tags]
+  org = "acme"
+
 [[inputs.nats_consumer]]
   ## NATS Servers to connect to
   servers = ["nats://nats.acme.io:4222"]
@@ -246,7 +251,9 @@ avg by (location) (
 )
 ```
 
-Join on `(org, thing)`, because a code is unique only in its organization.
+Join on `(org, thing)`, because a code is unique only in its organization. The
+`org` label comes from `[global_tags]` in each organization's Telegraf config
+(§4).
 `@ end()` reads the inventory once, at the end of the range, and applies it to
 every reading in the range:
 

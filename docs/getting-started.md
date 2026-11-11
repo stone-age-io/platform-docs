@@ -107,7 +107,7 @@ Download `stone-age`, the Control Plane, for your architecture from the
 
 ### From source
 
-You need Go 1.26+ and Node.js 20.19+ or 22.12+ (Vite's minimum).
+You need Go 1.27+ and Node.js 20.19+ or 22.12+ (Vite's minimum).
 
 ```bash
 git clone https://github.com/stone-age-io/platform.git

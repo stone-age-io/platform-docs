@@ -101,7 +101,7 @@ Every rule has the same **Trigger, Condition, Action** structure:
 For the full YAML syntax, variables and functions, `forEach` over arrays,
 payload modes (`passthrough`, `merge`) and signature verification, see the
 [rule-router documentation](./vendor/rule-router/README.md). This page
-describes rule-router **v0.20.0**.
+describes rule-router **v0.22.0**.
 
 ---
 
@@ -247,7 +247,8 @@ third-party APIs.
 
 Every message on `alerts.>` becomes a Slack notification. With the retry block,
 a short Slack outage does not lose alerts. Retries are durable and respect
-graceful shutdown.
+graceful shutdown. The engine does not retry a `4xx` response other than `408`
+or `429`, because a second attempt cannot succeed.
 
 ### Use the gateway for
 
@@ -468,9 +469,10 @@ any alarm, into one:
   today, so a target that comes back `up` does not resolve its ticket. Whoever
   works the ticket resolves it. A second rule can still send an `up`
   notification.
-- **`thing_code` links the ticket to inventory.** If your targets are Thing
-  codes, add `"thing_code": "{target}"`, and the ticket is joined to the Thing
-  for reporting. See the Helpdesk [wire protocol](./vendor/helpdesk/docs/protocol.md#2-nats-ticket-events).
+- **`thing` is free text. `thing_code` links the ticket to inventory.** The
+  Helpdesk stores `thing` as a note and resolves nothing from it. If your
+  targets are Thing codes, also add `"thing_code": "{target}"`, and the ticket
+  is joined to the Thing for reporting. See the Helpdesk [wire protocol](./vendor/helpdesk/docs/protocol.md#2-nats-ticket-events).
 
 Escalation then happens where people work: the ticket's priority, assignee and
 the Helpdesk's own notifications. The rule's only job is to open it once.

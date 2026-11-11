@@ -241,12 +241,16 @@ Layer 3 answers questions about the past.
   week's."
 - **Visualization** in Grafana or Perses.
 
-Layer 3 only reads from NATS. Telegraf subscribes to telemetry through a durable
-JetStream consumer and writes to a TSDB. Grafana or Perses queries the TSDB.
+Layer 3 only reads from NATS. Telegraf subscribes to telemetry and writes to a
+TSDB. Grafana or Perses queries the TSDB.
 
 A Layer 3 failure does not affect Layers 0 to 2. If VictoriaMetrics is down,
-data still moves on NATS, JetStream keeps it, and Telegraf catches up when the
-TSDB returns. Your history dashboards fall behind, but live operation continues.
+data still moves on NATS and live operation continues. Telegraf holds a limited
+buffer in memory and writes it when the TSDB returns. A long outage leaves a gap
+in your history. A plain subscription also misses what was published while
+Telegraf itself was down. For history with no gaps, Telegraf must read through a
+JetStream consumer. See
+[Observability §3](./observability.md#3-data-flow-architecture).
 
 **You are at this layer when:**
 
