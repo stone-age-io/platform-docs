@@ -23,6 +23,8 @@ below, or use search in the sidebar.
 
 - **New to the platform:** [Getting Started](./getting-started.md) runs it in one
   container and seeds a demo.
+- **Adding a customer:** [Onboard a Tenant](./onboard-a-tenant.md).
+- **Connecting a device:** [Connect Your First Device](./first-device.md).
 - **New to NATS:** [Messaging](./concepts/messaging.md), then
   [NATS Security](./concepts/nats-security.md).
 - **Installing an agent:** the [Linux](./vendor/agent/docs/linux.md),

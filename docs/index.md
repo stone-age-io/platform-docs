@@ -25,7 +25,8 @@ can adopt only what you need now.
 | | Start here |
 | :--- | :--- |
 | **Just show me what it does** | [Getting Started](./getting-started.md). One container, then `demo-seed` gives you three tenants, a map, floor plans, signed identities and edge gateways. |
-| **I run an integration business** | [Authorization & Roles](./authorization.md) for the tenancy model, then [Stone CLI](./stone-cli.md) to configure many sites from one workspace. |
+| **I run an integration business** | [Onboard a Tenant](./onboard-a-tenant.md) for a customer's first day, [Authorization & Roles](./authorization.md) for the tenancy model, then [Stone CLI](./stone-cli.md) to configure many sites from one workspace. |
+| **I have a device to connect** | [Connect Your First Device](./first-device.md). A record, a signed identity and a first message on the bus. |
 | **I run IT or operations for a facility** | [Connectivity](./connectivity.md) for how equipment reaches the bus, then [Observability](./observability.md) to send events to the stack you already run. |
 | **I am evaluating the engineering** | [Architecture](./architecture.md), [API Reference](./api-reference.md) and the [decision records](./decisions.md). |
 

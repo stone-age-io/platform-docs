@@ -461,6 +461,8 @@ as it is reachable, and the cluster is current on the day you add a device.
 
 Each addition is a separate binary on the same NATS bus.
 
+- Follow [Connect Your First Device](./first-device.md) to put one device on
+  the bus, and [Onboard a Tenant](./onboard-a-tenant.md) to add a customer.
 - Define [Thing Types](./thing-types.md) to declare each participant's subjects.
 - Install the [Agent](./agent.md) on a Linux or Windows machine to collect
   telemetry.
