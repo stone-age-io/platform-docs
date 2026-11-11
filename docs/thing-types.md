@@ -504,7 +504,7 @@ the same suffix (§6).
 ## 10. Where to Go Next
 
 - [Architecture](./architecture.md): the Control Plane, the Data Plane and the digital twin
-- [Platform UI and Entities](./platform-ui-entities.md): the records the console manages
+- [Platform Entities](./platform-ui-entities.md): the records the console manages
 - [Authorization & Roles](./authorization.md): who can read and change a contract
 - [Connectivity](./connectivity.md): NATS, where the resolved subjects go
 - [Automation](./automation.md): rules that use the subjects Thing Types declare

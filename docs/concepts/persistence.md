@@ -187,7 +187,7 @@ cannot read them unless an export and an import share them
   to create, change or read streams and buckets.
 - **There is no HTTP API for streams.** The console, the `stone` CLI and the
   `nats` CLI create streams and buckets over a NATS connection. See
-  [Platform Entities §5](../platform-ui-entities.md#jetstream-streams-and-kv-buckets).
+  [Platform Entities §5](../console.md#4-jetstream-streams-and-kv-buckets).
 
 ---
 

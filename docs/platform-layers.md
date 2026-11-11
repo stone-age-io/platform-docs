@@ -358,7 +358,7 @@ of them without changes to the others.
 ## 9. Where to Go Next
 
 - Control Plane and Data Plane: [Architecture](./architecture.md)
-- Layer 0: [Connectivity](./connectivity.md), [Platform UI & Entities](./platform-ui-entities.md)
+- Layer 0: [Connectivity](./connectivity.md), [Platform Entities](./platform-ui-entities.md), [The Console](./console.md)
 - Layer 1: [Automation](./automation.md)
 - Layer 2: [Stream Processing](./stream-processing.md)
 - Layer 3: [Observability](./observability.md)

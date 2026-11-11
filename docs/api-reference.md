@@ -45,7 +45,7 @@ Two more endpoints are not in the table, because they do not replace a rule:
   `/api/files/...` accepts only a short-lived *file* token (`?token=`) from this
   endpoint and checks it against the collection's view rule. **An auth token is
   not a file token.** A URL with an auth token returns `404`. See
-  [Platform Entities §5](./platform-ui-entities.md#photos-and-file-fields).
+  [Platform Entities §5](./console.md#7-photos-and-file-fields).
 
 ---
 

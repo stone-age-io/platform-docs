@@ -173,7 +173,7 @@ these steps in detail.
 ## 9. Where to Go Next
 
 - Put the tenant's first device on the bus: [Connect Your First Device](./first-device.md)
-- The tenant's inventory: [Platform Entities & UI](./platform-ui-entities.md)
+- The tenant's inventory: [Platform Entities](./platform-ui-entities.md)
 - What each role can do: [Authorization & Roles](./authorization.md)
 - Many tenants from one workspace: [Stone CLI](./stone-cli.md)
 - Suspending and deleting a tenant: [Authorization §3.1](./authorization.md#31-suspending-an-organization)

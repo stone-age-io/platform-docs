@@ -452,7 +452,7 @@ as it is reachable, and the cluster is current on the day you add a device.
 `init` has already written the config, so `serve --nats` is one command and no extra process.
 
 - Build Location Types and the location tree, then place Things on floor plans.
-  See [Platform Entities & UI](./platform-ui-entities.md).
+  See [Platform Entities](./platform-ui-entities.md).
 - Import an existing asset register with the REST API or `stone`.
 - Go to §3 when you need messaging. Your records stay the same and gain
   identities.

@@ -109,7 +109,7 @@ own secret. So only the server can check it.
   deactivate a Thing.
 - **A token is not a file token.** To download a protected file, get a
   short-lived file token from `POST /api/files/token`. See
-  [Platform Entities §5](../platform-ui-entities.md#photos-and-file-fields).
+  [Platform Entities §5](../console.md#7-photos-and-file-fields).
 
 ---
 
@@ -205,6 +205,6 @@ the API, the console or the admin panel.
 
 - The routes the platform adds: [API Reference](../api-reference.md)
 - Who can read and write each collection: [Authorization](../authorization.md)
-- The records and the console: [Platform Entities & UI](../platform-ui-entities.md)
+- The records and the console: [Platform Entities](../platform-ui-entities.md) and [The Console](../console.md)
 - Live state, which is not in SQLite: [Persistence §3](./persistence.md#3-kv-buckets)
 - Backups and restores: [Operations](../operations.md)

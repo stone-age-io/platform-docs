@@ -5,7 +5,7 @@ nav_order: 100
 # Stone CLI
 
 `stone` is the command-line client for Stone-Age.io. It does from a terminal
-what the [Stone Age Console](./platform-ui-entities.md) does in a browser:
+what the [Stone Age Console](./console.md) does in a browser:
 
 - Manage tenant records: Things, Locations, Thing Types and operations,
   memberships, NATS users and roles, Nebula hosts.
@@ -559,7 +559,7 @@ Do not write the `twin` bucket by hand. The device is its one writer
 
 The console's digital twin and KV Dashboard use the same buckets and streams,
 and so do the rule engine and stream processors. See
-[Platform Entities & UI](./platform-ui-entities.md#jetstream-streams-and-kv-buckets)
+[Platform Entities](./console.md#4-jetstream-streams-and-kv-buckets)
 and [Automation](./automation.md).
 
 > **`stone` does not manage JetStream consumers.** Use the `nats` CLI for that.
@@ -727,7 +727,7 @@ When command shapes change, update both files.
 - There is no CLI upload for file fields: a Thing's and a Location's `photo`, a
   Location's `floorplan`, an Organization's `logo` and a user's `avatar`. Set
   them in the console. All are **protected**, so reading one needs a file token,
-  not the auth token ([Platform Entities](./platform-ui-entities.md#photos-and-file-fields)).
+  not the auth token ([Platform Entities](./console.md#7-photos-and-file-fields)).
 - **The CLI's field list is maintained by hand**, not generated from the
   platform's `schema.json`, so it can fall behind a platform release. If a field
   is in the console but has no flag, check `cmd/entity.go` in the `stone-cli`
@@ -738,7 +738,7 @@ When command shapes change, update both files.
 ## 11. Where to Go Next
 
 - Start a server for `stone`: [Getting Started](./getting-started.md)
-- The records the CLI manages: [Platform Entities & UI](./platform-ui-entities.md)
+- The records the CLI manages: [Platform Entities](./platform-ui-entities.md)
 - What your role can change: [Authorization & Roles](./authorization.md)
 - The HTTP routes behind non-record commands: [API Reference](./api-reference.md)
 - Thing Types and operations: [Thing Types](./thing-types.md)

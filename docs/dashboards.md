@@ -191,14 +191,14 @@ bucket can change the value.
 | :--- | :--- |
 | **Markdown** | Text and images, such as runbook links, a legend or a note about the screen. It can read a subject or a KV key, and `{{field.path}}` shows a value from the latest payload. The output is sanitised, so a payload cannot inject script. |
 | **Map** | Live markers on a vector basemap. Up to 50 markers you place by hand, each fixed or moved live from a subject (lat/lon by JSONPath), with up to 10 popup items each: KV values, text from a subject, publish buttons and switches. Optional **dynamic markers** come from a KV bucket, one per key under a pattern (`vehicles.>`), up to 500. Clustering and fit-to-markers are optional. |
-| **Floor Plan** | A Location's floor plan, with its Things on it and their live state. You place Things on the plan on the [Location detail view](./platform-ui-entities.md); the widget stores no positions. Each *binding* gives one Thing Type a state source (a subject suffix, or a KV key template such as `thing.{thing}.state`), a colour per value, and the rows its panel shows. |
+| **Floor Plan** | A Location's floor plan, with its Things on it and their live state. You place Things on the plan on the [Location detail view](./console.md#2-map-and-floor-plans); the widget stores no positions. Each *binding* gives one Thing Type a state source (a subject suffix, or a KV key template such as `thing.{thing}.state`), a colour per value, and the rows its panel shows. |
 | **Console** | A raw live log of every message on the widget's subscription. Add it first when nothing seems to arrive. |
 
 ### Tools
 
 | Widget | What it does |
 | :--- | :--- |
-| **Scanner** | Scans a QR code with the device camera, then looks it up in KV or PocketBase, checks it against rules, and can publish the result. [Platform labels](./platform-ui-entities.md#codes-and-qr-labels) hold a bare Location or Thing code, and `{value}` in a key template or filter takes it, so `code = "{value}"` finds a printed label. The scanner never opens the decoded text as a link. |
+| **Scanner** | Scans a QR code with the device camera, then looks it up in KV or PocketBase, checks it against rules, and can publish the result. [Platform labels](./platform-ui-entities.md#5-codes-and-qr-labels) hold a bare Location or Thing code, and `{value}` in a key template or filter takes it, so `code = "{value}"` finds a printed label. The scanner never opens the decoded text as a link. |
 
 ---
 
@@ -275,7 +275,7 @@ To set up the screen:
 The twin browser on a Thing or Location detail view is separate from the
 Visualizer. It shows the KV keys under `thing.<code>` or `location.<code>`, with
 reported and desired values side by side. See
-[Platform Entities & UI](./platform-ui-entities.md#the-digital-twin) and
+[Platform Entities](./console.md#3-the-digital-twin) and
 [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
 
 A KV or KV Table widget can read the same buckets, but it shows one bucket. The

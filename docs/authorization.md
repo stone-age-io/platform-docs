@@ -528,7 +528,7 @@ nothing, but a menu that offers an action the rules reject is a bug.
 
 ## 8. Where to Go Next
 
-- The records these rules protect: [Platform Entities & UI](./platform-ui-entities.md)
+- The records these rules protect: [Platform Entities](./platform-ui-entities.md)
 - Every route on this page: [API Reference](./api-reference.md)
 - The same rules from the terminal: [Stone CLI](./stone-cli.md)
 - The edge identity model: [Leaf Nodes](./leaf-nodes.md)

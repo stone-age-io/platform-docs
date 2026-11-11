@@ -260,7 +260,7 @@ missing file falls back to its default. A starting template is in
 it.** The sidebar mark and the login screen always use `branding`. The sidebar
 brand is also the link to `/`, and it must not change when a user switches
 organization. A tenant's logo shows in the **org switcher**. The
-[QR label](./platform-ui-entities.md#codes-and-qr-labels) shows neither. A label
+[QR label](./platform-ui-entities.md#5-codes-and-qr-labels) shows neither. A label
 belongs to one organization, so it has that organization's code and the
 record's code and name.
 
