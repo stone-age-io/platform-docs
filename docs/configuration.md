@@ -181,9 +181,8 @@ protect credentials already issued:
 
 So if someone steals the database but not the key, they cannot mint new
 identities, but they have **every credential already issued**. Protect against
-that with disk encryption, encrypted backups and host access control. When
-encryption is on, the readiness check says *"minting keys; issued credentials are
-plaintext by construction"*. The platform repository's
+that with disk encryption, encrypted backups and host access control. The
+platform repository's
 [`SECURITY.md`](https://github.com/stone-age-io/platform/blob/main/SECURITY.md) explains
 what a stolen database does and does not give an attacker.
 :::
@@ -212,9 +211,7 @@ PocketBase's `--encryptionEnv` flag encrypts **app settings**: SMTP passwords,
 S3 credentials, OAuth2 secrets. It does **not** encrypt the NATS and Nebula
 columns above, which belong to this platform, not PocketBase.
 
-You need both. `--encryptionEnv` is a CLI flag. These are `config.yaml` keys. A
-checklist that stops at `--encryptionEnv` leaves every tenant's CA private key
-in plaintext.
+You need both: `--encryptionEnv` is a CLI flag, and these are `config.yaml` keys.
 :::
 
 ### `nebula`
@@ -285,23 +282,8 @@ username. No metric has a per-organization label. See
 [Health & Metrics](./health-metrics.md) for the checks, metric names and alert
 expressions.
 
-### `observability` (the Agent, not this file)
-
-The edge agent's own `/ready` and `/metrics`. These keys go in the **Agent's**
-`config.yaml`, not the Control Plane's. **On by default, on loopback.**
-
-| Key | Type | Default | Purpose |
-|---|---|---|---|
-| `addr` | string | `"127.0.0.1:9100"` | Listen address. Empty means no listener. The checks still run and log. |
-| `metrics_token` | string | `""` | Like `metrics.token` above. Set it before you move `addr` off loopback. |
-| `interval` | string | `"15s"` | Probe interval. |
-
-This is **not** a gateway setting. Every Agent serves these endpoints, because
-`cmd.health` goes over NATS, and NATS is the link that fails. **9100 is
-node_exporter's default port** on Linux and FreeBSD, so on a box that runs both,
-move one. Windows is not affected (`windows_exporter` uses 9182). See
-[Health & Metrics §5](./health-metrics.md#5-the-edge-agent) and
-[Leaf Nodes](./leaf-nodes.md).
+The Agent's own `/ready` and `/metrics` are set in the **Agent's** config, not
+this file: see [Health & Metrics §5](./health-metrics.md#5-the-edge-agent).
 
 ---
 
@@ -373,14 +355,6 @@ They apply to all subcommands (`serve`, `init`, `migrate`, `bootstrap`, `nats ex
 - **Do not change `operator_name` after the first run.** The NATS Operator JWT
   is generated once, when the first SuperUser is created. A rename would orphan
   the existing identity hierarchy.
-- **Audit retention runs on a schedule, not on every write.** A wrong
-  `interval` only delays cleanup.
-- **The schema is embedded in the binary.** A change to the embedded
-  `schema.json` reaches **new databases only**. To change the schema or an API
-  rule on an existing deployment, add a new `migrations/schema_update_*.go` file,
-  which runs at startup. This is the most common way a rule fix fails to ship.
-  See [Authorization §7](./authorization.md#7-changing-the-rules) and
-  [Operations §5.1](./operations.md#51-how-upgrades-work).
 - **API rules are the platform's authorization.** Nothing in `config.yaml`
   grants or limits access. The rules in the embedded schema do all of it, with
   one hook that refuses a relation into another organization. See
