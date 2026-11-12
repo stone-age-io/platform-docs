@@ -274,6 +274,9 @@ stone nebula-host edit edge-west                             # opens $EDITOR as 
 - `stone thing create`, `stone location create` or `stone thing provision`
   without `--code` gets a code such as `CA-9KD-4PX` under the type's prefix.
   `provision` prints it. For the others, use `-o yaml` or a later `get`.
+- For a device that signs in, use `stone thing provision`, or pass `--code` to
+  `thing create`. Typed `thing create` also needs `--email`, and the email
+  contains the code, which you do not know before the server generates it.
 - A code you pass is stored as you typed it.
 - Set a type's prefix with `--prefix` on `thing-type` or `location-type` (1 to 4
   capitals). A Thing Type and a Location Type in one organization cannot share a
@@ -423,7 +426,7 @@ Keep a tenant's whole configuration as YAML files in a `git` repo:
 
 ```sh
 mkdir my-workspace && cd my-workspace && git init
-stone pull --set-workspace .      # writes <collection>/<key>.yaml, one file per record
+stone pull --workspace . --set-workspace   # writes <collection>/<key>.yaml, one file per record
 # …edit files, commit for review…
 stone apply                       # sends the workspace back to the server
 ```
@@ -443,8 +446,15 @@ into batches of up to 50, and sends them through PocketBase's transactional
 `/api/batch` endpoint. It PATCHes records with an `id`. It POSTs records
 without one and writes the new id **back into the file**.
 
-- **Idempotent.** Running `apply` again with no changes does nothing. File
-  names do not matter: `apply` uses only the `id` field in each file.
+- **Safe to repeat, but not a diff.** `apply` PATCHes every file that has an
+  `id`, changed or not, so a second run sends the same values again. File names
+  do not matter: `apply` uses only the `id` field in each file.
+- **Some pulled records are read-only for tenant roles.** Only a Platform
+  Operator can update `organizations/`, `nats_accounts/` and `nebula_ca/`.
+  `pull` also writes your own Memberships in other organizations. Where you are
+  not an Owner or Admin, the rule refuses a PATCH that sends `role`. If you
+  apply the whole workspace, each of these records fails. Pass only the paths
+  you manage, for example `stone apply things/ locations/`.
 - **No deletes.** `apply` leaves alone any server record that has no local file.
   To delete, use `stone <type> delete <id|key>` or the console.
 - **Reviewable.** In `git` you get diff, history, blame and PR review of your
@@ -719,7 +729,12 @@ When command shapes change, update both files.
 - **The CLI's field list is maintained by hand**, not generated from the
   platform's `schema.json`, so it can fall behind a platform release. If a field
   is in the console but has no flag, check `cmd/entity.go` in the `stone-cli`
-  repo.
+  repo. These fields have no flag today:
+    - `allowed_importers` on `nats-export` ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports)).
+    - `additional_host_ports`, `advertise_addrs` and `local_allow_list` on
+      `nebula-host` ([Connectivity §2](./connectivity.md#2-nebula)).
+
+  Set them with `stone <type> edit`, with `apply`, or in the console.
 
 ---
 

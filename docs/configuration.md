@@ -8,7 +8,9 @@ The platform binary (`stone-age`) reads its configuration from these sources,
 highest priority first:
 
 1. **Environment variables** prefixed with `STONE_AGE_`. They override
-   everything.
+   everything except the `--nats` and `--nats-config` flags. When you pass one
+   of those flags, it wins over `STONE_AGE_NATS_EMBEDDED` or
+   `STONE_AGE_NATS_EMBEDDED_CONFIG`.
 2. **The `--config /path/to/config.yaml` flag**, which loads a specific file.
 3. **A `config.yaml` found automatically**, in `./` first, then
    `/etc/stone-age/`.
@@ -353,8 +355,9 @@ They apply to all subcommands (`serve`, `init`, `migrate`, `bootstrap`, `nats ex
 ## 5. Operational Notes
 
 - **Do not change `operator_name` after the first run.** The NATS Operator JWT
-  is generated once, when the first SuperUser is created. A rename would orphan
-  the existing identity hierarchy.
+  is generated once, on the binary's first run against a new database. That is
+  usually `init`. A rename would orphan the existing identity hierarchy. Set
+  the encryption keys (§2.2) before that first run too.
 - **API rules are the platform's authorization.** Nothing in `config.yaml`
   grants or limits access. The rules in the embedded schema do all of it, with
   one hook that refuses a relation into another organization. See

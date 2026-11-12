@@ -210,7 +210,7 @@ Working around that takes a trick that picks the newest info series for each `th
 2. **Demo seed:** a `viewer` service user per demo organization.
 3. **Demo rules:** poll and fan-out rules for `things` and `locations`, plus the truncation guard, in `demo/rules/northwind`. Add nats-auth-manager config beside them. *(Amended: in `demo/inventory`, run as a separate rule-router.)*
 4. **Demo Telegraf:** collapse to one reading parser (`kind`, `thing`), and add the two inventory inputs.
-5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-labelreplace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces. *(Open: the queries are written, in `demo/telegraf/README.md`, and not yet run.)*
+5. **Demo dashboards:** one example each of the three patterns in [rule 6](#6-three-grafana-patterns-and-no-label_replace). Confirm that MetricsQL supports `@ end()`, and confirm the series names VictoriaMetrics produces. *(Open: the queries are written, in `demo/telegraf/README.md`, and not yet run.)*
 6. **Docs:** [Observability](../observability.md) gains the inventory pipeline and the join. [Platform Entities](../platform-ui-entities.md) documents `path`.
 
 ---

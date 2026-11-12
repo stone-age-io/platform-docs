@@ -247,9 +247,12 @@ nats kv put watchdog_checks rooms '{
   action:
     nats:
       subject: "room.{target}.lights"
+      mode: core
       payload: '{"on": false}'
 ```
 
+- **The action uses `mode: core`**, because a command subject usually has no
+  stream. A JetStream publish to it waits for an ack that never arrives.
 - **Turn the lights on from the motion itself,** with an ordinary rule on
   `room.*.motion`. The Watchdog only marks the room `up` on the next
   evaluation, and only writes when the state changes.

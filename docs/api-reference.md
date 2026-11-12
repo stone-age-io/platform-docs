@@ -93,7 +93,7 @@ build time. Requires a `users` session.
 
 The value is `nats.websocket_urls`, the address a browser dials, never derived
 from `nats.server_url`
-([Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses)).
+([Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses)).
 An empty list means "not configured", and the console uses its built-in
 `ws://localhost:9222`. A device can override it in Settings.
 

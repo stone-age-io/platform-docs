@@ -33,7 +33,7 @@ Three rules follow from the table:
 
 - **A command does not go in KV.** A "reboot now" that stays in a bucket runs
   again at the next start. Send it as a message. See
-  [Architecture §4.2](../architecture.md#42-what-belongs-in-twindesired-and-what-does-not).
+  [Architecture §4.2](../architecture.md#42-what-belongs-in-twin_desired-and-what-does-not).
 - **Intent that must survive a restart is not a command.** Access control sends
   a door's posture override as a command, and a reboot clears it. It writes an
   area's arm state to a record instead, because a reboot must not disarm a

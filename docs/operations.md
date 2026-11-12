@@ -152,16 +152,20 @@ CLI that uses the same backup API from scripts. Use it for pre-upgrade backups,
 extra offsite copies and restore rehearsals. Backup operations need SuperUser
 auth.
 
+A backup name must match `^[a-z0-9_-]+\.zip$`: lowercase letters, digits, `_`
+and `-`, then `.zip`. PocketBase refuses any other name. The name is also the
+key that `download`, `restore` and `delete` take.
+
 ```sh
 # One-time setup
 pb context create prod --url https://platform.acme.io
 pb auth --collection _superusers
 
 # On-demand, e.g. from cron or a pre-upgrade hook
-pb backup create --name "pre-upgrade-$(date +%Y%m%d-%H%M)"
+pb backup create --name "pre-upgrade-$(date +%Y%m%d-%H%M).zip"
 
 # Pull a copy off the platform host entirely
-pb backup download "pre-upgrade-20260610-0900" /mnt/backup-vault/
+pb backup download "pre-upgrade-20260610-0900.zip" /mnt/backup-vault/
 
 # Prune: keep the five newest, delete the rest (careful!)
 pb backup list --output json \
@@ -201,6 +205,25 @@ git. It is a readable, diffable record of tenant configuration, useful for
 audits and selective rebuilds. It is not a backup, because it has no secrets or
 identity material.
 
+### 3.5 The container
+
+The container from [Getting Started](./getting-started.md#the-short-version)
+always runs the NATS server inside the Control Plane. All of its state is on the
+`/data` volume:
+
+| Path | What it holds |
+| :--- | :--- |
+| `/data/pb_data` | The Control Plane database and uploads. A native backup holds this directory only. |
+| `/data/nats-config` | `nats.conf`, the account JWTs and the JetStream store, `twin_desired` included. |
+
+Back up the whole volume, not only `pb_data`. Stop the container first, or take
+a filesystem snapshot, so that the JetStream store is consistent.
+
+Restore `pb_data` and `nats-config` together. The entrypoint uses
+`nats-config/nats.conf` as its first-boot marker. If the file is missing, the
+container runs `stone-age init` again and stops unless
+`STONE_AGE_BOOTSTRAP_PASSWORD` is set.
+
 ---
 
 ## 4. Recovery
@@ -212,7 +235,7 @@ To undo a bad change:
 ```sh
 pb auth --collection _superusers
 pb backup list
-pb backup restore nightly-20260609   # confirms before acting; the server restarts itself
+pb backup restore nightly-20260609.zip   # confirms before acting; the server restarts itself
 ```
 
 Or use the admin UI (**Settings → Backups** → restore). For filesystem damage
@@ -276,7 +299,7 @@ To upgrade:
 1. **Read the release notes**, in the platform's
    [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md).
    Before 1.0, a release can have breaking changes. The notes list them.
-2. **Back up.** Run `pb backup create --name "pre-upgrade-vX.Y.Z"`, take a ZFS
+2. **Back up.** Run `pb backup create --name "pre-upgrade-$(date +%Y%m%d).zip"`, take a ZFS
    snapshot, or both.
 3. **Replace the binary.**
 4. **Restart the service.** Migrations run, then the server starts.
@@ -302,12 +325,12 @@ Read the notes and back up first. After 1.0, standard semver applies.
 ```sh
 # Copy production state to staging
 pb context select production && pb auth --collection _superusers
-pb backup create --name "rehearsal-source"
-pb backup download rehearsal-source ./rehearsal.zip
+pb backup create --name "rehearsal-source.zip"
+pb backup download rehearsal-source.zip ./rehearsal.zip
 
 pb context select staging && pb auth --collection _superusers
-pb backup upload ./rehearsal.zip --name "from-prod"
-pb backup restore from-prod
+pb backup upload ./rehearsal.zip --name "from-prod.zip"
+pb backup restore from-prod.zip
 
 # Now run the NEW binary against staging and watch the migrations apply
 ```
@@ -364,6 +387,13 @@ the same store directory. Only the process that runs the file changes.
    your `stone-age` release.
 3. Remove `--nats`, or set `nats.embedded: false`. Start the Control Plane.
 4. Check that devices reconnect and twins update.
+
+In the container, the entrypoint always passes `--nats`, and the flag wins over
+`nats.embedded`. Start the container with `--entrypoint stone-age` and the
+command `serve --http 0.0.0.0:8090 --dir /data/pb_data`. Mount the same volume
+at `/data` for `nats-server`, because the paths in `nats.conf` are absolute. If
+`nats-server` runs in another container, set `STONE_AGE_NATS_SERVER_URL` to its
+address.
 
 The outage is as long as one Control Plane restart. After this, a Control Plane
 restart does not stop the bus.
@@ -453,7 +483,7 @@ other's code.
 | :--- | :--- | :--- |
 | **Stone Age Console** (embedded UI) | Ships inside the `stone-age` binary | Always matches the schema. |
 | **`stone` CLI** | PocketBase REST API and the platform's collections schema; NATS protocol | The REST API is stable upstream PocketBase. Additive schema changes do not break the CLI. Before 1.0, the release notes flag breaking schema changes. |
-| **Agent** | PocketBase auth API (bootstrap only) and NATS protocol | After bootstrap it is a plain NATS client. |
+| **Agent** | PocketBase API and NATS protocol | It signs in at bootstrap. After that it reads its credentials from the platform again at intervals, so the platform must stay reachable ([The Agent](./agent.md)). |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
 | **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([§6.1](#61-the-versions-these-docs-describe)) or a newer one. |

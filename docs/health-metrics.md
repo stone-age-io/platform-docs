@@ -142,7 +142,7 @@ Migrations do not roll back, so an older binary on newer `pb_data` runs against
 columns and rules it does not know, with unpredictable results.
 
 **`nats_reachable` dials `nats.server_url`, never the browser's address.** See
-[Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses).
+[Configuration §2.1](./configuration.md#21-server_url-and-websocket_urls-are-different-addresses).
 
 ### The prober caches; the endpoint never runs checks
 

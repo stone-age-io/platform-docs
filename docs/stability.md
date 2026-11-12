@@ -131,7 +131,7 @@ These surfaces are not yet in the state that the contract needs:
   platform's schema ([Stone CLI §10](./stone-cli.md#10-limitations)).
 - **An update that a rule refuses returns `404`, not `403`.** This is
   PocketBase behavior, and clients must not read `404` as "no such record"
-  ([Authorization §7](./authorization.md#7-changing-the-rules)).
+  ([HTTP API](./concepts/http-api.md#what-a-failed-rule-returns)).
 - **Step 3 of ADR 0001, config reload, is not built.** A change to `nats.conf`
   under `serve --nats` needs a Control Plane restart
   ([ADR 0001](./decisions/0001-embedded-nats-server.md#as-implemented)).

@@ -323,7 +323,8 @@ config.
 
 ### Per-host tuning
 
-Three optional overrides. All are config only, and each has a default:
+Six optional overrides. All are config only. When one is unset, the generated
+config leaves it out or uses the default:
 
 - **`preferred_ranges`:** **underlay** prefixes this host should prefer when a
   peer has several addresses, usually the host's LAN. Two machines in one rack
@@ -331,12 +332,28 @@ Three optional overrides. All are config only, and each has a default:
   `172.16.0.5/24`).
 - **`mtu`:** default 1300. Lower it on a path that fragments.
 - **`tun_device`:** the interface name, default `nebula1`.
+- **`additional_host_ports`:** for a lighthouse, more addresses that peers can
+  use to reach it, after `public_host_port`. Use it for a dual-stack
+  lighthouse, a second internet path, or a LAN address for peers in the same
+  rack. Every host in the network gets these entries, so the limit is 8.
+- **`advertise_addrs`:** the addresses this host reports about itself to the
+  lighthouses. Behind cloud 1:1 NAT the host sees only its private address, so
+  set its public address here. The limit is 8.
+- **`local_allow_list`:** which of this host's own interface addresses it
+  reports, as CIDR and interface rules in Nebula's format. Nebula reports all
+  of them by default. On a container host this includes `docker0`, and peers
+  then wait for a handshake timeout on each one. The limit is 32 rules.
 
-::: note `preferred_ranges` is the one place IPv6 is accepted
-The platform's overlay is IPv4 only. These are underlay prefixes, and Nebula
-ranks an IPv6 preferred range highest, so the platform accepts them.
+::: note The overlay is IPv4 only, but the underlay accepts IPv6
+The platform gives each host an IPv4 overlay address. The underlay fields
+accept IPv6:
 
-The platform validates these entries on save. Nebula would log a warning, skip
+- `preferred_ranges` accepts IPv6 prefixes. Nebula ranks an IPv6 preferred
+  range highest.
+- `public_host_port`, `additional_host_ports` and `advertise_addrs` accept an
+  IPv6 address in brackets, such as `[2001:db8::1]:4242`.
+
+The platform validates these fields on save. Nebula would log a warning, skip
 a bad entry, and use the public path. The only sign of a typo would be slow
 traffic.
 :::

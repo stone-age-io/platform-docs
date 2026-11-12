@@ -96,6 +96,10 @@ so changes apply immediately.
 - **KV Buckets** (`/nats/kv`): create, configure and inspect buckets. The form
   has history depth, bucket size, value size, TTL and replicas. The detail view
   has a **KV Dashboard** to browse keys and watch live updates.
+- **Services** (`/nats/services`): the NATS services in the account that answer
+  `$SRV.INFO` now, such as each Agent's `stone-agent` service. The list is a
+  live query, not stored records, so a stopped service has no row. The detail
+  page shows each instance. Your NATS role must allow publish on `$SRV.>`.
 
 These views appear only when the browser is connected to NATS, because they act
 on the live cluster. Your NATS role's permissions limit what you can create.

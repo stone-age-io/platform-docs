@@ -138,8 +138,12 @@ Two identities are outside the Membership model.
 **Platform Operator** (`users.is_operator = true`) is a user account with
 platform-administration authority. It creates and edits Organization records
 and can invite users into any org. Without a Membership in an org, a Platform
-Operator cannot read that org's tenant data. Membership grants tenant-data
-access. The flag grants org management.
+Operator cannot read that org's records through the record API. Membership
+grants tenant-data access. The flag grants org management.
+
+The flag still gives two cross-tenant reads. A Platform Operator can list every
+user. It can also read the audit log, which holds old and new values of tenant
+records from every organization ([§5.1](#51-audit_logs-is-platform-operator-only)).
 
 **SuperUser** (the `_superusers` collection) is a service account that ignores
 API rules. Use it for infrastructure work: schema imports, NATS Operator key
