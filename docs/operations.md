@@ -482,7 +482,7 @@ on a later version says so.
 | Component | Version | Where its own docs are |
 | :--- | :--- | :--- |
 | Control Plane and console (`stone-age`) | v0.17.0 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
-| `stone` CLI | v0.6.0, plus `main` (`stone nebula cert-audit` removed, not yet released) | [Stone CLI](./stone-cli.md) |
+| `stone` CLI | v0.6.1 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.6.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
 | Services | Watchdog v0.1.0. creds-keeper is not in a release yet: the docs describe commit `981453f` on `main`, which has no tag | [Services docs](./vendor/services/README.md) |
