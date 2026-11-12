@@ -5,16 +5,16 @@ access: public
 ---
 # Platform
 
-**Every site. Every vendor cloud. One screen.**
+**Make your equipment and your apps talk. Simple.**
 
-Stone-Age.io gives you one console and one automation layer for everything from
-the door controllers, sensors and machines on your sites to the cloud platforms
-you log into separately today. Equipment connects if it speaks HTTP, MQTT or
-NATS. A cloud platform connects through the [rule engine](./automation.md),
-which receives its webhooks and polls its API. You do not replace any of them.
+Stone-Age.io is one open-source platform for everything from the door
+controllers, sensors and machines on your sites to the cloud services you log
+into separately today. Equipment connects if it speaks HTTP, MQTT or NATS. A
+cloud service connects through the [rule engine](./automation.md), which
+receives its webhooks and polls its API. You do not replace any of them.
 
 The platform has one place to register equipment and the people who use it,
-one real-time bus for what the equipment and the cloud platforms report, and
+one real-time bus for what the equipment and the cloud services report, and
 one encrypted network to reach the equipment. Each piece does one job, so you
 can adopt only what you need now.
 
