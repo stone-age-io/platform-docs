@@ -11,7 +11,7 @@ page covers what it shows and how it behaves. The records it edits are on
 
 The console is not the security boundary. It shows what the API rules already
 permit, and a hidden button is still a reachable endpoint
-([Platform Entities §1](./platform-ui-entities.md#permissions)).
+([Authorization & Roles](./authorization.md)).
 
 ---
 

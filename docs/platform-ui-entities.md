@@ -57,93 +57,33 @@ Organizations.
 
 ### Memberships
 
-A Membership links a User to an Organization with one of five roles:
+A Membership links a User to an Organization with one of five roles: `owner`,
+`admin`, `member`, `viewer` or `dashboard`. What each can do is in
+[Authorization §1](./authorization.md#1-the-five-tenant-roles), with the full
+[capability matrix](./authorization.md#2-capability-matrix).
 
-| Role | Can do |
-| :--- | :--- |
-| `owner` | Full tenant authority. **The same as `admin` in every API rule.** The one difference: an Owner cannot leave their own organization. |
-| `admin` | Full tenant authority: members and invites, NATS and Nebula infrastructure, types and contracts, and the identity links on a Thing. |
-| `member` | Creates and edits Things and Locations. Reads Thing Types and Operations. Cannot delete a Thing or Location, attach identities, or read the six NATS and Nebula infrastructure collections listed under [Permissions](#permissions). |
-| `viewer` | Read-only staff. Browses inventory and uses dashboards. Writes nothing. |
-| `dashboard` | A login for an unattended screen. Sees only the Visualizer and its own settings page. Writes nothing. |
+**The NATS identity is on the membership, not the user**, because a user can
+belong to several organizations. Only an Owner or Admin can choose it (on the
+member's detail page). Every role can read its own linked identity and clear
+the link from Settings. What a login can do on the bus comes from that
+identity's NATS role, which is set separately. Any role can rotate its own
+credential unless it is suspended
+([Authorization §4](./authorization.md#self-service-rotation)).
 
-Every role can read the one NATS identity linked to its own membership, which
-is the identity the browser connects with. What a login can do on the bus comes
-from that identity's `nats_users` role, which is set separately.
+### Platform Operators and SuperUsers
 
-**Linked NATS identity.** A user can be a member of several Organizations, so
-the NATS user relation is on the membership, not the user. Access to it is
-**row-scoped**: a member, viewer or dashboard holder can read exactly that one
-`nats_users` row. See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
-The read follows the link, so only an Owner or Admin can **choose** the linked
-identity (on the member's detail page). Every role can clear its own link from
-Settings, but cannot point it at another identity.
-
-### Cross-Organization Roles
-
-Two roles apply to the user account, outside any Membership:
-
-- **Platform Operator** (`users.is_operator = true`) creates, edits, suspends
-  and deletes Organizations, and invites users into any Org. No tenant role, not
-  even Owner, can edit the Organization record. Only a Platform Operator can
-  read the **audit log** (`audit_logs`). Use a Platform Operator for daily
-  administration in the console. The `bootstrap` command creates the first one.
-  `bootstrap` and the admin panel are the only ways to set the flag. The API
-  refuses it, also from a Platform Operator.
-- **SuperUser** (`_superusers` collection) is a service account with full
-  database access that ignores API rules. Create it with
-  `./stone-age init` (or `superuser upsert`). Use it for infrastructure work such as schema
-  imports and NATS Operator and System Account seeding. SuperUsers are not
-  members of any organization. They sign in at the admin UI (`/_/`).
+Two roles sit outside any organization. A **Platform Operator**
+(`users.is_operator`) creates, edits, suspends and deletes Organizations and
+reads the audit log; use one for daily administration. A **SuperUser** is a
+database service account that ignores API rules, for infrastructure work in the
+admin UI (`/_/`). See
+[Authorization §3](./authorization.md#3-cross-organization-identities).
 
 ### Permissions
 
-PocketBase API rules on each collection are the **only** permission layer. One
-server-side hook also enforces an invariant: no relation may point into another
-organization's records. See [Authorization](./authorization.md). The console's
-capability map only decides which menu items and buttons appear. A hidden
-button is still a reachable endpoint for anyone with a token.
-
-[Authorization & Roles](./authorization.md) has the full capability matrix.
-The points that most often surprise people:
-
-- `owner` and `admin` are the same in every rule. Granting `admin` grants full
-  tenant authority.
-- `member` **can** create and edit Things and Locations. It cannot delete or
-  deactivate them, and it cannot attach a NATS user or Nebula host to a Thing.
-  A member who could point those relations at a privileged identity could then
-  authenticate as the Thing and steal a credential. A member who could clear
-  `active` could take any device off the network.
-- `member`, `viewer` and `dashboard` cannot **read** the infrastructure
-  collections (`nats_users`, `nats_roles`, `nats_account_exports`,
-  `nats_account_imports`, `nebula_networks`, `nebula_hosts`). They get an empty
-  list, except for their own linked NATS identity.
-- Only Platform Operators can edit the Organization record and read the audit
-  log.
-- Every role, including `dashboard`, can rotate its own NATS credential,
-  unless that identity is suspended.
-
-### Self-Service Credential Rotation
-
-Any authenticated identity with a linked NATS user (a `users` membership or a
-`things` record) can rotate its own credential:
-
-```
-POST /api/me/nats-creds/rotate
-```
-
-It takes **no id**. It always targets the caller's own linked identity. After
-the call, read your own record again to get the new `.creds`. A **suspended**
-identity gets `403`.
-[Authorization §4](./authorization.md#self-service-rotation) explains why this
-is a route and why a suspended identity cannot rotate.
-
-Suspending, reactivating and revoking are Owner/Admin actions. On a NATS user's
-detail view and a Thing's page, **Revoke** is for *leaked* credentials. It
-moves the identity to a new key pair, returns a working replacement, and leaves
-the identity active. To take an identity out of service, deactivate the Thing
-that holds it. See
-[Authorization §4](./authorization.md#4-the-row-scoped-credential-model).
+PocketBase API rules are the only enforcement. The console hides what a role
+cannot reach, but a hidden button is still a reachable endpoint for anyone with
+a token. See [Authorization & Roles](./authorization.md).
 
 ---
 
