@@ -295,7 +295,7 @@ another rule acts on it.
 - **The time must be in the message, in RFC 3339.** Templates have no arithmetic,
   so a rule can't compute "now plus 10 minutes". For a delay relative to the
   last message, use an [inactivity timer](#inactivity-timers). For a fixed time
-  of day, use the [scheduler](#4-feature-scheduler-cron-to-natshttp). Otherwise,
+  of day, use the [scheduler](./vendor/rule-router/docs/03-scheduler.md). Otherwise,
   have the publisher put the time in the payload.
 - **A time in the past fires immediately,** for example after a long outage.
 

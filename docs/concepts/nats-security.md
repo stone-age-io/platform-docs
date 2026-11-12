@@ -107,7 +107,7 @@ public key and the account JWTs. Each client brings its own user JWT. So the
 Control Plane can create a user with no change to any server. When an account
 JWT changes, the Control Plane sends the new JWT to the servers. A site's leaf
 node keeps its own copy, which its Agent refreshes. See
-[Architecture §5](../architecture.md#nats-security-nkeys-jwts) and
+[Architecture §5](../architecture.md#5-the-chain-of-trust) and
 [Leaf Nodes §8.1](../leaf-nodes.md#81-what-reaches-a-site-and-when).
 
 ### Signing keys
