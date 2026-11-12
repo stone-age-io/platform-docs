@@ -556,33 +556,14 @@ another rule acts on it.
 
 ## 8. When to Use Something Else
 
-**Use a stream processor (Layer 2) when:**
-
-- The computation needs a **time window**: "average temperature per sensor over
-  the last 5 minutes", "login failures per user in the last hour", "anyone who
-  entered a zone and did not leave within 30 minutes".
-- You **join two streams** by a common key and time window.
-- You need **retractable results** that change when late data arrives.
-- You want **SQL-like queries** over event streams.
-- You need **complex event processing**, such as "A followed by B but not C
-  within T seconds".
-
-For example, a 5-minute rolling average with a threshold alert: an eKuiper query
-reads the sensor subject and publishes averages to NATS, and a rule checks the
-threshold. Both use the same bus, and neither needs to know how the other works.
-
-**Use a custom service when:**
-
-- The logic is specific to your domain (a physics model, ML inference, a
-  complex state machine).
-- You need your existing internal libraries.
-- The declarative tools work against you.
-
-A small Go service that reads from and publishes to NATS works with the rest of
-the platform. The [services repository](./vendor/services/README.md) holds the
-ones that are useful to every tenant, such as the Watchdog.
-
-See [Stream Processing](./stream-processing.md) for Layer 2.
+Anything with a **time window**, a **join** of two streams, **retractable**
+results, **SQL** over streams or **complex event processing** belongs in a
+stream processor that runs beside your rules on the same bus. Logic specific to
+your domain (a physics model, ML inference, your own libraries) belongs in a
+small service that reads from and publishes to NATS. The
+[services repository](./vendor/services/README.md) holds the ones useful to
+every tenant, such as the Watchdog. [Stream Processing](./stream-processing.md)
+covers both and says when each fits.
 
 ---
 

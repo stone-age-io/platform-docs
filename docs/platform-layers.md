@@ -140,19 +140,11 @@ state between messages.
 - **Scheduled publishes.** The scheduler publishes to NATS or HTTP on a cron
   expression.
 
-**Do not use the rule engine for:**
-
-- **Windowed aggregations**, such as "average temperature per sensor over the
-  last 5 minutes".
-- **Stream-to-stream joins**, which match two event streams by key and time
-  window.
-- **Retractable computation**, where late data changes earlier results.
-- **Multi-step workflows** where each step's result decides the next step.
-- **Transactions.** The rule engine publishes. It does not coordinate
-  two-phase commits.
-
-For these, use Layer 2. A stream processor reads from and publishes to the same
-NATS subjects your rules use, so the two run side by side.
+**Do not use the rule engine for** windowed aggregation, stream joins or
+results that late data can change (that is Layer 2, see
+[Stream Processing §1](./stream-processing.md#1-when-you-need-a-stream-processor)),
+for multi-step workflows where each step decides the next, or for transactions:
+the engine publishes, it does not coordinate commits.
 
 **You are at this layer when you:**
 
@@ -169,43 +161,12 @@ NATS subjects your rules use, so the two run side by side.
 processor that reads from and publishes to NATS.
 
 Layer 2 does computation that needs state across events: sliding windows,
-aggregations, joins and retraction of earlier results.
+aggregations, joins and retraction of earlier results. It reads from and
+publishes to the same NATS subjects as your Layer 1 rules, and the two share
+nothing else.
 
-**Stream processors handle:**
-
-- Tumbling, sliding and session windows.
-- Joins of two streams by key within a time window.
-- Continuous SQL-like queries over streams.
-- Late-arriving events and updates to earlier results.
-- Filter, projection, enrichment and complex event processing (CEP) operators.
-
-**How Layer 1 and Layer 2 work together:**
-
-1. Layer 1 rules filter, enrich and route raw events.
-2. The results go to a dedicated NATS subject.
-3. A Layer 2 pipeline (for example eKuiper) subscribes to that subject,
-   aggregates over a window, and publishes the result to another subject.
-4. Layer 1 rules react to the result: they raise alerts, update KV or call
-   webhooks.
-
-Neither layer knows how the other works. They share only NATS subjects.
-
-**You are at this layer when:**
-
-- The problem says "over the last N minutes" or "in a sliding window".
-- You join two streams by a common key.
-- The logic became awkward in the rule engine.
-- You need SQL-like queries over event streams.
-
-**Which stream processor?** Any of them works with NATS:
-
-- **eKuiper**: small, SQL-based, runs at the edge. Suits IoT problems.
-- **Benthos / RedPanda Connect / Wombat**: YAML pipelines with many connectors.
-  Suits data movement between systems.
-- **Your own service**: a small Go service that reads from NATS and publishes
-  results.
-
-Pick the one whose configuration style suits your team.
+When you need one, how it hands off to Layer 1, and which processor to pick:
+[Stream Processing](./stream-processing.md).
 
 ---
 
