@@ -53,11 +53,8 @@ Create the scripts directory. `commands.scripts_directory` defaults to
 `/opt/agent/scripts`, and the Agent **refuses to start** if that directory does
 not exist. Set it to `""` to turn off script execution.
 
-::: warning Run 0.3.1 or later
-Versions before 0.3.1 let anyone who could publish to `cmd.exec` run any command
-on a device with a script in its `scripts_directory`. §3.C has the current
-rules. A script request must be a bare filename (`deploy.sh`), not a full path.
-:::
+Run Agent 0.3.1 or later: earlier versions let anyone who could publish to
+`cmd.exec` run any command on a device with a scripts directory.
 
 Install the Agent as a service with `agent -service install`. It uses systemd,
 a Windows service or rc.d, so you do not write unit files. `agent -version`
@@ -192,8 +189,8 @@ You turn each on separately:
 There is no `edge.enabled` key and no gateway flag: a gateway is whatever these
 capabilities make it ([Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)).
 
-The key `twin.enabled` does nothing. Since v0.6.0 the Agent starts with it
-and ignores it, so a config that still carries it syncs no buckets. Use
+The key `twin.enabled` does nothing: a config that still carries it syncs no
+buckets. Use
 `sync: { twin: true }` instead ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)).
 
 **Local health is on every Agent.** `observability.addr` serves `/ready` and

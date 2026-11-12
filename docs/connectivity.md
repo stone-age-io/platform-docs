@@ -77,11 +77,8 @@ details follow from this:
   and so are access-control's two binaries
   ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)),
   the helpdesk ([protocol](./vendor/helpdesk/docs/protocol.md#1-the-whole-surface))
-  and rule-router after v0.20.0
+  and rule-router
   ([observability](./vendor/rule-router/docs/12-observability.md#service-discovery)).
-
-Before pb-nats v0.3.0 an empty list granted *everything* in the account
-instead, so roles created earlier may need a second look.
 
 **A role limit left unset is `-1`, and `0` is refused.** A role's
 `max_subscriptions`, `max_data` and `max_payload` go into each user JWT it
