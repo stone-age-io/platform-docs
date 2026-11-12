@@ -280,8 +280,6 @@ stone nebula-host edit edge-west                             # opens $EDITOR as 
   prefix.
 - A code, and a Thing's or Location's `--type`, are frozen once set. An update
   that changes the type returns 404. To fix a wrong type, delete and recreate.
-- `provision` without `--code`, `--prefix`, and lookups that ignore case need
-  `stone` 0.6.0 or later.
 
 ### Provisioning a real device
 
@@ -612,7 +610,7 @@ For a device, suspend the **Thing**. Its `active` flag suspends the linked NATS
 identity, its sessions and its Nebula host. While the Thing is deactivated, the
 server refuses a change to `active` on its NATS user. Use
 `stone nats-user update <username> --active=false` only for an identity with no
-Thing. The flag needs `stone` 0.6.0 or later. `pull` leaves out `active` on
+Thing. `pull` leaves out `active` on
 `nats_users`, so `apply` cannot change it.
 :::
 

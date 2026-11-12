@@ -327,19 +327,3 @@ small service that reads from and publishes to NATS. The
 every tenant, such as the Watchdog. [Stream Processing](./stream-processing.md)
 covers both and says when each fits.
 
----
-
-## 6. What the Rule Engine Does Well
-
-The rule engine fits any problem of the form "when X happens (on subject A, by
-webhook B or at cron time T), check Y (with KV state if needed), do Z (publish,
-HTTP call or KV update)". That covers most operational event logic: routing,
-enrichment, alarms, webhooks, scheduled fan-out, debounce and rate limiting.
-
-It also fits your application's own access control. For example, one rule with
-KV lookups can go from a badge credential to a user, to permissions, to an
-unlock decision. This is not the platform's own authorization, which only
-PocketBase API rules enforce (see [Authorization & Roles](./authorization.md)).
-
-Rules run in microseconds, are YAML you can keep in version control, and need
-only the one binary to run.
