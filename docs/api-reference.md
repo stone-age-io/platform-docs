@@ -404,7 +404,7 @@ by default. Protect it with `metrics.token` (Bearer or Basic) or a proxy.
   admin panel can. `users.updateRule` and every branch of `users.createRule`
   refuse `is_operator`, so an operator cannot create an operator.
 - **No server-side twin push.** Nothing in the platform applies a desired value
-  to a device. See [Architecture §4.3](./architecture.md#43-the-console-says-differs-never-pending).
+  to a device. See [Architecture §4.3](./architecture.md#43-nothing-applies-desired-values).
 - **No HTTP API for JetStream and KV.** The browser creates streams and buckets
   over its own NATS connection. The caller's **NATS** permissions limit them,
   not API rules. The account's JetStream storage limits
