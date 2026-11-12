@@ -150,7 +150,7 @@ JWT and the seed. NATS client libraries and the `nats` CLI read it directly.
 
 In Stone-Age.io, the file is `nats_users.creds_file`. The console's download
 button gives a user their own file. The Agent writes the file with `0600`
-permissions. See [The Agent §2.1](../agent.md#21-why-the-upkeep-call-is-split-in-two)
+permissions. See [Credential Sync](../vendor/agent/docs/credentials.md#credential-sync)
 and [Authorization §4](../authorization.md#4-the-row-scoped-credential-model).
 
 ---

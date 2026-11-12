@@ -110,9 +110,11 @@ under any other auth type.
 5. **Operation:** the Agent connects to NATS with the `.creds` file and starts
    publishing.
 6. **Upkeep (`platform.sync_interval`, 24h by default):** the Agent renews its
-   platform session and picks up a credential the platform minted again. When it
-   has a session token, you can remove the Thing's password from the device
-   (§2.2).
+   platform session and picks up a credential the platform minted again, so
+   **Regenerate** in the console reaches the device within one sync, with no
+   site visit. It downloads the private key only when the credential has
+   changed. How, and the session's 7-day lifetime:
+   [Credential Sync](./vendor/agent/docs/credentials.md#credential-sync).
 
 The Agent does not fetch a NATS URL. `nats.urls` is local config, because what a
 box can reach depends on where it is. With `nebula.enabled`, it fetches its
@@ -121,66 +123,14 @@ again every `nebula.sync_interval`. That interval is the device's **revocation
 delay**. Nebula has no CRL, so a peer refuses a revoked certificate only after
 it reads its own new config.
 
-```mermaid
-sequenceDiagram
-    participant Device as Agent (Edge)
-    participant API as Control Plane
-    participant NATS as NATS (Data)
+### 2.1 Removing the password
 
-    Note over Device: 1. First start only
-    Device->>API: POST /api/collections/things/auth-with-password<br/>?expand=nats_user,location
-    API-->>Device: Thing record + session token
-    Device->>Device: Verify code, write .creds (0600),<br/>store session
-
-    Note over Device: 2. Operations
-    Device->>NATS: Connect (NKey/JWT from .creds)
-    NATS-->>Device: Connection established
-
-    loop Runtime
-        Device->>NATS: Publish telemetry / heartbeats
-        NATS-->>Device: Commands (request/reply)
-    end
-
-    loop Every 24h
-        Device->>API: POST .../auth-refresh (no expand)
-        API-->>Device: Fresh session token
-        Device->>API: GET .../nats_users/records/ID?fields=updated
-        API-->>Device: Just a timestamp
-        alt Revision moved
-            Device->>API: GET .../nats_users/records/ID
-            API-->>Device: New creds_file
-            Device->>NATS: Reconnect with new credential
-        end
-    end
-```
-
-### 2.1 Why the upkeep call is split in two
-
-A `.creds` file contains the NATS **nkey seed**, which is a private key. So the
-routine sync renews the session token *without* expanding any relation, then
-asks only for the credential's `updated` timestamp. The Agent downloads the key
-only when that revision has changed.
-
-PocketBase does not apply `?fields=` to auth responses, so any auth call with
-`expand=nats_user` returns the whole credential. Without the split, every device
-would download its private key every day.
-
-Because each sync checks the revision, **Regenerate** on a Thing's NATS identity
-in the console reaches the device by itself. Every affected device picks up the
-new credential within one sync interval, with no site visit.
-
-### 2.2 Removing the password
-
-The platform's session token for a Thing lasts **7 days**, and each sync renews
-it. When the Agent has one, you can delete the Thing's password from the service
-environment. This is safer: a `0600` session file is harder to read than a
-machine-level environment variable, which any local process on Windows can read.
-
-The cost is recovery. A device offline for more than 7 days comes back with an
-expired token. With no password, it cannot sign in again by itself. It needs
-the password set again, or a new bootstrap. Keep the password on devices that
-are often offline. You can always delete only the `.creds` file: the Agent
-restores it from its stored session without the password.
+Once the Agent holds a session token, you can delete the Thing's password from
+the service environment: a `0600` session file is harder to read than a
+machine-level environment variable. The cost is that a device offline for more
+than 7 days cannot sign in again by itself. Keep the password on devices that
+are often offline. See
+[After the first boot](./vendor/agent/docs/credentials.md#after-the-first-boot).
 
 **Deactivating a Thing ends its session at once.** Clearing `active` refreshes
 the record's `tokenKey`, which invalidates every token issued before. Plan for
@@ -191,7 +141,7 @@ An Owner or Admin sets a new password on the Thing's **edit form**
 (Authentication card) and puts it in the service environment. At the next
 start, the Agent picks up the new credential.
 
-### 2.3 Rotation
+### 2.2 Rotation
 
 Any identity can rotate its **own** NATS credential through
 `POST /api/me/nats-creds/rotate`. It takes no record id and writes one field.
@@ -332,7 +282,7 @@ Agent's [architecture](./vendor/agent/docs/architecture.md).
 ### D. Credential Upkeep
 
 - **Credential sync:** renews the platform session and picks up a new credential
-  (§2.1), every `platform.sync_interval`.
+  (§2), every `platform.sync_interval`.
 - **`cmd.rotate_creds`:** asks the platform for a new credential, writes it,
   replies, then reconnects. A rotation needs no downtime and no site visit. The
   response has `changed: false` if the platform returned the credential the
@@ -487,11 +437,5 @@ writes `listen.port: 0` for every host except lighthouses and relays, because
 only those two are reached at a fixed address through `static_host_map`. So
 Nebula needs no inbound rule either.
 
-- **Loopback is not an authorization boundary** when other users share the
-  box. `/metrics` has no per-organization labels, but it shows this device's
-  health. Set `observability.metrics_token` (Bearer, or Basic with any username)
-  before you move `addr` off loopback. Or set `addr` empty and use only
-  `cmd.health` over NATS.
-- **9100 is also node_exporter's default port** on Linux and FreeBSD. If you run
-  node_exporter on the same box, move one of them. Windows is not affected:
-  `windows_exporter` uses 9182.
+Securing `/ready` and `/metrics` on the box, and the port they share with
+node_exporter: [Health & Metrics §5](./health-metrics.md#5-the-edge-agent).

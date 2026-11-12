@@ -380,7 +380,7 @@ reason a leaf node exists.
   Reactivating issues a **new** NATS credential. The old `.creds` stays revoked.
   The agent needs a platform session to fetch the new one, and deactivation
   ended that session. If you removed the password from the service environment,
-  set a new one first (see [The Agent §2.2](./agent.md#22-removing-the-password)).
+  set a new one first (see [The Agent §2.1](./agent.md#21-removing-the-password)).
   At its next start, the Agent writes the new creds to the file the leaf config
   uses. Then restart the leaf server (or the agent, if it hosts the leaf) so the
   leaf remote reconnects. `agent -leaf-config` does the same write and also needs

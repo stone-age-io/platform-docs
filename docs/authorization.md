@@ -329,7 +329,7 @@ trusted. After a delete, the certificate can no longer be added to a blocklist.
 **Reactivating issues a *new* NATS credential.** The revocation cutoff in the
 account JWT is permanent, so the old `.creds` file stays rejected. The device's
 platform token ended with the `tokenKey`, so its Agent must sign in again before
-it can fetch anything. See [Agent §2.2](./agent.md#22-removing-the-password)
+it can fetch anything. See [Agent §2.1](./agent.md#21-removing-the-password)
 for a device whose password was removed.
 
 For a device, use `things.active`, which moves the NATS identity, the Nebula

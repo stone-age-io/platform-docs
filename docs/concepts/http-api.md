@@ -103,7 +103,7 @@ own secret. So only the server can check it.
 
 - **Each auth collection sets a token lifetime.** In Stone-Age.io, a Thing's
   token lasts 7 days. The Agent gets a new one on each sync. See
-  [The Agent §2.2](../agent.md#22-removing-the-password).
+  [The Agent §2.1](../agent.md#21-removing-the-password).
 - **Each auth record has a `tokenKey`.** A change to the `tokenKey` makes every
   token of that record invalid at once. Stone-Age.io changes it when you
   deactivate a Thing.
