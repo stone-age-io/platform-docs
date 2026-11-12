@@ -345,8 +345,7 @@ included, are in the server's store directory.
 A `nats-server` with no `cluster` block runs JetStream in standalone mode. When
 you add a `cluster` block and restart it, the cluster does not know its
 existing streams. The server logs `Detected orphaned stream ... will cleanup`
-and deletes them, KV buckets included. In a rehearsal on nats-server 2.14.2,
-the server deleted them about 30 seconds after the restart.
+and deletes them, KV buckets included, within about 30 seconds.
 
 You cannot add a node to a server that holds data and keep the data. Use path
 A, which adds no node. For a cluster, back up first (path B).
@@ -438,11 +437,10 @@ Two things fail if you change the order:
   nodes.** The stream loses its quorum and refuses writes. The JetStream API
   also refuses the change back to `replicas: 1`, because the cluster has no
   leader.
-- **Do not leave one clustered node to run alone.** In the rehearsal, a node
-  with a `cluster` block waited for its route after a restart, and JetStream
-  did not start.
+- **Do not leave one clustered node to run alone.** A node with a `cluster`
+  block waits for its route after a restart, and JetStream does not start.
 
-> **Rehearse this on a copy first** (§5.3). The results above come from a rehearsal with `nats-server` 2.14.2 and `nats` CLI 0.3.0. Check them against the version you run. A matching message count is the proof, not "it looked fine".
+> **Rehearse this on a copy first** (§5.3). A matching message count is the proof, not "it looked fine".
 
 ---
 
@@ -544,28 +542,14 @@ commit of its copy.
 - [ ] **NATS clustered** (3 or more nodes), with `replicas: 3` on the streams and
   KV buckets that matter.
 - [ ] **Credential expiry reviewed:** the NATS Users and Nebula Hosts lists flag
-  anything that expires within 30 days or has expired. Nebula host certificates
-  always expire (`validity_years`). NATS user JWTs expire only if an expiry was
-  set. A fleet is usually provisioned at once, so its credentials expire together
-  and fail silently. Reissue before the date. **Nebula expiry is worse**, because
-  Nebula is the out-of-band path: an expired fleet removes the route you would
-  use to fix it.
+  anything expiring within 30 days. A fleet provisioned at once expires at
+  once, and an expired Nebula fleet takes out the path you would use to fix it.
 - [ ] **Nebula expiry alerted**, with 30 days for a host and 90 for a CA:
   [Health & Metrics §4](./health-metrics.md#4-certificate-expiry).
-- [ ] **A decommissioning procedure agreed:** clearing `active` on a Thing cuts a
-  device off, gateways included
-  ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
-  A site's leaf node applies the NATS suspension only at its next refresh
-  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-  **Deactivate, never delete:** a delete does not touch either identity.
-- [ ] **A tenant-suspension procedure agreed:** clearing `active` on an
-  **organization** withdraws its NATS account, so every device, agent and
-  browser in the tenant disconnects from the hub at once, including after
-  restarts. Devices on a site's leaf node keep working locally
-  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)). Only a Platform
-  Operator can do it, and it is **reversible**: no credential changes, so setting
-  the flag again reconnects everything. It does not change Nebula, lock the
-  console or end sessions. The operator and system organizations refuse it
+- [ ] **A decommissioning procedure agreed:** deactivate a Thing, never delete
+  it ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+- [ ] **A tenant-suspension procedure agreed:** clearing an organization's
+  `active` disconnects the whole tenant from the hub, reversibly
   ([Authorization §3.1](./authorization.md#31-suspending-an-organization)).
 - [ ] **SuperUser kept for infrastructure work**, with daily administration done
   as a Platform Operator
