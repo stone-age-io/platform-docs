@@ -34,9 +34,8 @@ From a binary, run the same two commands the container runs:
 ./stone-age serve --nats
 ```
 
-`init` asks for a password, or reads `STONE_AGE_BOOTSTRAP_PASSWORD`. It runs
-the four first-run commands in the one order that works, and does nothing once
-`./nats-config/nats.conf` exists. §2 explains each command.
+`init` asks for a password, or reads `STONE_AGE_BOOTSTRAP_PASSWORD`. §2 explains
+what it does.
 
 ---
 
@@ -61,16 +60,8 @@ with `serve --nats`. It simply has nothing on it yet.
 
 ### Container
 
-```bash
-docker run -d --name stone-age \
-  -p 8090:8090 -p 4222:4222 -p 9222:9222 \
-  -v stone-age-data:/data \
-  -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
-  -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
-  ghcr.io/stone-age-io/platform:latest
-```
-
-On first boot, the entrypoint runs the §2 commands and then `serve --nats`, so
+The `docker run` command is in [the short version](#the-short-version). On
+first boot, the entrypoint runs the §2 commands and then `serve --nats`, so
 this one command covers §1 to §4. All data is on the `/data` volume: the
 database, the NATS config, the account JWTs and the JetStream store.
 
