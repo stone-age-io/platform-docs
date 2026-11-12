@@ -7,287 +7,57 @@ nav_order: 150
 The **rule engine** is Layer 1 of Stone-Age.io: declarative event logic on top
 of NATS, with no state between messages.
 
-This page covers the engine's three features (router, gateway, scheduler), the
-patterns that use NATS KV for state, the patterns that combine the engine with
-the platform's other parts, and when to use a stream processor instead. See [Platform Layers](./platform-layers.md) for the layer model.
-
-```mermaid
-flowchart TD
-    Msg["Inbound Trigger<br/>(NATS / HTTP / Cron)"] --> Trigger{"<b>Trigger</b><br/>Matches?"}
-
-    Trigger -- No --> Ignore["Ignore"]
-    Trigger -- Yes --> Condition{"<b>Conditions</b><br/>Satisfied?"}
-
-    Condition -- False --> Ignore
-    Condition -- True --> Action["<b>Action</b>"]
-
-    subgraph Execution
-        Action --> Pub["Publish NATS Msg"]
-        Action --> HTTP["Call Webhook"]
-        Action --> KV_Update["Update KV State"]
-    end
-```
+This page covers how the engine fits the platform, the patterns that use NATS
+KV for state, the patterns that combine the engine with the platform's other
+parts, and when to use something else. How the engine itself works (rule
+syntax, variables, functions, `forEach`, payload modes, the gateway, the
+scheduler, throttle) is in the
+[rule-router documentation](./vendor/rule-router/README.md), for the version in
+[Operations §6.1](./operations.md#61-the-versions-these-docs-describe). See
+[Platform Layers](./platform-layers.md) for the layer model.
 
 ---
 
-## 1. The Rule Engine: One Binary, Three Features
+## 1. The Rule Engine in This Platform
 
-The rule engine (`rule-router`) is a **separate binary** that runs beside NATS,
-like the Agent but on the central side. It is **not** part of the Control Plane
-binary. It connects to NATS as a client and does all its work over NATS
-subjects and KV buckets.
+The rule engine (`rule-router`) is a **separate binary**, not part of the
+Control Plane. It connects to NATS as a client with a user credential from the
+tenant's account, so it sees exactly what that user's NATS role allows. Run
+it:
 
-You can run the rule engine:
+- **centrally**, beside your main NATS cluster, which is the usual case;
+- **at the edge**, beside a site's leaf node, so local rules keep running
+  during a WAN outage;
+- **or both**: central rules for cross-site alerts, edge rules for site-local
+  reactions.
 
-- **Centrally** beside your main NATS cluster. This is the usual case.
-- **At the edge** beside a NATS leaf node at a customer site, so local rules
-  keep running during WAN outages.
-- **Both.** For example, central rules for aggregation and cross-site alerts,
-  and edge rules for site-local reactions.
+One binary has three features, which share the YAML rule syntax and the KV
+buckets:
 
-The engine keeps no state between messages and scales horizontally. To get more
-throughput, run another instance on the same NATS cluster. Durable state is in
-NATS KV, not in the engine. The one exception: **throttle windows** (§5) are in
-each instance's memory. Two instances keep two sets of windows. A restart
-clears them all. A rule reload clears the leading-edge windows only: a trailing
-value that is waiting still fires when its window closes.
+| Feature | Trigger | Actions |
+|---|---|---|
+| **Router** (default) | A NATS subject | Publish to NATS, or call HTTP |
+| **Gateway** | An HTTP request, or a NATS subject for outbound calls | Publish to NATS, or call HTTP with retry |
+| **Scheduler** | A cron expression | Publish to NATS, or call HTTP with retry |
 
-How instances share work depends on the trigger's transport. The default
-JetStream trigger is a durable consumer named from the subject and the
-configured consumer prefix, so instances with the same prefix share the consumer
-and split the messages. A `mode: core` trigger is a plain subscription. Without
-a `queue` group, **every instance gets every message** and fires the rule once
-each.
+Each rule is a **trigger, conditions and one action**. The engine keeps no
+state between messages: durable state is in NATS KV (§2), and the only thing it
+holds in memory is throttle windows.
 
-The binary has three features. They share the YAML rule syntax, the KV buckets
-and the evaluation engine. They differ in the **trigger** (where events come
-from) and the available **actions**.
+**A NATS trigger is a JetStream consumer by default, so a stream must already
+cover its subject**, or the engine rejects the rule at load ("no stream found
+for trigger subject"). Actions publish to JetStream and wait for an ack by
+default too. For subjects you do not stream, such as heartbeats or high-rate
+telemetry, set `mode: core` on the trigger or the action. Creating streams:
+[The Console §4](./console.md#4-jetstream-streams-and-kv-buckets).
 
-| Feature | Trigger | Typical Actions | Default? |
-|---|---|---|---|
-| **Router** | NATS subject | Publish to NATS; call HTTP | ✅ Default |
-| **Gateway** | HTTP request (inbound); NATS subject (outbound) | Publish to NATS (inbound); call HTTP with retry (outbound) | Opt-in |
-| **Scheduler** | Cron expression | Publish to NATS; call HTTP with retry | Opt-in |
-
-Turn features on in the binary's config file or with environment variables
-(for example `RR_FEATURES_GATEWAY=true`). You can run any combination in one
-process, or split them across processes. See the
-[rule-router documentation](./vendor/rule-router/README.md) for each
-feature's configuration.
-
-### The TCA Pattern
-
-Every rule has the same **Trigger, Condition, Action** structure:
-
-1. **Trigger:** an event arrives (a NATS message, an HTTP request or a cron
-   tick).
-2. **Condition:** the engine tests the event against the conditions, if any.
-3. **Action:** if the conditions pass, the engine runs the action.
-
-### Key Engine Properties
-
-- **No state between messages:** each evaluation is independent. The engine
-  holds no durable state, apart from in-memory throttle windows. Rules read and
-  write state in NATS KV.
-- **One action per rule:** "write the state *and* notify" is two rules, or a
-  rule whose output triggers the next one.
-- **Fast:** rules evaluate in microseconds, so one instance handles thousands
-  of messages per second. Cached KV lookups take under a microsecond, so a
-  condition with several lookups stays fast.
-- **YAML:** rules are YAML files, or entries in a NATS KV bucket that the engine
-  reloads on change (see the rule-router docs).
-- **Variables:** `{field_name}` reads message data. `{@system_var}` reads
-  context, such as `{@timestamp()}`, `{@subject}` or a `{@kv.bucket.key}` lookup.
-
-For the full YAML syntax, variables and functions, `forEach` over arrays,
-payload modes (`passthrough`, `merge`) and signature verification, see the
-[rule-router documentation](./vendor/rule-router/README.md). This page
-describes the rule-router version in
-[Operations §6.1](./operations.md#61-the-versions-these-docs-describe).
-
----
-
-## 2. Feature: Router (NATS to NATS)
-
-The router is the default feature. It reads NATS subjects, tests conditions on
-message payloads and metadata, and publishes to NATS or calls HTTP.
-
-### Example: Temperature Threshold with Enrichment
-
-```yaml
-- trigger:
-    nats:
-      subject: "telemetry.*.temp"
-  conditions:
-    operator: and
-    items:
-      - field: "{value}"
-        operator: gt
-        value: 45
-  action:
-    nats:
-      subject: "alerts.{@subject.1}.high_temp"
-      payload: |
-        {
-          "device": "{@subject.1}",
-          "value": {value},
-          "location": "{@kv.devices.{@subject.1}:location}",
-          "timestamp": "{@timestamp()}"
-        }
-```
-
-This rule fires when a message on `telemetry.*.temp` has a `value` over 45. It
-publishes an alert with the device's location from a KV bucket. `{@subject.1}`
-is the subject token that the wildcard matched.
-
-**A NATS trigger is a JetStream consumer by default**, so a stream must already
-cover `telemetry.*.temp`. If none does, the engine rejects the rule at load
-("no stream found for trigger subject"). Actions also publish to JetStream and
-wait for an ack by default, so `alerts.>` needs a stream too, or every fire logs
-an ack timeout. For subjects you do not stream (heartbeats, or high-rate
-telemetry where a lost message does not matter), set `mode: core` on the trigger
-or the action. Core mode is at-most-once, needs no stream, and takes an optional
-`queue` group.
-
-A NATS trigger can also serve **request/reply**. `reply: true` subscribes over
-core NATS and answers each request with a `respond` action.
-
-### Use the router for
-
-- Routing and filtering: splitting a stream into specific subjects.
-- Enrichment: adding KV context to sparse events.
-- Translation: reshaping payloads before forwarding.
-- Stateful patterns such as alarm stacking and presence tracking (§5). For
-  debounce and rate limiting, use the built-in `throttle` (§5).
-
----
-
-## 3. Feature: Gateway (HTTP and NATS)
-
-The gateway connects HTTP and NATS in both directions, with the same engine.
-
-### Inbound: Webhook to NATS
-
-Devices or services that cannot use NATS send HTTP POSTs to a configured path.
-The gateway evaluates rules on the request and publishes the result to NATS. By
-default it replies at once with `200` and processes the request asynchronously.
-A rule with a `respond` action, or a NATS action with `request: true`, answers
-synchronously instead.
-
-**Put signature verification on every endpoint the internet can reach.**
-Without it, anyone who learns the path can publish into your bus. An `hmac`
-block covers GitHub, Shopify and most generic webhooks, and `scheme: stripe`,
-`slack` or `standardwebhooks` covers providers that sign a timestamp. See
+**Put signature verification on every gateway endpoint the internet can
+reach.** Without it, anyone who learns the path can publish into your bus. See
 [Verifying webhook signatures](./vendor/rule-router/docs/02-gateway.md#verifying-webhook-signatures-hmac).
 
-```yaml
-- trigger:
-    http:
-      path: "/webhooks/github"
-      method: "POST"
-      hmac:
-        header: "X-Hub-Signature-256"
-        secret: "${GITHUB_WEBHOOK_SECRET}"
-        algorithm: "sha256"
-        encoding: "hex"
-        prefix: "sha256="
-  conditions:
-    operator: and
-    items:
-      - field: "{@header.X-GitHub-Event}"
-        operator: eq
-        value: "push"
-  action:
-    nats:
-      subject: "scm.github.push.{repository.name}"
-      payload: |
-        {
-          "repo": "{repository.full_name}",
-          "branch": "{ref}",
-          "pusher": "{pusher.name}",
-          "commits": {commits}
-        }
-```
-
-The GitHub webhook becomes a NATS message under `scm.github.push`. Router and
-scheduler rules can react to `scm.github.push.>` without knowing it came from
-HTTP.
-
-### Outbound: NATS to HTTP
-
-The gateway also listens on NATS subjects and turns matching messages into HTTP
-calls, such as every message on `alerts.>` into a Slack notification. A `retry`
-block retries with exponential backoff, so a short outage of the third-party API
-does not lose messages. See
-[Outbound: NATS → HTTP](./vendor/rule-router/docs/02-gateway.md#outbound-nats-http).
-
-### Use the gateway for
-
-- **Inbound:** webhooks from GitHub, Jira, Stripe, building management systems,
-  or any device that speaks HTTP but not NATS.
-- **Outbound:** alerts or events to Slack, Microsoft Teams, Ntfy, PagerDuty or
-  any REST API.
-- Two-way integration with services that have no NATS client library.
-
 ---
 
-## 4. Feature: Scheduler (Cron to NATS/HTTP)
-
-The scheduler fires on cron expressions, not on messages. Use it for periodic
-publishes: batch commands, reports, cache warming, or fan-out over a list in KV.
-An expression has five fields, or six with a leading seconds field for
-intervals under a minute.
-
-### Example: Weekday Morning Door Unlock Fan-Out
-
-```yaml
-- trigger:
-    schedule:
-      cron: "0 8 * * 1-5"
-      timezone: "America/New_York"
-  action:
-    nats:
-      forEach: "{@kv.config.door_list}"
-      subject: "access.door.{id}.command"
-      payload: |
-        {
-          "command": "unlock",
-          "zone": "{zone}",
-          "source": "rule-scheduler",
-          "id": "{@uuid7()}"
-        }
-```
-
-At 8:00 AM Eastern every weekday, this rule reads a door list from the
-`config.door_list` KV key and publishes one unlock command per door. To add or
-remove doors, update the KV entry. You do not change the rule or restart
-anything.
-
-The subjects here are illustrative, for door hardware driven by its own
-controller. The [Access Control](./vendor/access-control/README.md) app does
-not take commands like this: its controllers run scheduled postures themselves,
-and operator commands use its own subjects
-([Wire Protocol](./vendor/access-control/docs/protocol.md)).
-
-### Scheduler Semantics
-
-A scheduled rule has **no incoming message**, so its conditions can use time
-variables, KV lookups and template functions, but not message fields or headers.
-With no `timezone`, the engine uses system local time. NATS and HTTP actions
-both work. See [Scheduler](./vendor/rule-router/docs/03-scheduler.md) for
-sub-minute schedules, overlapping fires and polling an API on a schedule.
-
-### Use the scheduler for
-
-- Periodic batch work: nightly reports, weekly summaries, monthly cleanup.
-- KV-driven fan-out: "do X for every entry in this KV list".
-- Cache warming or precomputation that publishes to NATS.
-- Replacing separate cron daemons, with the same rule syntax as your other
-  automation.
-
----
-
-## 5. Stateful Patterns via KV
+## 2. Stateful Patterns via KV
 
 The engine keeps no state between messages, but rules can read and write NATS
 KV. This gives you stateful behavior with no separate state store.
@@ -335,28 +105,20 @@ It is a small service in the tenant's account that watches the subjects you
 name in a KV bucket, and writes each target's `pending`, `up` or `down` state
 to another KV bucket. A rule on `$KV.watchdog_state.>` then sends the
 notification, the same way the alarm pattern above triggers on `$KV.alarms.>`.
-§6 builds escalation, silences and inactivity timers on top of it.
+§3 builds escalation, silences and inactivity timers on top of it.
 
 ### Throttle and debounce are built in
 
-Rate limiting and debounce do **not** use KV, because rule templates have no
-arithmetic and cannot increment a counter. Each rule takes a `throttle` block
-with a `window` and an optional `key` for one window per device or room.
-`mode: leading` (the default) fires the first match, for alerts. `mode: trailing`
-fires the last one when the window closes, for real debounce.
-
-Put the throttle on the **action**, not the trigger. A trigger throttle skips
-evaluation, so a normal reading can use up the window and the engine never
-evaluates the alarming reading after it. The windows are in each instance's
-memory (§1), so a restart resets them. If suppression must survive a restart,
-gate the rule on a KV key with `not_exists`, have its action write that key, and
-let the bucket's TTL expire it. See
-[Throttle](./vendor/rule-router/docs/01-core-concepts.md#4-throttle) for the
-modes and reload behaviour in full.
+Rate limiting and debounce use a rule's `throttle` block, not KV. Put it on
+the **action**, not the trigger, so a normal reading cannot use up the window
+before an alarming one arrives. Its windows live in each instance's memory and
+reset on restart; if suppression must survive a restart, gate the rule on a KV
+key with a TTL instead. See
+[Throttle](./vendor/rule-router/docs/01-core-concepts.md#4-throttle).
 
 ---
 
-## 6. Patterns Built From Existing Parts
+## 3. Patterns Built From Existing Parts
 
 Some needs look like they call for a new service, but the parts you already run
 cover them. Each pattern below combines the rule engine with one other part:
@@ -539,7 +301,7 @@ another rule acts on it.
 
 ---
 
-## 7. Rule-Writing Best Practices
+## 4. Rule-Writing Best Practices
 
 - **Use specific subjects.** Do not trigger on `>`. Use narrow subjects such as
   `telemetry.*.temp`.
@@ -554,7 +316,7 @@ another rule acts on it.
 
 ---
 
-## 8. When to Use Something Else
+## 5. When to Use Something Else
 
 Anything with a **time window**, a **join** of two streams, **retractable**
 results, **SQL** over streams or **complex event processing** belongs in a
@@ -567,7 +329,7 @@ covers both and says when each fits.
 
 ---
 
-## 9. What the Rule Engine Does Well
+## 6. What the Rule Engine Does Well
 
 The rule engine fits any problem of the form "when X happens (on subject A, by
 webhook B or at cron time T), check Y (with KV state if needed), do Z (publish,

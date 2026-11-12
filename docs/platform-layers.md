@@ -127,14 +127,11 @@ state between messages.
   cron schedules (scheduler) use the same YAML syntax.
 - **Routing and filtering.** Send a subset of events to another subject, reject
   bad messages, add metadata.
-- **KV lookups.** Add context to an event from a KV bucket. Lookups are cached
-  and take under a microsecond, so you can chain several.
+- **KV lookups.** Add context to an event from a KV bucket.
 - **State in KV.** Alarm deduplication and presence tracking with a TTL. The
   rule has no state. The state is in KV. See [Automation](./automation.md).
-- **Rate limiting and debounce.** A per-rule `throttle` block, leading-edge by
-  default, `mode: trailing` for debounce, grouped by a templated `key`. The
-  windows are in the engine's memory, not in KV, because rule templates have no
-  arithmetic. Each instance keeps its own windows, and a restart clears them.
+- **Rate limiting and debounce.** A per-rule `throttle` block
+  ([Automation](./automation.md#throttle-and-debounce-are-built-in)).
 - **HTTP in and out.** The gateway turns webhooks into NATS messages. It also
   calls external APIs in response to NATS events, with retry.
 - **Scheduled publishes.** The scheduler publishes to NATS or HTTP on a cron

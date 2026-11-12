@@ -132,8 +132,7 @@ and [Getting Started](./getting-started.md).
   A large one can run them centrally, with NATS leaf nodes and rule engines at
   each site. The components only know about NATS.
 - **Each component scales on its own.** The rule engine keeps no state between
-  messages and scales horizontally. Its `throttle` windows are in each
-  instance's memory, so each instance has its own windows. NATS clusters
+  messages and scales horizontally. NATS clusters
   horizontally. The Control Plane scales vertically, because it is a
   low-traffic metadata store. Stream processors scale per pipeline.
 
@@ -378,8 +377,7 @@ values, such as `"auto"` and `"manual"` in the row, and a reported/desired
 column pair in the detail pane.
 
 Layer 1 rules also keep durable state in KV, such as alarm status and presence
-keys. Debounce and rate limiting use the rule engine's `throttle`, which keeps
-its windows in memory, not KV. See [Automation](./automation.md).
+keys. See [Automation §2](./automation.md#2-stateful-patterns-via-kv).
 
 **Thing Types** declare the subjects each kind of participant uses: what it
 publishes, subscribes to, requests and replies to. They do not describe payload

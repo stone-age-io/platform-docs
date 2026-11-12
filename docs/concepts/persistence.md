@@ -130,7 +130,7 @@ removes a value after a set age.
   buckets over its NATS WebSocket connection. See
   [Architecture §4](../architecture.md#4-the-digital-twin-concept-live-state).
 - **Rules keep state** in KV, such as alarm status and presence keys. See
-  [Automation §5](../automation.md#5-stateful-patterns-via-kv).
+  [Automation §2](../automation.md#2-stateful-patterns-via-kv).
 
 ::: note KV holds live state, not records
 A bucket can find keys only by key pattern. It cannot search on a value. Keep

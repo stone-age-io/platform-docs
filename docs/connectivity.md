@@ -108,13 +108,9 @@ down ([Observability §3](./observability.md#3-data-flow-architecture)).
 The platform uses KV for the digital twin
 ([Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state))
 and for rule state such as alarm status and presence keys
-([Automation §5](./automation.md#5-stateful-patterns-via-kv)). Both share the
+([Automation §2](./automation.md#2-stateful-patterns-via-kv)). Both share the
 org's NATS Account as their isolation boundary. How buckets work is in
 [Persistence §3](./concepts/persistence.md#3-kv-buckets).
-
-Debounce and rate limiting do not use KV. The rule engine has a per-rule
-`throttle`, and its windows are in each instance's memory, lost on restart. See
-[Automation](./automation.md#throttle-and-debounce-are-built-in).
 
 ### Leaf Nodes
 

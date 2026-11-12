@@ -458,7 +458,7 @@ other's code.
 | **Agent** | PocketBase auth API (bootstrap only) and NATS protocol | After bootstrap it is a plain NATS client. |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §6](./automation.md#6-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([§6.1](#61-the-versions-these-docs-describe)) or a newer one. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([§6.1](#61-the-versions-these-docs-describe)) or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
 - **Upgrade the Control Plane first** when a release changes the schema. `stone`
