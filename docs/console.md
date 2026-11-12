@@ -40,16 +40,10 @@ The console shows Locations in two ways:
 2. **Floor plans:** upload a floor plan image (JPG, PNG, SVG, GIF or WebP) and drag **Things** onto it
    to show where they are in a room.
 
-**The map draws one pin per site, not one per Location.** A Location gets a pin
-only when no ancestor has coordinates. Everything below it goes into that pin,
-and you open it from the pin's drawer. Without this, a campus, its buildings,
-floors and rooms would all stack within a few metres. Use floor plans for
-positions inside a building.
-
-The pin goes to the outermost ancestor that has coordinates, not to the root,
-because tenants put coordinates on different levels. Ancestors with no
-coordinates are skipped, so a room under an unmapped floor goes into its
-building's pin. Nearby sites that still overlap are **clustered**.
+**The map draws one pin per site, not one per Location.** The pin goes to the
+outermost Location that has coordinates, and everything below it opens from
+the pin's drawer. Use floor plans for positions inside a building. Nearby
+sites that still overlap are **clustered**.
 
 A search shows every matching Location on the map, the same as the list beside
 it, so both show the same count.
@@ -79,8 +73,7 @@ desired value into a device. `twin_desired` delivers the value to the edge's
 local KV, and your firmware or rules act on it.
 
 Only the keys in a desired value are compared, so extra reported fields are
-ignored. With full equality, one new reported field would make every older
-desired value "differ".
+ignored.
 
 Layer 1 rules also read and write these buckets, for example for alarm
 stacking. See [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state)
@@ -141,13 +134,10 @@ What a label holds, and why the payload is the bare code, is in
 role can read it through the API, `dashboard` included. The console shows it to
 every role except `dashboard`, whose only screen is the Visualizer.
 
-Each entry has the actor, the action, the record and the time. It stores no
-record *values*. The audit log is separate: only Platform Operators can read
-it, and it keeps old and new values for collections with no credentials (field
-names only for the rest).
-[Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)
-explains the boundary, and why the feed covers the five org-scoped inventory
-collections but not memberships, invites or `nats_*` records.
+Each entry has the actor, the action, the record and the time, and no record
+*values*. It covers Things, Locations and the three type collections. How it
+differs from the operator-only audit log:
+[Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed).
 
 - **The record label in a row is a snapshot.** If a Thing was renamed after the
   change, the row shows the old name. The row's detail dialog says so.
@@ -170,14 +160,8 @@ that spot on the detail view. It uploads and saves the photo at once, without
 the edit form. Viewers see nothing there. To replace or remove a photo, use the
 edit form.
 
-You add a Thing's photo **on edit only**. Creation goes through
-`POST /api/org/things`, a JSON route that cannot carry a multipart body. Create
-the Thing, then add the photo. On edit, the photo is sent in its own request.
-The rest of the Thing update stays JSON, because the member branch of
-`things.updateRule` requires `nats_user`, `nebula_host` and `active` to be unchanged, and
-JSON can leave a field out. A multipart body cannot leave a field out, so a
-member's normal edit would be refused. A Location's photo also works on create,
-because Locations use the plain record API.
+You add a Thing's photo **after it is created**: create the Thing, then add the
+photo. A Location's photo can also be added on create.
 
 ::: warning File URLs need a file token
 `photo`, a Location's `floorplan`, an Organization's `logo` and a user's

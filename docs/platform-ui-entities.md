@@ -244,9 +244,8 @@ A Location or Thing with a **code** can carry a printed QR label.
   not `org/kind/code`. Anyone can replace a sticker in a public corridor. With a
   URL payload, a forged label could send a person to any content. With a bare
   code, a forged label can at most open the wrong record in an app the person
-  is already signed in to. A short code is also a smaller symbol: 21×21 at the
-  highest error correction, where the URL form needs 41×41. On the same size
-  sticker, that gives larger modules that survive scratches and grease.
+  is already signed in to. A short code also prints larger and survives
+  scratches better.
 - **You scan inside an app.** The [Scanner widget](./dashboards.md) reads these
   labels. Sibling apps read the *same* label with their own scanners and open
   their own view of the record, such as a work-order history. Nothing opens the

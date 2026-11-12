@@ -26,12 +26,7 @@ maintain or replace it, and Layers 0 to 2 keep running.
 
 > **This page is about your telemetry, not the platform's own health.** The binaries report their own health on `GET /api/ready` and `GET /metrics`, with no NATS connection. `/metrics` is open by default, with an optional `metrics.token`. The same Prometheus-compatible stack below can scrape them. See [Health & Metrics](./health-metrics.md).
 
-> **The audit log is separate.** Layer 3 holds the history of your *telemetry*. The history of *administrative changes*, such as who created a Thing or rotated a credential, is in the Control Plane, in two collections:
->
-> - `audit_logs`: the forensic record. It keeps the names of the fields each change touched, and old and new values for an allowlist of collections with no credentials. Only **Platform Operators** can read it.
-> - `activity`: an org-scoped feed of actor, action and record, with no values. Every role can read it.
->
-> Set audit retention with `audit.retention` in `config.yaml` ([Configuration §2](./configuration.md#2-section-reference)). See [Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed). Do not use your TSDB for an admin-change audit trail.
+> **Administrative history is not here.** Who changed what in the platform is in the Control Plane's audit log and activity feed, not your TSDB ([Authorization §5](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)).
 
 ---
 
