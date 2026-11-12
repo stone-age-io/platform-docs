@@ -12,11 +12,8 @@ A single IP camera is a **Thing**. The description "an IP camera publishes
 motion events, answers snapshot requests and accepts PTZ commands" is its
 **Thing Type**.
 
-Thing Types describe subjects. They do not describe payload shape. They also do
-not set NATS permissions. Owners and Admins write those on the `nats_roles`
-collection, which only they can read or write. The platform copies a role's
-permission fields into the JWT it signs, so write access to `nats_roles` is the
-same as granting NATS permissions. See [Authorization](./authorization.md).
+Thing Types describe subjects. They do not describe payload shape, and they do
+not set NATS permissions (§5).
 
 ---
 
@@ -161,12 +158,9 @@ label and the record disagree. An Organization code is different: the platform
 makes it from a name and nobody types it on site, so it is lowercase only.
 
 **A code is stored as typed, but uniqueness ignores case.** `cam-1` and
-`CAM-1` cannot both exist in one organization. Subjects, permissions and twin
-keys use the stored spelling exactly, because NATS is case-sensitive. Two
-spellings would be two identities with two subject namespaces that sound the
-same when read aloud, and each would work, so nothing would report an error.
-For the same reason, a lookup that a person makes can safely ignore case, such
-as a code typed into a scanner (`code:lower = "{value:lower}"` in the
+`CAM-1` cannot both exist in one organization, and subjects use the stored
+spelling exactly, because NATS is case-sensitive. A lookup a person makes can
+ignore case, such as a code typed into a scanner (`code:lower = "{value:lower}"` in the
 [Scanner widget](./dashboards.md)).
 
 Each excluded character has a reason:
@@ -454,9 +448,7 @@ These do not belong in a Thing Type or its operations:
 - **State machines or lifecycles** (alarm status, presence, sessions): use NATS
   KV and rule-router rules.
 - **Rate limits, priorities, throttles:** use NATS account limits, the NATS
-  role, or a rule's `throttle`. Account limits are a **Platform Operator**
-  setting. Owners and Admins can read the account record and rotate keys, but
-  cannot change its limits.
+  role, or a rule's `throttle`. Account limits are a Platform Operator setting.
 - **Enabled / disabled flags:** put them on the Thing as runtime state.
 - **Ownership, cost center, environment tags:** put them in the Thing's
   metadata.
@@ -468,21 +460,6 @@ These do not belong in a Thing Type or its operations:
 For a proposed new field, ask: *does it describe the contract between a Thing
 and the bus, or platform behavior around it?* Contract fields such as
 `content_type` or `qos` belong here. Everything else already has a place.
-
-### Operations stay a collection, not a JSON field
-
-**A fixed shape belongs in columns. A freeform document belongs in JSON.** An
-operation always has the same four keys, so it is a collection. A
-`metadata_schema` is a document you write with no fixed shape, so it is a JSON
-field. A JSON array of operations would cost three things:
-
-1. **PocketBase does not validate a JSON field.** A typo such as `subject_sufix`
-   would save, show nothing in the Publisher picker, and raise no error.
-2. **You would own every migration.** A new field on a collection is a column
-   that PocketBase adds. In a JSON array it is a data migration over every
-   `thing_types` record, or mixed shapes forever.
-3. **The admin panel could not help.** Today you can fix a bad operation at
-   `/_/` in seconds. In JSON you would edit text in a textarea.
 
 ---
 
