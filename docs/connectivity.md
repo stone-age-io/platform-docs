@@ -356,14 +356,11 @@ for an example.
 
 ::: note Group membership is in the certificate, so a change needs a re-issue
 Four host fields are signed into the certificate: **`hostname`, `overlay_ip`,
-`groups` and `unsafe_networks`**. A change to any of them applies only when the
-host has a new certificate. Peers apply the old group's rules until then.
+`groups` and `unsafe_networks`**. Saving a change to any of them re-signs the
+host's certificate at once. It applies when the host fetches its new config,
+and peers apply the old group's rules until then, so redeploy that host.
 Everything else about a host, firewall *rules* included, goes into
 `config_yaml` and applies on the next pull.
-
-You do not have to wait for expiry. `renew` on a host signs a new certificate
-at once. It applies when the host fetches its new config, so renew, then
-redeploy that host.
 :::
 
 ---
@@ -388,7 +385,7 @@ is needed.
 - Layer 2: [Stream Processing](./stream-processing.md)
 - Layer 3: [Observability](./observability.md)
 - Who can manage roles, hosts and account wiring: [Authorization & Roles](./authorization.md)
-- CA rotation and the host certificate audit: [Stone CLI](./stone-cli.md#nebula-operations-that-are-not-record-writes)
+- CA rotation: [Stone CLI](./stone-cli.md#nebula-operations-that-are-not-record-writes)
 - The edge: [The Agent](./agent.md)
 - Setting up a gateway and syncing its buckets: [Leaf Nodes](./leaf-nodes.md)
 - The layer model: [Platform Layers](./platform-layers.md)

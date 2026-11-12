@@ -188,7 +188,7 @@ platform creates these primitives for it:
 | :--- | :--- | :--- |
 | **Organization** | **NATS Account** | Cryptographic multi-tenancy through NATS Operator mode. |
 | **Organization** | **Nebula CA** | Each Org gets its own Certificate Authority. |
-| **Thing** (auth record) | **NATS User** | Each Thing has its own NATS user, signed by the Org's Account. |
+| **Thing** (auth record) | **NATS User** | A Thing can have its own NATS user, signed by the Org's Account. |
 | **Membership** (User to Org link) | **NATS User** (relation) | A Membership points to a NATS user in that Org's Account, so the person has a credential scoped to that organization. |
 
 A compromised device in *Organization A* has no cryptographic path to messages
@@ -228,8 +228,8 @@ blocklists its Nebula certificate, in the same operation.
 the four effects and when each one applies.
 
 The same idea applies to Organizations (**Infrastructure-as-Tenant**). Creating
-an Organization provisions its NATS Account and Nebula CA, and the record and
-its infrastructure are created and deleted together.
+an Organization provisions its NATS Account and Nebula CA with it. Deleting one
+needs it suspended and empty first ([Authorization §3](./authorization.md#3-cross-organization-identities)).
 
 ### Authorization inside an Organization
 

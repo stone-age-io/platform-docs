@@ -10,7 +10,7 @@ Most of the Stone-Age.io API is stock PocketBase REST on a collection, such as
 control it ([Authorization & Roles](./authorization.md)). The
 [PocketBase API docs](https://pocketbase.io/docs/api-records/) describe it.
 
-This page covers the **eleven endpoints the platform adds**: ten under `/api/`,
+This page covers the **ten endpoints the platform adds**: nine under `/api/`,
 and `/metrics`. Each application route exists because a PocketBase API rule
 cannot express what it does.
 
@@ -403,7 +403,7 @@ Unauthenticated, and **always on**. You cannot disable it.
 {
   "ready": true,
   "state": "warn",
-  "version": "v0.16.0",
+  "version": "v0.17.0",
   "uptime": "4h12m",
   "took": "3ms",
   "checked": "2026-09-18T09:14:02Z",

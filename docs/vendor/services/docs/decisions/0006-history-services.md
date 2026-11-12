@@ -1,6 +1,6 @@
 ---
-path: platform/decisions/0006-history-services
-nav_order: 60
+path: services/decisions/0006-history-services
+nav_order: 40
 ---
 # ADR 0006: History Services for Metrics and Logs
 
@@ -16,15 +16,15 @@ nav_order: 60
 The design stays here for when it is needed. We do not build it now, for three reasons:
 
 1. **No tenant has asked for it.** `history-logs` waits for a real need. `history-metrics` must meet the same rule.
-2. **It moves a boundary that the docs state.** [Observability](../observability.md) says the console's dashboards are for live operation, and Perses or Grafana is for history. [ADR 0004](./0004-long-term-data-and-location-path.md) says the same of the dashboard widgets. This ADR reverses both, and the reversal must be a decision of its own.
-3. **It changes the documented TSDB layout.** [Observability](../observability.md) shows one shared VictoriaMetrics with no auth proxy. §2 is safe only with one database per account, or a per-account token behind vmauth. If someone points `history-metrics` at the documented shared database, one tenant can read the data of another tenant.
+2. **It moves a boundary that the docs state.** [Observability](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md) says the console's dashboards are for live operation, and Perses or Grafana is for history. [ADR 0004](https://github.com/stone-age-io/platform-docs/blob/main/docs/decisions/0004-long-term-data-and-location-path.md) says the same of the dashboard widgets. This ADR reverses both, and the reversal must be a decision of its own.
+3. **It changes the documented TSDB layout.** [Observability](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md) shows one shared VictoriaMetrics with no auth proxy. §2 is safe only with one database per account, or a per-account token behind vmauth. If someone points `history-metrics` at the documented shared database, one tenant can read the data of another tenant.
 
 Until then, Perses or Grafana shows long-term metrics, and JetStream with retention keeps event history (§9).
 
 **Before this ADR is built, do these:**
 
 - Name the tenant need.
-- Update [Observability](../observability.md) and [ADR 0004](./0004-long-term-data-and-location-path.md) to the new boundary.
+- Update [Observability](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md) and [ADR 0004](https://github.com/stone-age-io/platform-docs/blob/main/docs/decisions/0004-long-term-data-and-location-path.md) to the new boundary.
 - Make the documented TSDB layout one of the two layouts in §2.
 - Set `MAX_POINTS` to a value that fits the 1 MB payload limit for a chart with several series. 11,000 points of Prometheus JSON is approximately 240 KB for each series, so approximately four series reach the limit. A chart is approximately 1,000 pixels wide, so a default near 1,500 is sufficient.
 - Say which console widget uses the service, and what makes the PromQL.
@@ -33,7 +33,7 @@ Until then, Perses or Grafana shows long-term metrics, and JetStream with retent
 
 ## Context
 
-The console talks only NATS. Its widgets read history by replaying a JetStream stream ([Dashboards](../dashboards.md)), which covers minutes to days. Long-term metrics live in the [Layer 3](../observability.md) time-series database, VictoriaMetrics by default, fed by Telegraf. Today the only way to see them is Grafana or Perses.
+The console talks only NATS. Its widgets read history by replaying a JetStream stream ([Dashboards](https://github.com/stone-age-io/platform-docs/blob/main/docs/dashboards.md)), which covers minutes to days. Long-term metrics live in the [Layer 3](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md) time-series database, VictoriaMetrics by default, fed by Telegraf. Today the only way to see them is Grafana or Perses.
 
 That leaves a gap. A tenant looking at a Thing in the console can see the last hour of its temperature but not the last 90 days, unless they switch to another tool that has its own login and its own idea of which data they may see.
 
@@ -123,7 +123,7 @@ The same contract as every service in the repository: `GET /api/ready` and `GET 
 
 - **Readiness:** two checks, `nats` and `backend`.
   - **How `backend` is probed:** it runs the query `1` through `/api/v1/query`. That works on any Prometheus-compatible backend, where health endpoints differ.
-  - **The probe runs on each readiness request,** with a 2-second timeout, and nothing is cached. [Health & Metrics §2](../health-metrics.md) caches the Control Plane's checks because they open connections and query the database. One trivial query every 10 to 30 seconds, the usual orchestrator interval, doesn't need a background goroutine and a cache. The timeout keeps a slow backend from making the endpoint slow.
+  - **The probe runs on each readiness request,** with a 2-second timeout, and nothing is cached. [Health & Metrics §2](https://github.com/stone-age-io/platform-docs/blob/main/docs/health-metrics.md) caches the Control Plane's checks because they open connections and query the database. One trivial query every 10 to 30 seconds, the usual orchestrator interval, doesn't need a background goroutine and a cache. The timeout keeps a slow backend from making the endpoint slow.
 - **Metrics:**
   - `history_metrics_requests_total{endpoint, outcome}`
   - `history_metrics_request_duration_seconds{endpoint}`
@@ -166,7 +166,7 @@ JetStream stops being enough when the data is high-volume and needs searching by
 
 ## Alternatives Considered
 
-**One service in the operator's hub account, serving every tenant.** Tenants would import `history.query`, and the operator-signed import would add the org code to the subject, as the Helpdesk's ticket intake does ([ADR 0002](./0002-organization-code-namespace.md)). It's one process instead of one per account. We rejected it for two reasons:
+**One service in the operator's hub account, serving every tenant.** Tenants would import `history.query`, and the operator-signed import would add the org code to the subject, as the Helpdesk's ticket intake does ([ADR 0002](https://github.com/stone-age-io/platform-docs/blob/main/docs/decisions/0002-organization-code-namespace.md)). It's one process instead of one per account. We rejected it for two reasons:
 
 - The service would have to enforce tenancy itself by adding label filters to every query, which is exactly the logic §2 keeps out.
 - It doesn't match where ingestion runs: Telegraf is per account, so the read side is too.

@@ -13,7 +13,7 @@ nav_order: 40
 
 ---
 
-> **Amended 2026-11-12: inventory events were tried and removed.** From v0.15.0 the platform could optionally publish Thing and Location changes in the operator organization's account and export them to each tenant. They were removed after v0.16.0. Publishing was best-effort, so a consumer that had to be correct still needed the poll this ADR describes, and the poll alone does the job. "The platform writes only to the system account" is true again.
+> **Amended 2026-11-12: inventory events were tried and removed.** From v0.15.0 the platform could optionally publish Thing and Location changes in the operator organization's account and export them to each tenant. They were removed in v0.17.0. Publishing was best-effort, so a consumer that had to be correct still needed the poll this ADR describes, and the poll alone does the job. "The platform writes only to the system account" is true again.
 
 ---
 

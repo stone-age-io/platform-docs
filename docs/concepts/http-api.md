@@ -89,7 +89,7 @@ Query parameters on a list:
 | `fields` | Returns only these fields | `id,code,name` |
 | `page`, `perPage` | Selects a page | `page=2&perPage=100` |
 
-Stone-Age.io adds eleven routes for the jobs that a collection cannot do. See
+Stone-Age.io adds ten routes for the jobs that a collection cannot do. See
 [API Reference](../api-reference.md). The `stone` CLI is a client of the same
 API ([Stone CLI](../stone-cli.md)).
 

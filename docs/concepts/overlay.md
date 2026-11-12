@@ -202,4 +202,4 @@ Revoke a device on both networks. Deactivating a Thing does both
 - The other identity on each device: [NATS Security](./nats-security.md)
 - Who can read hosts and roll a CA: [Authorization](../authorization.md)
 - How the Agent runs Nebula on a device: [The Agent](../agent.md)
-- CA rotation and the certificate audit: [Stone CLI](../stone-cli.md#nebula-operations-that-are-not-record-writes)
+- CA rotation: [Stone CLI](../stone-cli.md#nebula-operations-that-are-not-record-writes)

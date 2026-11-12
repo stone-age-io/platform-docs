@@ -1,6 +1,6 @@
 ---
-path: platform/decisions/0007-creds-keeper
-nav_order: 70
+path: services/decisions/0007-creds-keeper
+nav_order: 50
 ---
 # ADR 0007: creds-keeper, Platform-Managed Credentials for Account Services
 
@@ -19,7 +19,7 @@ Every process in a tenant's account connects to NATS with a user creds file. Tod
 - **Revoke** locks a service out until someone delivers a new file by hand.
 - **Deactivating** has nothing to stop that is visible in inventory.
 
-The [Agent](../agent.md) already solved this for devices. A device is a **Thing**:
+The [Agent](https://github.com/stone-age-io/platform-docs/blob/main/docs/agent.md) already solved this for devices. A device is a **Thing**:
 
 1. **Bootstrap.** It signs in once with the Thing's email and password and reads its credential from the Thing's linked NATS identity (`nats_user` → `creds_file`).
 2. **Keep signed in.** It saves the PocketBase session token and renews it with `auth-refresh`, so the password can be removed after the first boot.
@@ -220,7 +220,7 @@ The companion program needs no change to any service.
 
 ## As implemented
 
-creds-keeper shipped in [`stone-age-io/services`](https://github.com/stone-age-io/services) at commit `fca77da`, built on nats.go v1.55.0 and tested against an embedded nats-server 2.15.2 (`credskeeper/`, `cmd/creds-keeper/`, [docs](../vendor/services/docs/creds-keeper.md)). It follows the decision above, with these deviations:
+creds-keeper shipped in [`stone-age-io/services`](https://github.com/stone-age-io/services) at commit `fca77da`, built on nats.go v1.55.0 and tested against an embedded nats-server 2.15.2 (`credskeeper/`, `cmd/creds-keeper/`, [docs](../creds-keeper.md)). It follows the decision above, with these deviations:
 
 1. **One sync path, also for the first start.** §1 gives bootstrap its own call, `auth-with-password?expand=nats_user`. The implementation has no bootstrap path. A first start is the routine sync with no saved session: sign in without `expand`, probe `updated`, then fetch. That costs two more calls on a first start. The key still crosses the network one time.
 2. **The session file holds the token and the revision only.** §3 also puts the NATS identity id in it. Every auth response already gives the id, so a saved copy could only go stale.

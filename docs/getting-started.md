@@ -154,7 +154,8 @@ safe to repeat.
 ```
 
 This creates a **SuperUser**, a service account with full database access that
-ignores API rules. The first run also seeds the NATS Operator, System Account
+ignores API rules. Run by hand, the password goes into your shell history and
+the process list. `init` runs this step in-process and avoids that. The first run also seeds the NATS Operator, System Account
 and System User, and starts audit logging.
 
 ### Step 2: Import the schema
@@ -397,7 +398,7 @@ active organization**. It needs an address and an identity.
    **Settings**, choose that user as the **Operational Identity**.
 3. Optionally, turn on **Auto-connect on login**. Click **Connect**.
 
-The status shows a green **Status: Connected**.
+The status dot turns green and reads **CONNECTED**.
 
 > **Use your own organization for real work, not the System account.** `bootstrap` links the NATS **System User** to the System organization. You can use it to test the connection, but the System Account is for NATS cluster management and has no JetStream. Give each new tenant its own organization. Only a Platform Operator can create an Organization ([Authorization §3](./authorization.md#3-cross-organization-identities)).
 >

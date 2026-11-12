@@ -1,6 +1,6 @@
 ---
-path: platform/decisions/0005-watchdog-service
-nav_order: 50
+path: services/decisions/0005-watchdog-service
+nav_order: 30
 ---
 # ADR 0005: A Watchdog Service for Message Absence
 
@@ -273,6 +273,6 @@ The watchdog shipped in [`stone-age-io/services`](https://github.com/stone-age-i
 
 1. **The default version is `0.0.0-dev`, not `dev`.** `micro.AddService` rejects a version that isn't SemVer, so a build without `-ldflags "-X main.version=..."` couldn't register the service. Release builds set a real version.
 2. **`watchdog.validate` takes `{"name": "...", "check": {...}}`.** §7 says it takes the check JSON. A check's name is its KV key, so it isn't inside the JSON, and the name has its own rule (`[a-zA-Z0-9_-]+`). Without the name in the request, the endpoint couldn't validate it.
-3. **Readiness runs on each request, with no cached prober.** The Control Plane caches its checks because they open connections and query the database ([Health & Metrics §2](../health-metrics.md)). Each of the watchdog's four checks only reads memory (connection status, an atomic flag, the check map, the last evaluation time), so a prober would add a goroutine and a cache with nothing to save. The response format and the `ok`/`warn`/`fail`/`skipped` rules are unchanged.
+3. **Readiness runs on each request, with no cached prober.** The Control Plane caches its checks because they open connections and query the database ([Health & Metrics §2](https://github.com/stone-age-io/platform-docs/blob/main/docs/health-metrics.md)). Each of the watchdog's four checks only reads memory (connection status, an atomic flag, the check map, the last evaluation time), so a prober would add a goroutine and a cache with nothing to save. The response format and the `ok`/`warn`/`fail`/`skipped` rules are unchanged.
 
 One known gap: if an operator deletes a target's state key while a write for that same target is in progress, the key can be recreated. This affects only a target being forgotten, and deleting the key again fixes it. Closing the gap would need more locking than it's worth.

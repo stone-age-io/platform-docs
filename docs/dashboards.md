@@ -275,7 +275,7 @@ To set up the screen:
 The twin browser on a Thing or Location detail view is separate from the
 Visualizer. It shows the KV keys under `thing.<code>` or `location.<code>`, with
 reported and desired values side by side. See
-[Platform Entities](./console.md#3-the-digital-twin) and
+[The Console §3](./console.md#3-the-digital-twin) and
 [Architecture §4](./architecture.md#4-the-digital-twin-concept-live-state).
 
 A KV or KV Table widget can read the same buckets, but it shows one bucket. The

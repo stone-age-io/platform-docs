@@ -481,15 +481,15 @@ on a later version says so.
 
 | Component | Version | Where its own docs are |
 | :--- | :--- | :--- |
-| Control Plane and console (`stone-age`) | v0.16.0 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
-| `stone` CLI | v0.6.0 | [Stone CLI](./stone-cli.md) |
+| Control Plane and console (`stone-age`) | v0.17.0 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
+| `stone` CLI | v0.6.0, plus `main` (`stone nebula cert-audit` removed, not yet released) | [Stone CLI](./stone-cli.md) |
 | Agent | v0.6.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
-| Services | Watchdog v0.1.0. creds-keeper is not in a release yet: the docs describe commit `fca77da` on `main`, which has no tag | [Services docs](./vendor/services/README.md) |
+| Services | Watchdog v0.1.0. creds-keeper is not in a release yet: the docs describe commit `981453f` on `main`, which has no tag | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
 | Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
 
-Platform v0.16.0 is built on these upstream versions:
+Platform v0.17.0 is built on these upstream versions:
 
 | Upstream | Version |
 | :--- | :--- |

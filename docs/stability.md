@@ -40,7 +40,7 @@ a record or a payload is an addition, not a break.
 
 | Surface | What is stable | Reference |
 | :--- | :--- | :--- |
-| The eleven platform routes | The path, the method, who can call it, the request fields and the response fields | [API Reference §1](./api-reference.md#1-the-whole-surface) |
+| The ten platform routes | The path, the method, who can call it, the request fields and the response fields | [API Reference §1](./api-reference.md#1-the-whole-surface) |
 | `GET /api/me/leaf-config` | The ten field names. The Agent reads them by name. | [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) |
 | `GET /api/ready` | The response fields, the four states, the check names, and `503` only on `fail` | [Health & Metrics §2](./health-metrics.md#2-get-apiready) |
 | `GET /metrics` | The metric names, types and labels | [Health & Metrics §3](./health-metrics.md#3-get-metrics) |

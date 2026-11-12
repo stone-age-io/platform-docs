@@ -37,7 +37,7 @@ The widgets are in [Dashboards](./dashboards.md).
 The console shows Locations in two ways:
 
 1. **Map:** a **Leaflet** map that plots Locations by latitude and longitude.
-2. **Floor plans:** upload a JPG or PNG floor plan and drag **Things** onto it
+2. **Floor plans:** upload a floor plan image (JPG, PNG, SVG, GIF or WebP) and drag **Things** onto it
    to show where they are in a room.
 
 **The map draws one pin per site, not one per Location.** A Location gets a pin

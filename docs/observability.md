@@ -24,7 +24,7 @@ reads your telemetry from NATS.
 All layers talk through NATS subjects, so Layer 3 **only reads**. You can stop,
 maintain or replace it, and Layers 0 to 2 keep running.
 
-> **This page is about your telemetry, not the platform's own health.** The binaries report their own health on `GET /api/ready` and `GET /metrics`, with no auth and no NATS connection. The same Prometheus-compatible stack below can scrape them. See [Health & Metrics](./health-metrics.md).
+> **This page is about your telemetry, not the platform's own health.** The binaries report their own health on `GET /api/ready` and `GET /metrics`, with no NATS connection. `/metrics` is open by default, with an optional `metrics.token`. The same Prometheus-compatible stack below can scrape them. See [Health & Metrics](./health-metrics.md).
 
 > **The audit log is separate.** Layer 3 holds the history of your *telemetry*. The history of *administrative changes*, such as who created a Thing or rotated a credential, is in the Control Plane, in two collections:
 >

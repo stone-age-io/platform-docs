@@ -79,6 +79,9 @@ access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control
 services|$sv_src|stone-age-io/services|README.md|services|60|access: public
 services|$sv_src|stone-age-io/services|docs/watchdog.md|services/watchdog|10|
 services|$sv_src|stone-age-io/services|docs/creds-keeper.md|services/creds-keeper|20|
+services|$sv_src|stone-age-io/services|docs/decisions/0005-watchdog-service.md|services/decisions/0005-watchdog-service|30|
+services|$sv_src|stone-age-io/services|docs/decisions/0006-history-services.md|services/decisions/0006-history-services|40|
+services|$sv_src|stone-age-io/services|docs/decisions/0007-creds-keeper.md|services/decisions/0007-creds-keeper|50|
 EOF
 }
 

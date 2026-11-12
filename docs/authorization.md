@@ -109,7 +109,7 @@ owners.
 
 ⁵ `organizations.active`, copied onto the organization's NATS account. The operator and system organizations refuse the change. See §3.1.
 
-⁶ Through `POST /api/org/nats-account/keys`, not a record edit. `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. Rolling a Nebula CA is also a route, and owners and admins can use it: `POST /api/org/nebula-ca/rotate` (§4.3).
+⁶ Owners and admins use `POST /api/org/nats-account/keys`, which needs an owner or admin membership in the organization. A Platform Operator without one edits the `nats_accounts` record instead: `nats_accounts.updateRule` and `nebula_ca.updateRule` are both Platform-Operator-only. Rolling a Nebula CA is also a route, and owners and admins can use it: `POST /api/org/nebula-ca/rotate` (§4.3).
 
 ⁷ Dashboards are the only screen `dashboard` can open.
 

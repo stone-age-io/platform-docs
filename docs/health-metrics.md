@@ -28,8 +28,8 @@ platform. A Control Plane can return `200` while:
 - the NATS server does not trust its operator, so every account claim is
   rejected and no organization's account reaches the bus, while the console
   looks normal;
-- `bootstrap` ran before `migrate up`, so the tenancy flags were dropped and
-  the install has no Platform Operator;
+- the schema was never imported, so every platform field is missing and
+  writes to it vanish without an error;
 - `nats.websocket_urls` is not set, so the console works on the server and for
   nobody else;
 - a Nebula CA expired, and every host in the mesh stopped with it.
@@ -72,7 +72,7 @@ $ curl -s http://localhost:8090/api/ready | jq
 {
   "ready": false,
   "state": "fail",
-  "version": "v0.16.0",
+  "version": "v0.17.0",
   "uptime": "3m12s",
   "took": "14ms",
   "checked": "2026-09-07T05:37:18Z",
@@ -222,7 +222,7 @@ stone_age_check_state{name="database",state="fail"} 0
 stone_age_check_state{name="database",state="warn"} 0
 stone_age_check_state{name="database",state="skipped"} 0
 stone_age_check_timestamp_seconds 1.7573e+09
-stone_age_build_info{version="v0.16.0"} 1
+stone_age_build_info{version="v0.17.0"} 1
 ```
 
 A number for "ok/warn/fail/skipped" would need decoding in every query, and a new
