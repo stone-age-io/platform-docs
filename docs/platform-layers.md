@@ -85,19 +85,11 @@ Layer 0 carries messages, durable streams, key-value state and the mesh network.
 - **Connectivity.** The Nebula mesh connects edge sites peer to peer with
   outbound-only traffic.
 
-**The Control Plane generates Layer 0.** When you initialize the Control Plane,
-it generates the NATS Operator JWT, the System Account, the resolver
-configuration and the `nats-server` config. You start NATS with these files.
-Each Organization gets a Nebula CA that issues host certificates. One command
-exports these files, so you can run NATS and Nebula lighthouses on the same
-host, on other hosts, in a cluster or at the edge. See
-[Getting Started](./getting-started.md) for the commands.
-
-**The Control Plane keeps Layer 0 in sync.** PocketBase stays connected to NATS
-on the System Account. It publishes account and credential updates
-(`$SYS.REQ.CLAIMS.UPDATE`), so NATS applies Control Plane changes with no
-restart or reload. Rule engines, stream processors, agents and users see each
-other on the bus. They do not see PocketBase there.
+**The Control Plane generates and feeds Layer 0 but is not part of it.** It
+writes the NATS operator, accounts and server config, issues each
+organization's Nebula CA, and pushes account changes to the running servers.
+Other components never see it on the bus. See
+[Architecture §2](./architecture.md#bootstrapping-the-nats-server-from-the-control-plane).
 
 Many use cases need only Layer 0. To ingest telemetry and show it on a
 dashboard, you need pub/sub, KV and the console reading NATS over WebSocket.

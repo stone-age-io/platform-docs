@@ -409,31 +409,19 @@ graph LR
 
 ## 5. The Chain of Trust
 
-The platform's trust model uses public key infrastructure (PKI) and JSON Web
-Tokens (JWT).
+How NATS keys, JWTs and signing work, and how Nebula certificates and CAs work,
+is in [NATS Security](./concepts/nats-security.md) and
+[Overlay Network](./concepts/overlay.md). What the platform adds:
 
-### NATS Security (nKeys & JWTs)
-
-The Control Plane creates every Account JWT and pushes it to the servers. The
-servers run a **full resolver** (`resolver: { type: full }` in the exported
-config). The Control Plane publishes each new or changed Account JWT on
-`$SYS.REQ.CLAIMS.UPDATE`. There is no separate account server. A site's leaf
-node is the exception. It preloads its own copy of the Account JWT, which its
-Agent refreshes ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-
-1. The Control Plane holds the **NATS Operator** key.
-2. Each Org has an **Account** key, signed by the NATS Operator.
-3. Each Thing and User has a **User** key, signed by its Account.
-
-Clients authenticate with **JWTs** and **nKeys**. A user signs a challenge
-during the connection handshake, and the server verifies the chain.
-
-### Nebula Security (Certificates)
-
-1. The platform generates a **CA** (Certificate Authority) for each Org.
-2. A CA can have one or more networks.
-3. Each **host** belongs to one network and has a certificate signed by that CA.
-4. Hosts communicate only with hosts whose certificates come from the *same* CA.
+- **The Control Plane holds the NATS Operator key.** Each organization's Account
+  is signed by it, and each Thing's and person's User by that Account.
+- **The servers run a full resolver**, and the Control Plane publishes each new
+  or changed Account JWT on `$SYS.REQ.CLAIMS.UPDATE`. There is no separate
+  account server. A site's leaf node is the exception: it preloads its own copy
+  of the Account JWT, which its Agent refreshes
+  ([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
+- **Each organization has its own Nebula CA**, with one or more networks under
+  it. Hosts talk only to hosts whose certificates come from the same CA.
 
 ---
 
