@@ -389,13 +389,12 @@ Use the `=` in `--active=false`. A bare boolean flag means *true*, so
 
 ### Nebula operations that are not record writes
 
-Two Nebula operations are not record edits, so they are under `stone nebula`:
+CA rotation is not a record edit, so it is under `stone nebula`:
 
 ```sh
 stone nebula ca-rotate prepare      # mint the incoming CA, publish it as additional trust
 stone nebula ca-rotate commit       # switch issuance to it, re-sign every active host
 stone nebula ca-rotate finish       # drop the outgoing CA
-stone nebula cert-audit             # hosts whose certificate does not match their network
 ```
 
 **`ca-rotate` has three steps, and you must wait between them.**
@@ -413,19 +412,10 @@ your active org. You cannot renew a CA, only rotate it, so start months before
 it expires. `stone nebula-ca ls` shows the date. See
 [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
-**`cert-audit`** compares each host certificate's network with the network the
-host belongs to. A client cannot parse the certificate, so the platform does it.
-Nebula puts a certificate's prefix on the tun device as a link route, so a
-certificate with the wrong mask (such as `/32`) verifies, renders, starts and
-handshakes, but moves no packets, and nothing reports an error.
-
-::: warning Affected hosts are not re-signed automatically
-A re-sign changes the certificate's fingerprint, and `pki.blocklist` revokes by
-fingerprint, so an automatic sweep would rewrite every peer config in the mesh.
-The audit names the hosts. Reissue them one at a time. Inactive hosts are left
-out, because they are revoked. Re-signing one would publish a new fingerprint
-while the old certificate stayed valid.
-:::
+**A network's `cidr_range` is fixed once the network exists.** Host
+certificates carry it, and changing it would re-sign none of them, so every host
+would stop reaching its peers. The platform refuses the update. Create a new
+network instead.
 
 ---
 

@@ -242,9 +242,8 @@ from an account outside this deployment still needs a pasted token.
 **Platform-managed records are read-only.** When an Organization is flagged
 `managed`, the platform creates a pair of records: a `helpdesk-events` export on
 the tenant's account, and a matching import on the provider's hub account. Both
-show a **Managed** badge and offer **View** instead of Edit or Delete. Both
-platform exports, this one and each organization's inventory export, are
-private to the one account they serve.
+show a **Managed** badge and offer **View** instead of Edit or Delete. The
+export is private to the one account it serves.
 
 This is not a permission. An Owner can write to the collection. The console
 hides the edit because it would not last. Every save of the Organization record
@@ -256,23 +255,6 @@ deletes both.
 The export is on the tenant's own account, so a managed tenant's Owner sees it
 under Exports. The import is on the provider's hub account, so only members of
 the provider's organization (created by `--operator-org`) see it under Imports.
-
-**Inventory events use the second platform export.** With
-`nats.inventory_events_enabled: true`, the Control Plane publishes each create,
-update and delete of a Thing or Location in the operator organization's
-account. A private export and import pair for each organization delivers that
-organization's events to its own account, on
-`stone-age.inventory.<kind>.<action>`:
-
-- `<kind>` is `thing` or `location`. `<action>` is `created`, `updated` or
-  `deleted`.
-- The payload is the record (`code`, `name`, `type`, `location` and other
-  inventory fields, with relations as codes) and a `changed` list.
-- The events are core NATS and are not stored. A failed publish never fails the
-  save, so treat an event as a notification, not as a record.
-- The feature is off by default. `nats.inventory_local_subject` changes the
-  `stone-age.>` prefix
-  ([Configuration §2](./configuration.md#2-section-reference)).
 
 **Use imports and exports for:**
 

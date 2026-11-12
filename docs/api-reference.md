@@ -28,7 +28,6 @@ cannot express what it does.
 | [`/api/org/things`](#post-apiorgthings) | `POST` | `member` and up for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
 | [`/api/org/nats-account/keys`](#post-apiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
 | [`/api/org/nebula-ca/rotate`](#post-apiorgnebula-carotate) | `POST` | `owner` / `admin` | Roll the organization's Nebula CA in three steps |
-| [`/api/org/nebula/cert-audit`](#get-apiorgnebulacert-audit) | `GET` | `owner` / `admin` | Hosts whose certificate does not match their network |
 | [`/api/ready`](#get-apiready) | `GET` | unauthenticated | Readiness probe, `200` or `503` |
 | [`/metrics`](#get-metrics) | `GET` | unauthenticated by default | Prometheus exposition |
 
@@ -70,7 +69,7 @@ check, the route would let a caller steal another tenant's credential.
 | :--- | :--- |
 | A rule cannot allow only one field. The alternative is `:isset = false` on every other field, a deny-list that opens silently when someone adds a field. | `nats-creds/rotate`, `nats-account/keys`, `nebula-ca/rotate` |
 | One operation needs two authority levels | `org/things` |
-| The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `account-jwt`, `nebula/cert-audit`, `client-config` |
+| The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `account-jwt`, `client-config` |
 
 Three routes are not in the table. `invites/accept` creates a membership for a
 caller who has no role in the organization yet. `/api/ready` and `/metrics`
@@ -388,38 +387,6 @@ every host before issuance moves.
 [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca) explains why
 the roll takes three steps and why the tenant controls it.
 
-### `GET /api/org/nebula/cert-audit`
-
-Lists the organization's Nebula hosts whose certificate network does not match
-the network the host belongs to. **Owner/admin only.**
-
-```json
-{ "stale": ["4f5g6h7i8j9k0l1", "2m3n4o5p6q7r8s9"] }
-```
-
-`stale` is never `null`. An empty array means no host needs attention. `null`
-would look like "the audit did not run".
-
-Nebula puts a certificate's network directly on the tun device and adds a link
-route for it, so the mask **is** the host's route to the mesh. A certificate
-with the wrong mask, such as `/32`, verifies, renders and handshakes, but moves
-no packets, and nothing reports an error.
-
-**It is a route because it must parse a Nebula certificate**, which a browser
-cannot do.
-
-::: warning Read-only, and nothing is re-signed automatically
-A re-sign changes a certificate's fingerprint, and `pki.blocklist` revokes by
-fingerprint. An automatic sweep would rewrite every peer config in the mesh. The
-audit names the hosts. To fix one, run `renew` on it, then redeploy that host's
-config. Do one host at a time.
-
-**Inactive hosts are left out.** An inactive host is revoked. Re-signing it
-would publish a new fingerprint that is not on any blocklist, which would
-silently restore it. A host whose certificate or network cannot be read is left
-out, not reported.
-:::
-
 ---
 
 ## 5. Observability
@@ -500,7 +467,6 @@ middle.
 - **No resolver service.** A QR label holds a bare code, and nothing opens the
   decoded string as a destination. See
   [ADR 0002](./decisions/0002-organization-code-namespace.md#why-a-qr-payload-is-the-bare-code).
-- **No bulk certificate re-issue.** See `cert-audit` above.
 - **No route that grants Platform Operator status.** Only `bootstrap` and the
   admin panel can. `users.updateRule` and every branch of `users.createRule`
   refuse `is_operator`, so an operator cannot create an operator.

@@ -68,8 +68,7 @@ a record or a payload is an addition, not a break.
 | A leaf's JetStream domain | The gateway Thing's code | [Leaf Nodes §3](./leaf-nodes.md#the-domain-is-the-code-computed-and-never-stored) |
 | A QR label's payload | The bare code | [Platform Entities §5](./platform-ui-entities.md#5-codes-and-qr-labels) |
 | A Location's `path` | Codes from the root down, with `/` between them and at both ends | [Platform Entities §2](./platform-ui-entities.md#2-locations) |
-| Platform subjects in a tenant's account | The managed export subtree and the inventory events subtree, each as configured | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
-| Inventory events | The `<kind>.<action>` tokens (`thing` or `location`; `created`, `updated` or `deleted`), the payload's field names and the `changed` list, and that the events are core NATS and not stored | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
+| Platform subjects in a tenant's account | The managed export subtree, as configured | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
 
 ### Configuration and commands
 

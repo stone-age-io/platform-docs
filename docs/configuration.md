@@ -34,8 +34,6 @@ nats:
   jetstream_domain: "hub"                   # this hub's own JetStream domain
   encryption_key: ""                        # encrypts the minting keys at rest (§2.2)
   managed_export_subject: "helpdesk.>"
-  inventory_events_enabled: false           # publish Thing and Location changes on the bus
-  inventory_local_subject: "stone-age.>"    # where a tenant receives them
   log_to_console: false
   default_limits:
     max_connections: 100
@@ -99,8 +97,6 @@ imports, and the System Account connection.
 | `jetstream_domain` | string | `"hub"` | This hub's JetStream domain, which an edge uses to address the hub across the link (`$JS.<domain>.API`). Given to gateways as `hub_domain`. `nats export` writes it into `jetstream { domain }` in the hub's `nats.conf`, which must keep matching it: the export does not rewrite an existing file, so a later change needs a hand edit there too. Agents cache it, so a later change reaches a gateway only when that gateway runs `agent -leaf-config` again. Empty makes the leaf-config route answer `503`. |
 | `encryption_key` | string | `""` | 32-character key that encrypts the NATS **minting keys** at rest: operator, account and user seeds and private keys, and signing keys. **Not** issued credentials (§2.2). Empty means plaintext in SQLite. |
 | `managed_export_subject` | string | `"helpdesk.>"` | The subject subtree a **managed** organization exports into the provider's hub account. The hub-side import remaps it to `<subtree>.<organization code>.>`, so the tenant token is in the account JWT that the NATS Operator signs, and nobody can forge it. So a managed organization needs a [code](./platform-ui-entities.md#organizations) before its export goes anywhere. Must end in `.>`, or the platform does not start. See [ADR 0002](./decisions/0002-organization-code-namespace.md). |
-| `inventory_events_enabled` | bool | `false` | Publish each create, update and delete of a Thing or Location on the bus. Each organization receives its own events through a private export and import pair. See [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports). |
-| `inventory_local_subject` | string | `"stone-age.>"` | The subject subtree where a tenant receives inventory events, as `<subtree>.inventory.<kind>.<action>`. Must end in `.>`, and its first token must differ from the first token of `managed_export_subject`, or the platform does not start. |
 | `log_to_console` | bool | `false` | Verbose NATS-library logging. |
 | `default_limits.max_connections` | int | `100` | Max connections for new Org accounts. Set it with headroom (see below). |
 | `default_limits.max_subscriptions` | int | `5000` | Max subscriptions for new Org accounts. |
