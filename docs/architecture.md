@@ -364,17 +364,12 @@ are compared, and extra fields in the reported object are ignored. With full
 equality, one new reported field would make every older assertion "differ".
 Objects use subset comparison. Arrays and scalars must match exactly.
 
-### 4.3 The console says "differs", never "pending"
+### 4.3 Nothing applies desired values
 
-**The platform does not apply desired values to devices.** No hook, agent or
-subscription does this. `twin_desired` only delivers the value: the platform's
-job ends when the value is readable in the edge's local KV. Your firmware or
-your rules consume it.
-
-So the console shows the difference and predicts nothing. "Waiting for the
-device" would imply a control loop that does not exist. The console shows the
-values, such as `"auto"` and `"manual"` in the row, and a reported/desired
-column pair in the detail pane.
+No hook, agent or subscription pushes a desired value into a device.
+`twin_desired` only delivers it to the edge's local KV, and your firmware or
+rules act on it. So the console shows that the two **differ** and never says
+"pending" ([The Console §3](./console.md#3-the-digital-twin)).
 
 Layer 1 rules also keep durable state in KV, such as alarm status and presence
 keys. See [Automation §2](./automation.md#2-stateful-patterns-via-kv).
