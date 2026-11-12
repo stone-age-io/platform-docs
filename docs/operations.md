@@ -555,18 +555,8 @@ commit of its copy.
   and fail silently. Reissue before the date. **Nebula expiry is worse**, because
   Nebula is the out-of-band path: an expired fleet removes the route you would
   use to fix it.
-- [ ] **Nebula expiry alerted:** `GET /api/ready` has a `nebula_cert_expiry`
-  check, which warns and never fails. `GET /metrics` has
-  `stone_age_certificate_expiry_seconds{kind}` as an absolute Unix timestamp.
-  Alert relative to now, with 90 days for a CA and 30 for a host:
-
-    ```
-    stone_age_certificate_expiry_seconds{kind="nebula_host"} - time() < 30 * 86400
-    stone_age_certificate_expiry_seconds{kind="nebula_ca"}   - time() < 90 * 86400
-    ```
-
-    Set the CA alert in particular, because every host certificate chains to it.
-    See [Health & Metrics §4](./health-metrics.md#4-certificate-expiry).
+- [ ] **Nebula expiry alerted**, with 30 days for a host and 90 for a CA:
+  [Health & Metrics §4](./health-metrics.md#4-certificate-expiry).
 - [ ] **A decommissioning procedure agreed:** clearing `active` on a Thing cuts a
   device off, gateways included
   ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).

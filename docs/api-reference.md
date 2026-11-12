@@ -391,74 +391,19 @@ the roll takes three steps and why the tenant controls it.
 
 ## 5. Observability
 
-The Control Plane serves both endpoints. They need no session and no NATS
-connection. [Health & Metrics](./health-metrics.md) lists every check and
-metric.
+Both endpoints are served by the Control Plane with no session and no NATS
+connection. The response body, the ten checks, the four states, every metric
+and the alerts to set are in [Health & Metrics](./health-metrics.md).
 
 ### `GET /api/ready`
 
-Unauthenticated, and **always on**. You cannot disable it.
-
-```json
-{
-  "ready": true,
-  "state": "warn",
-  "version": "v0.17.0",
-  "uptime": "4h12m",
-  "took": "3ms",
-  "checked": "2026-09-18T09:14:02Z",
-  "checks": [
-    { "name": "nats_reachable", "state": "ok", "took": "2ms" },
-    { "name": "nebula_cert_expiry", "state": "warn",
-      "detail": "expiring: 1 host certificate within 30 days (soonest 2026-10-11)",
-      "fix": "Re-issue before the date above. Nebula certificates fail all at once and silently." }
-  ]
-}
-```
-
-Ten checks: `database`, `schema`, `schema_version`, `bootstrap`,
-`nats_operator`, `nats_reachable`, `nats_trust`, `nebula_cert_expiry`,
-`nats_websocket_urls`, `encryption_at_rest`.
-
-**There are four states, and only `fail` is unready.** The endpoint returns
-`503` only when something is broken, and `200` for warnings, so you can put it
-behind a load balancer.
-
-| State | Means |
-| :--- | :--- |
-| `ok` | Checked and healthy |
-| `warn` | Running, but misconfigured. Still `200` |
-| `skipped` | The check could not run. Ranks **below** `ok` |
-| `fail` | Unready. `503` |
-
-Every check that is not `ok` has a `fix` field: a command where there is one,
-or text where the fix needs judgement. Checks run in the background every
-`readiness.interval`. During startup, the endpoint returns "503, not probed
-yet" instead of blocking on a NATS connection timeout.
+Unauthenticated and always on. `200` when ready, warnings included; `503`
+when a check fails, and before the first background probe has run.
 
 ### `GET /metrics`
 
-Prometheus exposition. It is on by default (`metrics.enabled`) and
-**unauthenticated by default**. Protect it with `metrics.token` (Bearer or
-Basic) or a proxy.
-
-Before you add a series:
-
-- **Do not add per-organization labels.** `/metrics` is open by default, and a
-  tenant name next to a certificate inventory helps an attacker.
-- **`stone_age_records{collection="things"}` counts devices configured, not
-  online.** An alert on it can never fire. Any metric that looks like a health
-  signal but is not says so in its HELP text.
-
-Alert on certificate expiry relative to now, so the alert holds the horizon:
-
-```
-stone_age_certificate_expiry_seconds - time() < 30 * 86400
-```
-
-Give the CA a wider horizon than a host: 90 days, not 30. You can reissue a
-host certificate at once. A CA needs a staged rotation with a wait in the
-middle.
+Prometheus exposition, on by default (`metrics.enabled`) and unauthenticated
+by default. Protect it with `metrics.token` (Bearer or Basic) or a proxy.
 
 ---
 
