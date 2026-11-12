@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.6.0   # the stone version in Operations §6.1
+VERSION=0.6.1   # the stone version in Operations §6.1
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
