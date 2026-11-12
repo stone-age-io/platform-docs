@@ -189,14 +189,9 @@ Things, Locations and their types, over the PocketBase REST API, with a
 multi-tenant console. This depth has records only: no messaging, no mesh and no
 contracts.
 
-A Thing can exist with no NATS user and no Nebula host (`mode: "none"` on both
-halves of `POST /api/org/things`). A Thing Type with no operations only
-categorizes Things and emits no subjects. The `member` role creates and edits
-inventory. Attaching identities to it needs a higher role.
-
-Depth 1 limits what you model, not what you run. A normal deployment still
-includes a NATS server with nothing on it yet. When you add subjects later, you
-do not rewrite the inventory.
+A Thing can exist with no NATS user and no Nebula host, and a Thing Type with
+no operations only categorizes. When you add subjects later, you do not
+rewrite the inventory.
 
 > **Stop here if** you need a shared, permissioned, multi-tenant record of what you own and where it is. Examples are asset tracking, site surveys, and an equipment register that field techs edit from a phone.
 
@@ -269,17 +264,7 @@ Control Plane is depth 1, and it sits beside the layers, not in them. See
 
 > "Complexity is the enemy of reliability."
 
-We prefer clear Go code, plain Vue components and readable YAML over clever
-abstractions. We supply the tools, and you own the network.
-
-### Designed to Be Legible
-
-The platform spans a broker, an overlay network, a certificate authority and a
-multi-tenant API, so it has real depth. The aim is that the system explains why
-it is the way it is.
-
-- [Decision records](./decisions.md) give the options we rejected and what
-  implementation taught us.
-- Constraints that are not obvious are documented next to the code that depends
-  on them. Examples: why a NATS publish DENY must stay as it is, why a rotation
-  takes three steps, and why the client cannot validate a certificate field.
+Clear Go, plain Vue components and readable YAML over clever abstractions. The
+[decision records](./decisions.md) say what was rejected and why, and the
+constraints that are not obvious are written down next to the code that depends
+on them.
