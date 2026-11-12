@@ -91,23 +91,11 @@ build time. Requires a `users` session.
 { "natsWebsocketUrls": ["wss://bus.acme.io:9222"] }
 ```
 
-The value is `nats.websocket_urls` from `config.yaml`. It does **not** come
-from `nats.server_url`. `server_url` is a TCP address that the Control Plane
-connects to for publishing account claims. `websocket_urls` is a WebSocket
-listener that a *browser* connects to, on another port and often another
-hostname. An empty list means "not configured", and the console uses its
-built-in `ws://localhost:9222`.
-
-The response is the same for every organization, because every organization
-is an account under one operator on the same cluster. What does vary is the
-*location*, hub or a specific leaf. That depends on the device the browser runs
-on, so it is an override in the browser's `localStorage`. See
-[Configuration §`nats`](./configuration.md#2-section-reference).
-
-::: note Why it requires auth when the value is not a secret
-The console does not connect to the bus before login. With no need before
-login, there is no reason to give an unauthenticated scanner the bus address.
-:::
+The value is `nats.websocket_urls`, the address a browser dials, never derived
+from `nats.server_url`
+([Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses)).
+An empty list means "not configured", and the console uses its built-in
+`ws://localhost:9222`. A device can override it in Settings.
 
 ### `GET /api/me/leaf-config`
 

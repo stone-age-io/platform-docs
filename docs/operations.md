@@ -520,14 +520,9 @@ commit of its copy.
   can protect either ([Health & Metrics](./health-metrics.md)).
 - [ ] **`pb_data` on its own dataset or volume**, ideally ZFS with automatic
   snapshots (§3.3).
-- [ ] **App-settings encryption** with `--encryptionEnv`
-  ([Configuration §4](./configuration.md#pocketbase-flags)). This covers SMTP,
-  S3 and OAuth2 secrets only.
-- [ ] **Column encryption set separately:** `nats.encryption_key` and
-  `nebula.encryption_key` encrypt the NATS and Nebula minting keys. They are
-  empty by default, cannot encrypt existing rows, and a lost key loses what it
-  protected. Neither covers **issued** credentials (`creds_file`,
-  `config_yaml`), so use disk encryption and encrypted backups too
+- [ ] **Encryption keys set at install time:** `--encryptionEnv` for app
+  settings, and `nats.encryption_key` / `nebula.encryption_key` for the minting
+  keys. Neither covers issued credentials, so encrypt disks and backups too
   ([Configuration §2.2](./configuration.md#22-the-encryption-keys)).
 - [ ] **Audit retention set:** by default, `audit.retention` keeps everything
   ([Configuration §2](./configuration.md#2-section-reference)). Only Platform

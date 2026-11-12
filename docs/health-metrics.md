@@ -163,10 +163,7 @@ probe can run. The check looks for the database being *ahead* of the binary.
 Migrations do not roll back, so an older binary on newer `pb_data` runs against
 columns and rules it does not know, with unpredictable results.
 
-**`nats_reachable` uses `nats.server_url`, not the browser's address.**
-`server_url` is the TCP address the Control Plane connects to. `websocket_urls`
-is the address a *browser* connects to, on another port and often another host.
-Never compute one from the other. See
+**`nats_reachable` dials `nats.server_url`, never the browser's address.** See
 [Configuration §2.1](./configuration.md#21-serverurl-and-websocketurls-are-different-addresses).
 
 ### The prober caches; the endpoint never runs checks

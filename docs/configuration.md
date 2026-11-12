@@ -373,12 +373,6 @@ They apply to all subcommands (`serve`, `init`, `migrate`, `bootstrap`, `nats ex
 - **Do not change `operator_name` after the first run.** The NATS Operator JWT
   is generated once, when the first SuperUser is created. A rename would orphan
   the existing identity hierarchy.
-- **`server_url` is for the Control Plane's own System Account connection.** The
-  browser's address is `websocket_urls`, a deployment default that the console's
-  Settings page can override per device (§2.1).
-- **Set the encryption keys at install time.** They cannot apply to existing
-  rows, and losing one loses what it protected. They are **not** what
-  `--encryptionEnv` covers (§2.2).
 - **Audit retention runs on a schedule, not on every write.** A wrong
   `interval` only delays cleanup.
 - **The schema is embedded in the binary.** A change to the embedded
