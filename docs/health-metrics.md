@@ -240,17 +240,11 @@ last values.
 | `stone_age_inactive_records` | gauge | `collection` | Things with `active = false`: decommissioned devices, gateways included. Counts `things` only. |
 | `stone_age_nats_users_revoked` | gauge | | Users whose key is on their account's revocation list. |
 | `stone_age_database_size_bytes` | gauge | | `data.db` plus its WAL and shared-memory files. **Not** uploaded files, which are in `pb_data/storage`. |
-| `stone_age_certificates` | gauge | `kind` | Nebula certificates in service. |
-| `stone_age_certificates_expired` | gauge | `kind` | Certificates already expired. |
-| `stone_age_certificates_expiring` | gauge | `kind` | Certificates expiring within the warning window: 30 days for `nebula_host`, 90 for `nebula_ca`. |
+| `stone_age_certificates_expired` | gauge | `kind` | Certificates already expired. Hosts count only `active = true` rows. |
 | `stone_age_certificate_expiry_seconds` | gauge | `kind` | **Unix timestamp** of the soonest expiry of that kind. |
 | `stone_age_http_requests_total` | counter | `route`, `method`, `status` | Requests served. |
 | `stone_age_http_request_duration_seconds` | histogram | `route`, `method` | Request latency. |
 | `stone_age_collector_errors` | gauge | | Collectors that failed **during this scrape**. |
-
-`stone_age_nats_users_revoked` comes from the database and is always present.
-The other `stone_age_nats_*` series describe the server itself and appear only
-when the bus runs in-process with `serve --nats` (below).
 
 Before you build a dashboard on these:
 
@@ -274,7 +268,7 @@ as "no Nebula hosts configured". Zero on failure would give a wrong answer, and
 an alert on `== 0` would fire for the wrong reason. When the database collector
 fails, `stone_age_collector_errors` is non-zero. The certificate collector does
 not raise that counter. Its series are just absent, so pair any certificate alert
-with `absent(stone_age_certificates)` if a gap matters to you.
+with `absent(stone_age_certificates_expired)` if a gap matters to you.
 
 ### The `route` label is a pattern, never a path
 
@@ -290,21 +284,14 @@ count of 404s would mix authorization, traffic and missing records. An alert
 needs the class. The [audit log](./authorization.md#5-two-histories-the-audit-log-and-the-activity-feed)
 has the details.
 
-### Embedded NATS series
+### NATS server metrics
 
-With `serve --nats`, the in-process bus exports its own counters:
-`stone_age_nats_embedded_up`, `stone_age_nats_connections`,
-`stone_age_nats_cluster_routes`, `stone_age_nats_leafnode_connections`,
-`stone_age_nats_slow_consumers_total`, `stone_age_nats_msgs_total{direction}`,
-`stone_age_nats_bytes_total{direction}` and
-`stone_age_nats_jetstream_bytes{tier}`.
+The platform does not export the NATS server's counters, whether the bus is
+embedded (`serve --nats`) or a separate process. Add `http: 8222` to
+`nats.conf` and scrape that monitoring port with `prometheus-nats-exporter`.
+It works the same way for both, and it reports much more.
 
-With an **external** NATS server, these series are absent, not zero, so a quiet
-bus and a missing one look different. Scrape an external server with
-`prometheus-nats-exporter`, which reads its monitoring port and reports much
-more.
-
-> `stone_age_nats_leafnode_connections` counts leaf sessions **across every account**. It is a capacity number, not a per-tenant availability signal. A tenant checks its own gateways with `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is scoped to its account. See [Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up).
+> Leaf-node counts from the server cover **every account**. They are a capacity number, not a per-tenant availability signal. A tenant checks its own gateways with `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is scoped to its account. See [Leaf Nodes §7](./leaf-nodes.md#7-is-the-gateway-up).
 
 ---
 
@@ -335,8 +322,8 @@ change the threshold in one place.
 `kind` is `nebula_ca` or `nebula_host`. **The CA gets 90 days, not 30.** Every
 host certificate chains to it. You can reissue a host certificate at once, but a
 CA needs a staged *rotation* with a wait in the middle, which does not fit well
-in 30 days. `stone_age_certificates_expiring`, the readiness check and the
-console all use 30 days for a host and 90 for a CA. Host counts include only
+in 30 days. The readiness check and the console both use 30 days for a host
+and 90 for a CA; put the same horizons in your alert rules. Host counts include only
 `active = true` rows, so a decommissioned device's expired certificate pages
 nobody.
 
