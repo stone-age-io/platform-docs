@@ -132,12 +132,9 @@ than 7 days cannot sign in again by itself. Keep the password on devices that
 are often offline. See
 [After the first boot](./vendor/agent/docs/credentials.md#after-the-first-boot).
 
-**Deactivating a Thing ends its session at once.** Clearing `active` refreshes
-the record's `tokenKey`, which invalidates every token issued before. Plan for
-one consequence: if you reactivate a Thing whose password was removed, it cannot
-sign in by itself. Reactivation issues a **new** NATS credential, but the Agent
-can fetch it only over a platform session, and deactivation ended that session.
-An Owner or Admin sets a new password on the Thing's **edit form**
+**If you reactivate a Thing whose password you removed, it cannot sign in by
+itself**: deactivation ended its session, and the new credential is fetched
+over one. An Owner or Admin sets a new password on the Thing's **edit form**
 (Authentication card) and puts it in the service environment. At the next
 start, the Agent picks up the new credential.
 
@@ -153,29 +150,15 @@ An Agent's credential rotates in two ways:
 - **From the console:** **Regenerate** on the Thing's NATS identity, picked up
   on the next sync.
 
-**Rotation is not revocation.** Rotation and **Regenerate** sign a new JWT for
-the **same** key pair. The seed in the old `.creds` is the same, so the old file
-keeps working until it expires. After a suspected compromise, use **Revoke** on
-the NATS identity. It generates a new key pair, puts the old public key on the
-account's revocation list, and issues a working replacement. The Agent picks it
-up on its next sync. The identity stays active. The hub rejects every copy of
-the old file at once. A site's leaf node rejects it after its next refresh
-([Leaf Nodes §8.1](./leaf-nodes.md#81-what-reaches-a-site-and-when)).
-
-The rotate route returns `403` for a **suspended** identity. Otherwise the new
-JWT would be issued after the revocation cutoff, NATS would accept it, and the
-suspension would end.
+Rotation and Regenerate keep the same key pair, so an old `.creds` file keeps
+working. After a suspected compromise, use **Revoke** on the NATS identity
+instead; see [Revocation and expiry](./concepts/nats-security.md#6-revocation-and-expiry).
+The Agent picks up the replacement on its next sync.
 
 Revocation needs no manual step at the edge. The credential sync does not use
 NATS, so it still works when NATS rejects the credential. The Agent exits, the
 service manager restarts it, and the sync at startup picks up the current
-credential.
-
-**Deactivating** the Thing stops this recovery on purpose. It suspends the NATS
-credential (revoked, nothing reissued), blocklists the Nebula certificate when
-peer configs are redeployed, and ends the platform session the Agent would use
-to fetch a replacement. The device stays offline. Use deactivation to remove a
-device. Use Revoke to replace its current credential. See
+credential. **Deactivating** the Thing stops this recovery on purpose; see
 [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
 
 ---

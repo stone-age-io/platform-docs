@@ -371,20 +371,15 @@ reason a leaf node exists.
   apply to it.
 
   For a gateway, the config pull, the leaf remote connection and the overlay
-  all stop.
-  Local traffic on the site continues, because the leaf checks credentials
-  against its own copy of the account JWT (§8.1). The Agent can no longer
-  refresh that copy, because it has no session. Deactivation sets `active`,
-  never `revoke`, because revoke returns a working replacement.
+  all stop. Local traffic on the site continues, because the leaf checks
+  credentials against its own copy of the account JWT (§8.1), which the Agent
+  can no longer refresh.
 
-  Reactivating issues a **new** NATS credential. The old `.creds` stays revoked.
-  The agent needs a platform session to fetch the new one, and deactivation
-  ended that session. If you removed the password from the service environment,
-  set a new one first (see [The Agent §2.1](./agent.md#21-removing-the-password)).
-  At its next start, the Agent writes the new creds to the file the leaf config
-  uses. Then restart the leaf server (or the agent, if it hosts the leaf) so the
-  leaf remote reconnects. `agent -leaf-config` does the same write and also needs
-  the session. See [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+  To bring a gateway back, reactivate its Thing (see
+  [The Agent §2.1](./agent.md#21-removing-the-password) if you removed its
+  password). At its next start the Agent writes the new creds to the file the
+  leaf config uses; then restart the leaf server, or the agent if it hosts the
+  leaf, so the leaf remote reconnects.
 - **Deactivate, do not delete.** To revoke a Nebula certificate, the platform
   publishes its fingerprint, so the certificate must still be in the database. A
   deleted record stays trusted until the certificate expires.
