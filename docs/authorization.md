@@ -53,14 +53,6 @@ owners.
 
 > **`owner` and `admin` are identical.** Every API rule allows both. The one difference is that an owner cannot leave their own organization, which is a console check, not a rule. Neither can delete the organization, because that is Platform-Operator-only (§3). **`admin` is not a lesser grant.** It gives full tenant authority, including every collection that holds credentials.
 
-> **Write allowlists, never deny-lists.** Rules name the roles that are allowed (`role ?= "owner" || role ?= "admin"`). A deny-list such as `role ?!= "member"` also lets `dashboard` through, which is the least privileged role. Copy the standard snippet from a nearby rule.
->
-> A write branch that limits *which fields* can be written must also name *which roles* can write. Every write branch names its roles.
-
-> **A new read-only role needs no rule change.** A role that no write branch names is denied every write. If you must edit a rule to keep a new read-only role *out*, that rule is a deny-list, and the rule is the bug.
-
-> **Keep `viewer` and `dashboard` separate.** `dashboard` has no capability, so it is the only role that can prove an allowlist works. `viewer` can read, so a denial it gets proves less. The authorization test suite uses `dashboard` for this.
-
 ---
 
 ## 2. Capability Matrix
@@ -256,13 +248,9 @@ POST /api/me/nats-creds/rotate
 linked identity. It returns the identity's id. Read that record again to get
 the new credential.
 
-It is a route, not a rule branch, because **an API rule cannot allow only one
-field**. To allow self-rotation in the update rule, you would have to assert
-`:isset = false` on every *other* writable field. That is a deny-list, and it
-opens silently when someone adds a field. The field that must stay closed is
-important: the platform copies `nats_users.publish_permissions` **exactly**
-into the JWT it signs. Write access to that collection is the same as granting
-NATS permissions, so it is owner/admin only.
+It is a route because an API rule cannot allow one field and forbid the rest.
+That matters here: the platform copies `nats_users.publish_permissions` into
+the JWT it signs, so write access to that collection is owner/admin only.
 
 **A suspended identity cannot rotate. The route returns `403`.** A new
 credential would have a JWT issued *after* the account's revocation cutoff, and
@@ -374,13 +362,6 @@ with the new certificate would meet a host that still trusts only the old CA,
 and the handshake would fail both ways. `prepare` makes the new trust reach
 every host before issuance moves.
 
-::: note Why a route and not an owner branch on the update rule
-A rule branch that allowed rotation would have to deny every other field on
-`nebula_ca`, and it would silently allow each field added later. That is a
-deny-list, on the record that holds the trust anchor for a tenant's whole mesh.
-See §7.
-:::
-
 ---
 
 ## 5. Two Histories: The Audit Log and the Activity Feed
@@ -455,76 +436,29 @@ and when, without one.
 
 ## 6. Gateways and the Edge
 
-**A site gateway is a Thing.** There is no gateway flag, on `things` or on
-[`thing_types`](./thing-types.md), because nothing would read one (see
-[Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)). A gateway can
-read what any Thing can read: its own record, its one linked NATS identity and
-its one linked Nebula host. It can read **no inventory collection**, because
-only `users` sessions can read other Things, Locations and types. It can read
-nothing else in `nats_*` or `nebula_*`.
-
-An edge box cannot compute some values locally: the org's account JWT and
-public key, the NATS Operator JWT, and the `$SYS` account JWT and public key. A
-dedicated route supplies them:
-
-```
-GET /api/me/leaf-config
-```
-
-It is bound to `things` and takes **no record id**. It targets the caller's own
-record, like `POST /api/me/nats-creds/rotate`. It returns ten named fields
-([Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) lists them).
-
-The server reads the secret collections with its own privileges and returns
-named fields, never whole records. So **a device identity never gets access to
-the secret collections**. A leaked edge credential exposes those ten values,
-whatever the collection rules become later.
-
-**The route has no permission check, on purpose.** Everything it returns is
-public trust material or the caller's own credential.
-[Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) gives the reasons, and
-[§4](./leaf-nodes.md#4-two-required-directives) explains why the `$SYS`
-account JWT is safe to serve.
-
-This path never serves account **seeds** or signing keys, and only superusers
-can read `nats_system_operator`.
+**A site gateway is a Thing**, with no gateway flag
+([Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)). Like any Thing,
+it reads only its own record, its linked NATS identity and its linked Nebula
+host: no inventory, and nothing else in `nats_*` or `nebula_*`. What a leaf
+node needs beyond that (account, operator and `$SYS` JWTs) comes from
+`GET /api/me/leaf-config`, which returns named fields and never a record
+([Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config)).
 
 **Do not add a device read branch** to `nats_users` or `nats_accounts` for an
-edge feature. Extend the route. The route keeps the edge's exposure to a fixed
-list of named fields, not to rules that change for other reasons.
-
-To take a gateway out of service, clear `active` on its Thing (§4.2), like any
-other device.
+edge feature. Extend the route, so the edge's exposure stays a fixed list of
+fields. To take a gateway out of service, clear `active` on its Thing (§4.2).
 
 ---
 
 ## 7. Changing the Rules
 
-Check these every time an API rule changes.
-
-- **Existing deployments get a schema or rule change only from a new
-  `migrations/schema_update_*.go` file.** An edit to `schema.json` alone
-  affects **new databases only**. An upgraded production deployment keeps its
-  old rules. This is the most common way a security fix fails to ship.
-- **A new column that a rule reads needs a backfill in the same migration.**
-  PocketBase booleans have no schema default, so a new `active` field is
-  `false` on every existing row. An `authRule: "active = true"` without an
-  `UPDATE` would lock every provisioned device out of the API at the next
-  restart. Test the upgrade on a database with rows, not only on a new one.
-- **Run `./scripts/test-authz.sh` after any rule change, and add a check.** It
-  builds the binary, creates a throwaway database, and tests every
-  authorization behaviour it covers against a live server.
-  - `EXPECTED_CHECKS` at the top of the script holds the check count, so a suite
-    that stops early fails.
-  - The rules are the platform's only permission enforcement, and nothing else
-    checks them.
-  - Pair every "cannot" with a "can" on the same record. Otherwise a blanket
-    deny passes the suite.
-  - PocketBase returns **404**, not 403, when an update rule rejects.
-
-Keep the console's capability map (`ui/src/stores/auth.ts`) and the router's
-`meta.requiresCapability` guards the same as the matrix in §2. They enforce
-nothing, but a menu that offers an action the rules reject is a bug.
+Contributors changing an API rule follow
+[`AUTHORIZATION.md`](https://github.com/stone-age-io/platform/blob/main/AUTHORIZATION.md)
+in the platform repository. In short: write allowlists that name every role a
+write branch allows; ship the change in a new `migrations/schema_update_*.go`
+(an edit to `schema.json` alone reaches new databases only), with a backfill
+for any new column a rule reads; and add a paired "can" and "cannot" check to
+`./scripts/test-authz.sh`, using `dashboard` as the denial probe.
 
 ---
 
