@@ -189,10 +189,8 @@ You turn each on separately:
 | Embedded NATS | `nats.server_config` | Hosts that leaf server in this process |
 | KV bucket sync | `sync.twin`, `sync.mirrors`, `sync.relays` | Keeps declared KV buckets in step with the hub: mirrors down, relays up |
 
-There is **no `edge.enabled` key and no gateway flag on the platform**. A
-gateway is whatever these capabilities make it. A separate flag could disagree
-with them: `edge.enabled: false` next to `sync.twin: true` has no correct
-meaning. See [Leaf Nodes](./leaf-nodes.md).
+There is no `edge.enabled` key and no gateway flag: a gateway is whatever these
+capabilities make it ([Leaf Nodes §1](./leaf-nodes.md#1-there-is-no-gateway-flag)).
 
 The key `twin.enabled` does nothing. Since v0.6.0 the Agent starts with it
 and ignores it, so a config that still carries it syncs no buckets. Use

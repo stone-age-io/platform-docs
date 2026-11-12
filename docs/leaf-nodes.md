@@ -25,27 +25,13 @@ inventory, identity model and API rules as everything else.
 
 ## 1. There is no gateway flag
 
-**Nothing on the platform marks a Thing as a gateway.** The rest of this page
-follows from that.
-
-- **No code would read a flag.** The config route serves any authenticated
-  Thing (§3). The agent starts a leaf because *its own* config says to, not
-  because a record says so. A flag that nothing reads drifts from reality.
-- **The domain is not stored.** A leaf's JetStream domain is the Thing's code,
-  computed on each request (§3), so it cannot disagree with the code.
-- **The hub does not copy inventory to the edge.** An edge identity needs no
-  read access to the inventory, and has none.
-
-**A Thing Type does not say "gateway" either.** A `thing_types` record has
-`name`, `description`, `code`, `prefix`, `subject_prefix`, `operations` and
-`metadata_schema`, and no gateway flag. An organization can name one of its
-types "Gateway", but the platform does not read that name. There is no field to
-check, to filter a list by, or to tell a screen which Things should have a leaf
-node.
-
-An agent gets everything it needs to start a leaf server from one route,
-`GET /api/me/leaf-config`, and **that route checks nothing** beyond sign-in
-(§3).
+**Nothing on the platform marks a Thing as a gateway**, not on `things` and not
+on `thing_types`. An organization may name a type "Gateway", but the platform
+never reads that name. The agent starts a leaf because its own config says so;
+the leaf's JetStream domain is the Thing's code, computed on each request; and
+the one route a leaf needs, `GET /api/me/leaf-config` (§3), serves any signed-in
+Thing. So no screen can list "the gateways", and there is nothing to keep in
+step.
 
 ---
 
@@ -312,22 +298,10 @@ whatever its allow list says. If the request times out for one organization and
 not another, this is the likely cause. You see only a timeout, because the real
 error arrives on the connection's error handler, not on the request.
 
-**Narrowing the deny to `$SYS.REQ.SERVER.>` does not help either.** The
-operator-wide endpoints are served *inside the `$SYS` account*, and an account
-is a closed subject namespace. A tenant credential that publishes
-`$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder, with or without a deny. The
-account boundary already blocks it, so the platform ships no `$SYS` deny.
+Narrowing the deny to `$SYS.REQ.SERVER.>` does not help either: the account
+boundary already blocks the operator-wide endpoints, so the platform ships no
+`$SYS` deny.
 :::
-
-### Why this is a widget and not a screen
-
-No field marks which Things are gateways (§1), so a status badge on every
-Thing's detail view could not tell which Things to show it for. It would show on
-every device, including a temperature probe that never has a leaf node, and it
-would poll the account's whole connection list for every viewer.
-
-A widget asks only when someone wants to know. The same widget can also ask
-`SUBSZ` or `JSZ` for other answers, with no platform change.
 
 ### Which Agents are running
 
