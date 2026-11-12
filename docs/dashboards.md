@@ -189,7 +189,7 @@ bucket can change the value.
 
 | Widget | What it shows |
 | :--- | :--- |
-| **Markdown** | Text and images, such as runbook links, a legend or a note about the screen. It can read a subject or a KV key, and `{{field.path}}` shows a value from the latest payload. The output is sanitised, so a payload cannot inject script. |
+| **Markdown** | Text and images, such as runbook links, a legend or a note about the screen. It can read a subject or a KV key, and `{field.path}` shows a value from the latest payload. The output is sanitised, so a payload cannot inject script. |
 | **Map** | Live markers on a vector basemap. Up to 50 markers you place by hand, each fixed or moved live from a subject (lat/lon by JSONPath), with up to 10 popup items each: KV values, text from a subject, publish buttons and switches. Optional **dynamic markers** come from a KV bucket, one per key under a pattern (`vehicles.>`), up to 500. Clustering and fit-to-markers are optional. |
 | **Floor Plan** | A Location's floor plan, with its Things on it and their live state. You place Things on the plan on the [Location detail view](./console.md#2-map-and-floor-plans); the widget stores no positions. Each *binding* gives one Thing Type a state source (a subject suffix, or a KV key template such as `thing.{thing}.state`), a colour per value, and the rows its panel shows. |
 | **Console** | A raw live log of every message on the widget's subscription. Add it first when nothing seems to arrive. |
@@ -206,15 +206,19 @@ bucket can change the value.
 
 A dashboard can have variables, shown as inputs above the grid (`V`): free
 text, or a select with fixed options. A widget's subject, KV key, payload or
-query can use one as `{{name}}`:
+query can use one as `{name}`:
 
 ```
-sensors.{{device_id}}.temp
+sensors.{device_id}.temp
 ```
 
 When you change the value, every widget that uses it resolves again, so one
 dashboard covers a whole fleet. An unknown name stays as the literal text
-`{{device_id}}`, so a typo is visible.
+`{device_id}`, so a typo is visible.
+
+Every template in the console uses this spelling, and so do
+[Thing Type prefixes](./thing-types.md) and the rule engine's rules. A
+dashboard saved with the older `{{name}}` spelling still works.
 
 Variables are saved in the dashboard, so a shared dashboard includes them. Each
 viewer's *current selections* are their own, and are not saved: a reload starts

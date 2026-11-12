@@ -22,7 +22,7 @@ The Dashboard is a grid where you build your own views.
 - **Widgets:** gauges, charts, switches, maps and more.
 - **NATS-native:** most widgets subscribe to NATS subjects. The data goes from
   the device to NATS to your browser, and never through the database.
-- **Variables:** dashboard variables (for example `{{building_id}}`) let one
+- **Variables:** dashboard variables (for example `{building_id}`) let one
   dashboard switch between sites or things.
 - **Thing Type binding:** the Publisher widget can bind to a Thing and an
   operation. The subject then resolves from the Thing Type's templates and is
