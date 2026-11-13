@@ -39,7 +39,7 @@ Organizations.
   - See [ADR 0002](./decisions/0002-organization-code-namespace.md).
 - **Ownership:** an Organization has an **Owner** field. The field grants
   nothing by itself: setting it gives that user an `owner` membership, and the
-  membership role is the authority. An `owner` cannot leave the organization. Only a **Platform Operator** can create, edit
+  membership role is the authority. An `owner` cannot leave the organization. Every other role can. Only a **Platform Operator** can create, edit
   or delete the Organization record. The record holds the tenancy flags and
   drives NATS Account and Nebula CA provisioning. Deleting it does not cascade:
   it orphans the whole inventory. See [Authorization §3](./authorization.md#3-cross-organization-identities).
@@ -171,8 +171,8 @@ record and nothing more.
   ends the device's sessions, suspends its NATS identity and blocklists its
   Nebula certificate. The detail view shows a banner, and the list greys the
   row.
-  - **Deactivate a Thing. Do not delete it.** A delete does not touch either
-    identity, so its credential keeps working and its certificate stays trusted.
+  - **Deactivate a Thing before you delete it.** A delete does not touch either
+    identity, so the server refuses it while an identity is still active.
   - [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)
     has the four effects, when each one applies, and what reactivation does.
 

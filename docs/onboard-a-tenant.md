@@ -49,7 +49,7 @@ MY_ID=$(echo "$AUTH" | jq -r .record.id)
 ```bash
 ORG_ID=$(curl -s -X POST http://localhost:8090/api/collections/organizations/records \
   -H "Authorization: $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"Northwind Foods","code":"northwind","owner":"'"$MY_ID"'","active":true}' \
+  -d '{"name":"Northwind Foods","code":"northwind","owner":"'"$MY_ID"'"}' \
   | jq -r .id)
 ```
 
@@ -58,14 +58,8 @@ ORG_ID=$(curl -s -X POST http://localhost:8090/api/collections/organizations/rec
   out, the platform makes one from the name
   ([ADR 0002](./decisions/0002-organization-code-namespace.md)).
 - **`owner`** is a `users` id. Here it is your own.
-
-::: warning Send `"active": true`
-An Organization created through the API with no `active` field starts
-**suspended**. Its NATS account is withdrawn, and a later
-`POST /api/org/things` with `nats.mode: "auto"` returns `400` ("no active NATS
-account for this organization"). To repair it, set `active` to `true` on the
-Organization record.
-:::
+- **`active`** defaults to `true` when you leave it out. Send `false` only to
+  create the tenant suspended ([Authorization §3.1](./authorization.md#31-suspending-an-organization)).
 
 In the same operation, the platform does four things:
 

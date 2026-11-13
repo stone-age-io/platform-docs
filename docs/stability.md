@@ -127,8 +127,10 @@ the versions the platform is built on.
 
 These surfaces are not yet in the state that the contract needs:
 
-- **`stone`'s field list is maintained by hand**, so it can fall behind the
-  platform's schema ([Stone CLI §10](./stone-cli.md#10-limitations)).
+- **`stone`'s flags are written by hand**, so a `stone` release can lag the
+  platform's schema. Its tests now compare them with a schema taken from a live
+  server, which makes the lag visible but does not remove it
+  ([Stone CLI §10](./stone-cli.md#10-limitations)).
 - **An update that a rule refuses returns `404`, not `403`.** This is
   PocketBase behavior, and clients must not read `404` as "no such record"
   ([HTTP API](./concepts/http-api.md#what-a-failed-rule-returns)).

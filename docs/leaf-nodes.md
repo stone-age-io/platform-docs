@@ -354,9 +354,10 @@ reason a leaf node exists.
   password). At its next start the Agent writes the new creds to the file the
   leaf config uses; then restart the leaf server, or the agent if it hosts the
   leaf, so the leaf remote reconnects.
-- **Deactivate, do not delete.** To revoke a Nebula certificate, the platform
-  publishes its fingerprint, so the certificate must still be in the database. A
-  deleted record stays trusted until the certificate expires.
+- **Deactivate before you delete.** To revoke a Nebula certificate, the platform
+  publishes its fingerprint, so the certificate must still be in the database.
+  The server refuses to delete a Thing whose identities are still active
+  ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
 - An org Admin or Owner can reset the Thing's PocketBase password on its **edit
   form** (Authentication card). The collection's `manageRule` allows this. It is
   a scoped, audited record action, not a superuser task.

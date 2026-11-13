@@ -435,7 +435,11 @@ stone apply                       # sends the workspace back to the server
 
 - Each file is named by the record's natural key (then `name`, then id, with a
   suffix if two collide). Organization files are named by code (`acme.yaml`).
-- Org-scoped collections are filtered to the current Organization.
+- Org-scoped collections are filtered to the current Organization, and so are
+  your Memberships.
+- It writes `organizations/`, `nats_accounts/` and `nebula_ca/` only for a
+  Platform Operator, because only a Platform Operator can update them. For
+  anyone else it skips them and says so.
 - It removes server-managed fields (`collectionId`, `collectionName`,
   `created`, `updated`, `expand`), and the credential and server-generated
   fields below. It prints what it left out, per collection.
@@ -449,12 +453,10 @@ without one and writes the new id **back into the file**.
 - **Safe to repeat, but not a diff.** `apply` PATCHes every file that has an
   `id`, changed or not, so a second run sends the same values again. File names
   do not matter: `apply` uses only the `id` field in each file.
-- **Some pulled records are read-only for tenant roles.** Only a Platform
-  Operator can update `organizations/`, `nats_accounts/` and `nebula_ca/`.
-  `pull` also writes your own Memberships in other organizations. Where you are
-  not an Owner or Admin, the rule refuses a PATCH that sends `role`. If you
-  apply the whole workspace, each of these records fails. Pass only the paths
-  you manage, for example `stone apply things/ locations/`.
+- **A workspace pulled by an older `stone` can hold records you cannot
+  update:** `organizations/`, `nats_accounts/`, `nebula_ca/` and Memberships in
+  other organizations. `apply` fails on each of them. Delete those files, or
+  pass only the paths you manage, for example `stone apply things/ locations/`.
 - **No deletes.** `apply` leaves alone any server record that has no local file.
   To delete, use `stone <type> delete <id|key>` or the console.
 - **Reviewable.** In `git` you get diff, history, blame and PR review of your
@@ -726,15 +728,12 @@ When command shapes change, update both files.
   Location's `floorplan`, an Organization's `logo` and a user's `avatar`. Set
   them in the console. All are **protected**, so reading one needs a file token,
   not the auth token ([Platform Entities](./console.md#7-photos-and-file-fields)).
-- **The CLI's field list is maintained by hand**, not generated from the
-  platform's `schema.json`, so it can fall behind a platform release. If a field
-  is in the console but has no flag, check `cmd/entity.go` in the `stone-cli`
-  repo. These fields have no flag today:
-    - `allowed_importers` on `nats-export` ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports)).
-    - `additional_host_ports`, `advertise_addrs` and `local_allow_list` on
-      `nebula-host` ([Connectivity §2](./connectivity.md#2-nebula)).
-
-  Set them with `stone <type> edit`, with `apply`, or in the console.
+- **The CLI's flags are written by hand**, so a `stone` release can lag a
+  platform release. Its tests check every flag against a copy of the
+  platform's schema that `scripts/vendor-schema.sh` takes from a live server,
+  and fail on a platform field the CLI neither exposes nor explains. If a field
+  is in the console but has no flag, set it with `stone <type> edit`, with
+  `apply`, or in the console.
 
 ---
 

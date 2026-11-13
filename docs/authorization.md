@@ -51,7 +51,7 @@ owners.
 
 > **`viewer` and `dashboard` do not limit NATS.** What a login can do on the bus comes from its linked `nats_users` role, which is set separately. A `dashboard` screen can hold a NATS credential that publishes anywhere its role allows.
 
-> **`owner` and `admin` are identical.** Every API rule allows both. The one difference is that an owner cannot leave their own organization, which is a console check, not a rule. Neither can delete the organization, because that is Platform-Operator-only (§3). **`admin` is not a lesser grant.** It gives full tenant authority, including every collection that holds credentials.
+> **`owner` and `admin` are identical.** Every API rule allows both. The one difference is that an owner cannot leave their own organization (footnote 13). Neither can delete the organization, because that is Platform-Operator-only (§3). **`admin` is not a lesser grant.** It gives full tenant authority, including every collection that holds credentials.
 
 ---
 
@@ -84,6 +84,7 @@ owners.
 | Manage JetStream streams and KV buckets⁴ | ✅ | ✅ | — | — | — | — | — |
 | Use dashboards | ✅ | ✅ | ✅ | ✅ | ✅⁷ | — | ✅ |
 | Invite users, manage memberships | ✅ | ✅ | — | — | — | invites only | ✅ |
+| Leave the organization (delete own membership) | —¹³ | ✅ | ✅ | ✅ | ✅ | — | — |
 | Create / edit an Organization record | — | — | — | — | — | ✅ | ✅ |
 | Suspend / reactivate an Organization (§3.1)⁵ | — | — | — | — | — | ✅ | ✅ |
 | Delete an Organization (§3)¹¹ | — | — | — | — | — | ✅ | ✅ |
@@ -114,6 +115,8 @@ owners.
 ¹¹ Only once the organization is suspended and holds no Things, Locations or Nebula hosts.
 
 ¹² `POST /api/me/nats-creds/rotate` accepts only a `users` or `things` session, and a SuperUser has no linked identity of its own. A SuperUser can still rotate any identity by setting `regenerate` on its `nats_users` record.
+
+¹³ The `memberships` delete rule lets every user delete their own membership, except an `owner` membership. The console does not show **Leave Org** to an owner. The API does not fully stop an owner, because the owner and admin branch of the same rule allows the delete of any membership in the organization. A departing user keeps any `.creds` file they downloaded, so also deactivate or regenerate a NATS identity that only they used.
 
 **Lower roles get an empty list, not a filtered one.** For `nats_users`,
 `nats_roles`, `nats_account_exports`, `nats_account_imports`,
@@ -314,9 +317,11 @@ leaked credentials. It generates a **new** key pair, puts the old public key on
 the account's revocation list, and returns a *working* replacement. The identity
 stays active. `active = false` is the suspend: revoke, and issue nothing.
 
-**Deactivate, do not delete.** A Thing delete does not cascade to either
-identity. Its NATS credential keeps working and its Nebula certificate stays
-trusted. After a delete, the certificate can no longer be added to a blocklist.
+**Deactivate, then delete.** A Thing delete does not cascade to either
+identity, so it cannot revoke anything. The server refuses to delete a Thing
+while its linked NATS user or Nebula host is still active, with a `400` that
+names the identity. Deactivate the Thing first. Its identity rows stay, inactive,
+so the certificate stays on every blocklist.
 
 **Reactivating issues a *new* NATS credential.** The revocation cutoff in the
 account JWT is permanent, so the old `.creds` file stays rejected. The device's

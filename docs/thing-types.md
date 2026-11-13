@@ -389,12 +389,13 @@ The Thing was saved without a code, so it got `CA-9KD-4PX`. Its type is
 
 If you move this camera to another building, none of these subjects change.
 
-::: warning Editing a Thing Type's prefix moves every instance
-A Thing's own type is frozen, but the Thing Type's `subject_prefix` is not. An
-Owner or Admin who edits it changes the subjects of every Thing of that type at
-once, and any stream, rule, permission or subscriber written against the old
-prefix stops matching. Treat the prefix as fixed once devices use it
-([ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md#the-sharp-edge)).
+::: note A Thing Type's prefix is fixed while Things use it
+An edit to `subject_prefix` would change the subjects of every Thing of that
+type at once, and any stream, rule, permission or subscriber written against
+the old prefix would stop matching. So the server refuses a change to the
+prefix while any Thing uses the type, with a `400` that gives the count. A
+Thing's own type is frozen too, so for a new subject layout, create a new Thing
+Type ([ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md#the-sharp-edge)).
 :::
 
 ---

@@ -161,8 +161,9 @@ readings when you open the dashboard ([Dashboards §3](./dashboards.md#3-data-so
 
 ## 8. Take the device out of service
 
-When the probe is removed, clear **Active** on its Thing. Do not delete the
-Thing: a delete leaves its credential working
+When the probe is removed, clear **Active** on its Thing. This revokes its
+credential. You can delete the Thing after that. The server refuses a delete
+while the credential is still active
 ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
 
 ---
