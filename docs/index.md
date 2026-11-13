@@ -164,8 +164,8 @@ process: `./stone-age init`, then `./stone-age serve --nats`
 ([Getting Started](./getting-started.md)). Add Nebula, `rule-router` and the
 Agent when you need them, on bare metal, containers or VMs. A gateway can also
 run one binary, the Agent, which can host the Nebula host and the leaf server
-([The Agent](./agent.md)). The Control Plane runs on Linux, macOS and Windows.
-The Agent and `rule-router` also run on FreeBSD. See
+([The Agent](./agent.md)). The Control Plane, the Agent and `rule-router` run
+on Linux, Windows and FreeBSD. The Control Plane also runs on macOS. See
 [Architecture §2](./architecture.md#2-component-topology) for every component,
 when to add it, and how each one scales.
 

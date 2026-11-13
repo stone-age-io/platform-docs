@@ -509,7 +509,7 @@ on a later version says so.
 
 | Component | Version | Where its own docs are |
 | :--- | :--- | :--- |
-| Control Plane and console (`stone-age`) | v0.18.0 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
+| Control Plane and console (`stone-age`) | v0.18.1 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
 | `stone` CLI | v0.6.1 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.6.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
@@ -517,7 +517,7 @@ on a later version says so.
 | Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
 | Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
 
-Platform v0.18.0 is built on these upstream versions:
+Platform v0.18.1 is built on these upstream versions:
 
 | Upstream | Version |
 | :--- | :--- |

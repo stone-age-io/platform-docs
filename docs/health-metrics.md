@@ -53,7 +53,7 @@ $ curl -s http://localhost:8090/api/ready | jq
 {
   "ready": false,
   "state": "fail",
-  "version": "v0.18.0",
+  "version": "v0.18.1",
   "uptime": "3m12s",
   "took": "14ms",
   "checked": "2026-09-07T05:37:18Z",
@@ -190,7 +190,7 @@ stone_age_check_state{name="database",state="fail"} 0
 stone_age_check_state{name="database",state="warn"} 0
 stone_age_check_state{name="database",state="skipped"} 0
 stone_age_check_timestamp_seconds 1.7573e+09
-stone_age_build_info{version="v0.18.0"} 1
+stone_age_build_info{version="v0.18.1"} 1
 ```
 
 **Alert when `stone_age_check_timestamp_seconds` goes stale.** That means the
