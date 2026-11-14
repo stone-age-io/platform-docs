@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.6.1   # the stone version in Operations §6.1
+VERSION=0.7.0   # the stone version in Operations §6.1
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -446,10 +446,14 @@ stone apply                       # sends the workspace back to the server
 - It skips the `activity` feed.
 
 **`apply`** reads the workspace (or only the paths you pass), groups records
-into batches of up to 50, and sends them through PocketBase's transactional
-`/api/batch` endpoint. It PATCHes records with an `id`. It POSTs records
-without one and writes the new id **back into the file**.
+into batches of up to 50, and sends each batch to PocketBase's `/api/batch`
+endpoint. It PATCHes records with an `id`. It POSTs records without one and
+writes the new id **back into the file**.
 
+- **Not all-or-nothing.** The platform leaves batch requests off by default,
+  and when a batch is refused or one of its records fails, `apply` re-sends that
+  batch one record at a time so it can name the record that failed. Records
+  before a failure stay applied. Fix the file and run `apply` again.
 - **Safe to repeat, but not a diff.** `apply` PATCHes every file that has an
   `id`, changed or not, so a second run sends the same values again. File names
   do not matter: `apply` uses only the `id` field in each file.
@@ -478,7 +482,16 @@ return to an owner or admin:
 triggers next to them. `apply` sends back every key in a file, so a pulled
 certificate would overwrite whatever the server rotated to since.
 
-The filter is on `pull` only. A `revoke: true` you write by hand still applies.
+**`pull` leaves out every `active` flag the platform acts on**: `things`,
+`nats_users`, `nebula_hosts`, `nats_accounts` and `organizations`. The platform
+acts on a change of the flag, so a pulled `active: true` applied after an admin
+set `false` would undo the decision. A decommissioned device would come back
+with working credentials. Before stone 0.7.0, `pull` wrote `things.active`,
+`nebula_hosts.active` and `organizations.active`: delete the `active:` line
+from those files in an older workspace.
+
+The filter is on `pull` only. A `revoke: true` or `active: false` you write by
+hand still applies.
 
 ::: danger Workspaces pulled with `stone` before 0.4.0 contain credentials
 Those values are in the workspace and in its git history. Treat them as
@@ -499,7 +512,7 @@ server and stops. It is not a reconciliation loop like Flux or Argo CD.
 | | `stone pull` / `apply` | A full GitOps reconciler |
 | :--- | :--- | :--- |
 | Creates and updates from files | ✅ | ✅ |
-| Transactional batches | ✅ (`/api/batch`, 50 per batch) | Varies |
+| All-or-nothing apply | ❌ Records before a failure stay applied | Varies |
 | Deletes server records missing from git | ❌ **Never** | ✅ (pruning) |
 | Detects drift when someone edits in the console | ❌ Not until the next `pull` | ✅ Continuously |
 | Runs unattended in a control loop | ❌ You run it | ✅ |
@@ -623,7 +636,7 @@ identity, its sessions and its Nebula host. While the Thing is deactivated, the
 server refuses a change to `active` on its NATS user. Use
 `stone nats-user update <username> --active=false` only for an identity with no
 Thing. `pull` leaves out `active` on
-`nats_users`, so `apply` cannot change it.
+`things` and `nats_users`, so a pulled workspace cannot change it.
 :::
 
 See [Authorization §4](./authorization.md#4-the-row-scoped-credential-model).

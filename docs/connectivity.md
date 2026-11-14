@@ -269,6 +269,16 @@ lighthouses, relays, firewall groups and revocation are explained in
 [Overlay Network](./concepts/overlay.md). This section covers the platform's
 Nebula records and fields.
 
+::: warning Hosts issued before v0.19.1 cannot start
+Every host certificate issued before v0.19.1 came with a private key that does
+not belong to it, and Nebula refuses to start on it with "private key is not a
+pair with public key in nebula cert". On v0.19.1 the nightly renewal job
+(03:00) re-issues every active host whose key does not pair, and each device
+picks up a working `config_yaml` on its next fetch. To fix a host at once, set
+`renew` on its record. An inactive host is left alone; reactivating it issues a
+new pair.
+:::
+
 > **Who can manage Nebula:** only Owners and Admins can read or write `nebula_networks` and `nebula_hosts`, because a host's `config_yaml` contains its private key. Every lower role gets an empty list. A Thing can read the Nebula host assigned to it, and a host can read its own record. Any role can read the org's `nebula_ca` record, and only a Platform Operator can write it. Owners and Admins roll the CA through a three-step route, `POST /api/org/nebula-ca/rotate`. See [Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca).
 
 ### Lighthouses & Discovery

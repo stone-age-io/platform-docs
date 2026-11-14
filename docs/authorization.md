@@ -199,6 +199,11 @@ keep working locally
   revocation, changes no `nats_users` row and re-mints nothing. Every `.creds`
   file stays valid and reconnects when the flag is set again. Compare §4.2,
   where a device's revocation is permanent and it needs a new credential.
+- **Nothing inside the tenant can undo it** (from v0.19.1). Before v0.19.1, any
+  change to a NATS user in the suspended organization put its account back on
+  the hub: a member rotating their own credentials, `dashboard` included, or an
+  owner deactivating a device. The first start of v0.19.1 removes any account
+  that got back that way.
 - **It is narrow.** It does **not** change Nebula, because a blocklist applies
   only on redeploy, and removing it rewrites every peer config. It does **not**
   lock the console: a suspended tenant still signs in and reads its records. It

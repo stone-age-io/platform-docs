@@ -45,6 +45,9 @@ without building it on that screen.
 - **Two editors cannot overwrite each other.** When someone else saves a newer
   version, an **Update** button replaces **Save**. A save based on an old
   version is refused with a conflict.
+- **A failed save says so** (from v0.19.1). A refused or failed save shows the
+  reason in a banner above the dashboard and keeps your changes unsaved. Before
+  v0.19.1 it showed "Dashboard saved" anyway, and the edit was lost.
 
 From the sidebar you can create, rename, duplicate and delete a dashboard, copy
 a local one to shared storage, and set the one a browser opens at startup. To
