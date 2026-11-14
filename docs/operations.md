@@ -486,7 +486,7 @@ other's code.
 | **Agent** | PocketBase API and NATS protocol | It signs in at bootstrap. After that it reads its credentials from the platform again at intervals, so the platform must stay reachable ([The Agent](./agent.md)). |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([§6.1](#61-the-versions-these-docs-describe)) or a newer one. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([Versions](./versions.md)) or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
 - **Upgrade the Control Plane first** when a release changes the schema. `stone`
@@ -502,34 +502,7 @@ other's code.
 
 ---
 
-### 6.1 The versions these docs describe
-
-The pages in the Platform section describe these versions. A page that depends
-on a later version says so.
-
-| Component | Version | Where its own docs are |
-| :--- | :--- | :--- |
-| Control Plane and console (`stone-age`) | v0.19.1 | This section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
-| `stone` CLI | v0.7.0 | [Stone CLI](./stone-cli.md) |
-| Agent | v0.6.1 | [Agent docs](./vendor/agent/README.md) |
-| `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
-| Services (Watchdog and creds-keeper) | v0.2.0 | [Services docs](./vendor/services/README.md) |
-| Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
-| Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
-
-Platform v0.19.1 is built on these upstream versions:
-
-| Upstream | Version |
-| :--- | :--- |
-| PocketBase | v0.41.1 |
-| nats-server (embedded with `serve --nats`) | v2.15.2 |
-| Nebula | v1.11.0 |
-| pb-nats | v0.4.1 |
-| pb-nebula | v0.5.1 |
-| pb-audit | v0.3.0 |
-
-Each vendored section has a `SOURCE` file in the docs repository with the exact
-commit of its copy.
+The versions these docs describe are in [Versions](./versions.md).
 
 ---
 

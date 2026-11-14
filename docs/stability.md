@@ -118,7 +118,7 @@ Do not build on these. They can change in any release.
 
 Upstream behavior is also outside this contract. NATS, Nebula and PocketBase
 each have their own compatibility rules, and
-[Operations §6.1](./operations.md#61-the-versions-these-docs-describe) lists
+[Versions](./versions.md) lists
 the versions the platform is built on.
 
 ---
@@ -142,6 +142,6 @@ These surfaces are not yet in the state that the contract needs:
 
 ## 5. Where to Go Next
 
-- The versions these docs describe: [Operations §6.1](./operations.md#61-the-versions-these-docs-describe)
+- The versions these docs describe: [Versions](./versions.md)
 - How to upgrade: [Operations §5](./operations.md#5-upgrades)
 - Why the surfaces have this shape: [Decisions](./decisions.md)

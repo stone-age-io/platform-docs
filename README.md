@@ -8,6 +8,6 @@ The pages are published to pb-wiki. Each file starts with frontmatter giving its
 
 Each topic has one owning page. Another page that needs it gives a sentence or two and links to the owner, rather than explaining it again. Generic NATS, JetStream, Nebula and PocketBase material belongs in `docs/concepts/`. How the Agent, rule-router and other vendored components work inside belongs in their vendored docs; a platform page covers only what the platform adds and links there for the rest.
 
-`docs/operations.md` §6.1 is the one table of the versions these docs describe. Update it in the same commit when you re-vendor, or when a page changes to follow a new release. Do not add a new version number to another page if a link to that table does the job.
+`docs/versions.md` is the one table of the versions these docs describe. Update it in the same commit when you re-vendor, or when a page changes to follow a new release. Do not add a new version number to another page if a link to that table does the job.
 
 `docs/stability.md` lists the surfaces that 1.0 will keep stable. When a change touches one of them (a custom route, a `leaf-config` field, a config key, an Agent subject, a CLI command), update that page and the platform CHANGELOG in the same change.

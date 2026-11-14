@@ -13,7 +13,7 @@ parts, and when to use something else. How the engine itself works (rule
 syntax, variables, functions, `forEach`, payload modes, the gateway, the
 scheduler, throttle) is in the
 [rule-router documentation](./vendor/rule-router/README.md), for the version in
-[Operations §6.1](./operations.md#61-the-versions-these-docs-describe). See
+[Versions](./versions.md). See
 [Platform Layers](./platform-layers.md) for the layer model.
 
 ---
