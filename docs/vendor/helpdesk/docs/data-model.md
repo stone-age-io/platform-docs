@@ -554,7 +554,11 @@ have no `customer` field, so there is no ambient tenant, and `DOOR-1` is a code
 every customer invents on its own. The `(customer, code)` indexes on the two
 collections are separate, so one customer may hold both a location and a thing
 with the same code. The scanner searches both and shows a picker rather than a
-confident wrong answer.
+confident wrong answer. It matches **ignoring case**, which matters most for
+the manual field rather than the camera: every label prints its code in
+human-readable text because the symbol will eventually be scratched, greasy or
+in a closet too dark to focus in, and someone typing `door-1` off a sticker
+reading `DOOR-1` must not be told the gear is not in the catalog.
 
 **A superset of the platform's catalog.** `code` is nullable because MSP work
 covers printers, door strikes and customer switches that were never onboarded
@@ -764,9 +768,14 @@ These unique indexes enforce behaviour; they are not just for performance.
   is what makes the daily cron and a hand-run `helpdesk maintenance-run` safe
   to overlap, even after the ticket closed: one plan occurrence can only
   produce one ticket.
-- `customers.code` (partial, `!= ''`): the tenant token resolves to exactly
-  one customer. Partial because a customer the platform never onboarded has no
-  code until an operator assigns one, and SQLite treats `''` as a value.
+- `customers.code` (partial, `!= ''`, `COLLATE NOCASE` since `1832000000`):
+  the tenant token resolves to exactly one customer, and ingestion matches it
+  ignoring case. Partial because a customer the platform never onboarded has no
+  code until an operator assigns one, and SQLite treats `''` as a value. The
+  platform mints organization codes lowercase (ADR 0002 rule 1), so the fold
+  guards the hand-typed side: this column is filled in by an operator, and a
+  case mismatch would send every machine-filed ticket for that tenant down the
+  unmapped-org path, which warns and **acks**.
 - `customers.platform_org_id` (partial): one customer per platform org.
 - `customers.webhook_token` (partial): a token selects exactly one customer.
 - `customers.email_domain` (partial, `!= ''`): a mail domain maps to one
@@ -783,6 +792,17 @@ These unique indexes enforce behaviour; they are not just for performance.
   and blanks must stay legal: SQLite treats `''` as a value rather than NULL,
   and the catalog is a superset of the platform's, covering gear that was
   never onboarded and so has no code.
+
+  The code half is **`COLLATE NOCASE`** (migration `1832000000`), matching the
+  platform's four code indexes and ADR 0003 rule 3: a code is stored as
+  entered, compared for uniqueness ignoring case, and looked up ignoring case,
+  while subjects and permissions stay exact. The fold is what keeps the
+  case-insensitive lookups single-valued — one customer holding both `RDR-01`
+  and `rdr-01` would make a fold-case resolve return an arbitrary one of them,
+  which is a silent *wrong-record* attach rather than today's silent miss. Note
+  the index enforces uniqueness only: SQLite applies a column's collation to a
+  comparison, not an index's, so the resolvers match with PocketBase's `:lower`
+  modifier (`LOWER(code) = ?`) and that expression does not use this index.
 - `time_sessions.staff`: one running timer per agent, enforced by the database
   rather than by the stop route. This is what makes "start a timer" idempotent.
 - `projects.number`: the collision backstop for the project-number hook.

@@ -57,6 +57,12 @@ another organization's code. Ingestion reads the tenant **from the subject
 only**. An org id in the payload is ignored.
 :::
 
+The token is matched against `customers.code` **ignoring case**. The platform
+mints organization codes lowercase (ADR 0002 rule 1), so this guards the
+hand-typed side: `customers.code` is filled in by an operator, and a case
+mismatch would otherwise send every machine-filed ticket for that tenant down
+the unmapped-org path below — warned and **acked**, invisible to the publisher.
+
 Only the `create` verb is consumed. The `{verb}` token leaves room for
 `comment` and `resolve` later without a subject migration.
 
@@ -99,8 +105,9 @@ Only the `create` verb is consumed. The `{verb}` token leaves room for
   `location_note`.
 - **`thing_code` and `location_code`** are the platform join keys. Each
   resolves against this customer's `things` or `locations` rows (matched on
-  `code`) and sets the matching relation, which is what reports query on. An
-  unresolved code is logged. When the payload's matching free-text field is
+  `code`, **ignoring case** — ADR 0003 rule 3, so a publisher sending `rdr-01`
+  finds the catalog's `RDR-01`) and sets the matching relation, which is what
+  reports query on. An unresolved code is logged. When the payload's matching free-text field is
   empty, the code is kept as a breadcrumb in the note field (supplied `thing`
   or `location` text wins over the code). No row is auto-created, so you can
   add the missing row and later events resolve.
@@ -300,9 +307,9 @@ Non-admins get `403` from both.
   tenants. A non-matching email is silently ignored, and the ticket is still
   created, unlinked.
 - **`thing_code` and `location_code`** resolve to one of the token customer's
-  `things` or `locations` rows (by `code`) and set the matching relation. An
-  unresolved code stays as free text in its note field. Behavior and customer
-  scoping are the same as the NATS intake (§2).
+  `things` or `locations` rows (by `code`, ignoring case) and set the matching
+  relation. An unresolved code stays as free text in its note field. Behavior
+  and customer scoping are the same as the NATS intake (§2).
 - **The free-text thing field is spelled `thing`**, matching the NATS contract.
 - **The ticket lands as `type = reactive`**, as on NATS. The staff triage
   fields are not accepted, and unknown JSON fields are ignored.

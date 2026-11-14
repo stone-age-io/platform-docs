@@ -15,7 +15,7 @@ version says so.
 | `rule-router` | v0.23.0 | [Rule Router docs](./vendor/rule-router/README.md) |
 | Services (Watchdog and creds-keeper) | v0.2.0 | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |
-| Helpdesk | no release tag, commit `be4aca2` | [Helpdesk docs](./vendor/helpdesk/README.md) |
+| Helpdesk | v0.1.0 | [Helpdesk docs](./vendor/helpdesk/README.md). [CHANGELOG](https://github.com/stone-age-io/helpdesk/blob/main/CHANGELOG.md) |
 
 Platform v0.19.1 is built on these upstream versions:
 

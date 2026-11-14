@@ -169,7 +169,16 @@ cd ui && npm ci                 # once
 npm run build                   # vue-tsc + vite → ../internal/webui/public (commit the output)
 cd .. && go build ./cmd/helpdesk
 ./helpdesk serve                # UI at http://127.0.0.1:8090/ · PocketBase admin at /_
+./helpdesk version              # the build the toolchain stamped
 ```
+
+CI rebuilds the SPA on every push, which typechecks it, and checks that the
+committed `index.html` references only chunks that are committed. It does
+**not** verify the bundle is up to date with `ui/`, and cannot: the bundle is
+platform specific (vite builds through rolldown, whose native binding ships per
+platform), so a Linux runner and a Windows desktop produce different bytes and
+different content hashes from identical sources. Rebuilding and committing
+remains yours to remember.
 
 The first start seeds a bootstrap staff admin (`admin@helpdesk.local`) and
 prints its password **once**. Configuration is `helpdesk.yaml` plus
@@ -292,3 +301,13 @@ the current app:
   and the service-delivery layer.
 - [`docs/nats-notifications-plan.md`](https://github.com/stone-age-io/helpdesk/blob/main/docs/nats-notifications-plan.md): the
   NATS notification channel.
+
+---
+
+## Releases and License
+
+Releases are tagged and summarised in [CHANGELOG.md](https://github.com/stone-age-io/helpdesk/blob/main/CHANGELOG.md), which also
+says which surfaces a version number is worth pinning against. The helpdesk is
+before 1.0, so a minor version can still change any of them.
+
+Licensed under the [MIT License](https://github.com/stone-age-io/helpdesk/blob/main/LICENSE).

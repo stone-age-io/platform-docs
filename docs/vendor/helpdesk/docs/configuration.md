@@ -100,6 +100,48 @@ spaces.
 | `inbound.secret` | string | `""` | Basic-auth password for the email webhook. Empty disables inbound email, and mail then arrives only via portal, agent, webhook or NATS. See [Inbound email](#inbound-email). |
 | `inbound.allowed_ips` | string list | `[]` | Optional. Restricts the email webhook to the provider's egress ranges (IPs or CIDRs). |
 | `inbound.reply_to` | string | `""` | Reserved. Read but **not** wired in v1. Replies thread via the PocketBase sender address. |
+| `readiness.interval_seconds` | int | `30` | How often the background prober runs the readiness checks. The endpoint serves the last result, so this is how stale an answer may be, not what a probe costs. |
+| `readiness.timeout_seconds` | int | `10` | Bounds one check, so a slow dependency cannot stall the loop or the others. |
+| `metrics.enabled` | bool | `true` | Registers `GET /metrics`. `false` removes the route rather than serving one that 401s. |
+| `metrics.token` | string | `""` | Required as `Authorization: Bearer <token>`, or as the **password** half of Basic auth (the username is ignored). Empty leaves the endpoint open. |
+
+### Health and metrics
+
+`GET /api/ready` is **always on**: readiness is a contract with whatever
+orchestrates this process, so there is no key to disable it. Only `/metrics`
+follows `metrics.enabled`.
+
+Both are unauthenticated by default and are deliberately *not* under
+`/api/helpdesk` like this app's other routes — the ecosystem's convention is
+that every binary answers at the same two paths, so a probe written for one can
+be pointed at another. Restrict them with a reverse proxy, or set
+`metrics.token`.
+
+Readiness returns `503` only when a check **fails**. A `warn` is `200` on
+purpose: a probe can only restart the process or take it out of rotation, and
+neither of those fixes a misconfiguration. An all-`skipped` report is not
+healthy either, because `skipped` means there was no answer.
+
+The checks are `database`, `schema`, `schema_version` (which looks for a
+*downgrade* — pb_data written by a newer binary — not for pending migrations),
+`staff_admin`, `smtp`, `application_url`, `nats_ingest` and `inbound_email`.
+The last two report `skipped` when the feature is not configured, and
+`nats_ingest` warns rather than fails when the broker is unreachable, because
+the portal, webhook and email intakes are all still serving.
+
+`/metrics` publishes the same readiness report as a state set
+(`helpdesk_check_state{name,state}`), plus `helpdesk_ready`,
+`helpdesk_build_info`, row counts per collection, tickets by status, and the
+database size. **No series carries a customer label**, because the endpoint is
+open unless a token is set and a tenant's name must not appear beside a ticket
+count. Alert on `helpdesk_check_timestamp_seconds` going stale: it is the only
+series that shows the prober itself is wedged, since the others keep their last
+values.
+
+::: note PocketBase's `/api/health` is a different question
+It reports that the HTTP server is listening, and it is listening through
+every failure the checks above look for.
+:::
 
 ### Branding overlay
 
