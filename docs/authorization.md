@@ -312,8 +312,7 @@ you block API access but not the NATS identity, the device still publishes. If
 you block NATS but not Nebula, it stays on the mesh. A device can hold either
 identity, both or neither, so each cascade runs on its own.
 
-**A deactivation that cannot revoke is refused** (from the release after
-v0.18.1). The identities are revoked before the Thing is saved. If either one
+**A deactivation that cannot revoke is refused** (from v0.19.0). The identities are revoked before the Thing is saved. If either one
 fails, the save answers `400` and the Thing stays active, so the console never
 shows a device as cut off while its credential still works. An identity revoked
 before the failure stays revoked; deactivate again once the cause is fixed. The
