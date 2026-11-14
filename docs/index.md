@@ -75,7 +75,10 @@ leaving easily.
 isolated NATS Account and a private Nebula CA in the same operation. A NATS
 account is a closed subject namespace, so a tenant cannot reach outside it,
 whatever its permissions say. A Nebula host cannot present a certificate that
-another organization's CA trusts. There is no application filter to forget.
+another organization's CA trusts. On the bus and the mesh there is no
+application filter to forget. The Control Plane's own records are the
+exception: on a shared instance every tenant's inventory and issued credentials
+sit in one database, scoped by its API rules ([Authorization](./authorization.md)).
 
 **Adopt one depth at a time.** Most deployments stay at [depth](#start-where-you-need-to)
 2 or 3. You add the stream processor, the metrics agent and the TSDB when a
@@ -153,7 +156,7 @@ events) publish their results back for the rules to act on.
 | Protocol | How |
 | :--- | :--- |
 | **NATS** | Native |
-| **MQTT** | Native, through JetStream |
+| **MQTT** | Built into the NATS server, MQTT 3.1.1 only, sessions in JetStream. The listener is off in the exported `nats.conf` until you enable it ([Connectivity](./connectivity.md#mqtt-clients)) |
 | **HTTP** | Webhooks in and API calls out, through the [rule engine's gateway](./automation.md) |
 | **WebSocket** | The browser's connection to the bus |
 

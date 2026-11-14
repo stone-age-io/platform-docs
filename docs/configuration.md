@@ -330,11 +330,14 @@ prod), so you keep one YAML file.
 |---|---|---|
 | `--config <path>` | none | Load a specific `config.yaml`. |
 | `--nats` | `false` | `serve` only: run a NATS server in this process. Sets `nats.embedded`. |
-| `--nats-config <path>` | `./nats-config/nats.conf` | `serve` only: the `nats.conf` that `--nats` loads. Sets `nats.embedded_config`. |
+| `--nats-config <path>` | `./nats-config/nats.conf` | `serve` and `init`: the `nats.conf` that `--nats` loads, and where `init` exports it. Sets `nats.embedded_config`. |
 
 `--nats` and `--nats-config` are on the root command, so every subcommand accepts
-them, but only `serve` uses them. The other subcommands open the database
-directly and have no bus.
+them. `serve` uses both. `init` uses `--nats-config` (or
+`STONE_AGE_NATS_EMBEDDED_CONFIG`) to choose where `nats export` writes, and treats
+an existing file there as "already initialized". Give `init` and `serve` the same
+value, or `serve --nats` looks for a `nats.conf` that `init` wrote elsewhere. The
+other subcommands open the database directly and have no bus.
 
 ### PocketBase flags
 

@@ -74,6 +74,11 @@ For [gateways](./leaf-nodes.md), also publish the leaf node port with
 dial, such as `nats-leaf://hub.example.com:7422`. The generated `nats.conf`
 already has the leaf node listener and the hub's JetStream domain.
 
+The variables in this table belong to the image's entrypoint script, not to
+`stone-age` itself, so they are not in [Configuration](./configuration.md) and do
+nothing outside the container. The one exception is
+`STONE_AGE_BOOTSTRAP_PASSWORD`, which `stone-age init` also reads.
+
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `STONE_AGE_BOOTSTRAP_PASSWORD` | none (**required on first boot**) | Password for the SuperUser and the Platform Operator user. If it is missing, the container stops and says why. |
@@ -84,8 +89,9 @@ already has the leaf node listener and the hub's JetStream domain.
 | `STONE_AGE_HTTP_PORT` | `8090` | The HTTP listen port. |
 
 The container seeds only when `nats-config/nats.conf` is missing from the data
-directory. A restart never seeds again, and your edits to `nats.conf` stay. All
-other `STONE_AGE_*` settings from [Configuration](./configuration.md) also work.
+directory. A restart never seeds again, and your edits to `nats.conf` stay. Every
+`STONE_AGE_*` setting from [Configuration](./configuration.md) also works in the
+container, beside the ones above.
 The image has a Docker `HEALTHCHECK` on `GET /api/ready`
 ([Health & Metrics](./health-metrics.md)).
 
