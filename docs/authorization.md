@@ -312,6 +312,16 @@ you block API access but not the NATS identity, the device still publishes. If
 you block NATS but not Nebula, it stays on the mesh. A device can hold either
 identity, both or neither, so each cascade runs on its own.
 
+**A deactivation that cannot revoke is refused** (from the release after
+v0.18.1). The identities are revoked before the Thing is saved. If either one
+fails, the save answers `400` and the Thing stays active, so the console never
+shows a device as cut off while its credential still works. An identity revoked
+before the failure stays revoked; deactivate again once the cause is fixed. The
+same holds for any later save of an inactive Thing: an identity linked to it
+then is revoked by that save. In v0.18.1 and earlier the cascade was
+best-effort and ran only when the flag changed: a failed revoke was only
+logged, and an identity linked to an already-inactive Thing stayed live.
+
 **Deactivation sets `active`, never `revoke`.** In pb-nats, `revoke` is for
 leaked credentials. It generates a **new** key pair, puts the old public key on
 the account's revocation list, and returns a *working* replacement. The identity
