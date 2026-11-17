@@ -393,7 +393,9 @@ active organization**. It needs an address and an identity.
 
    Then under **NATS → Users**, create a **User** with that role. In
    **Settings**, choose that user as the **Operational Identity**.
-3. Optionally, turn on **Auto-connect on login**. Click **Connect**.
+3. Click **Connect**. **Auto-connect on login** is on by default, so from now
+   on the console connects by itself when you sign in or reload. Turn it off
+   there to connect only by hand on this device.
 
 The status dot turns green and reads **CONNECTED**.
 
