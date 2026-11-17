@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.8.0   # the stone version on the Versions page
+VERSION=0.9.0   # the stone version on the Versions page
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -294,9 +294,9 @@ IP.
 
 ```sh
 stone thing provision --code gw-01 --name "Gateway 01" \
-    --type <thing_types_id> --location <locations_id> \
+    --type gateway --location hq \
     --nats-mode auto \
-    --nebula-mode auto --nebula-network <id> --nebula-ip 10.128.0.42
+    --nebula-mode auto --nebula-network main --nebula-ip 10.128.0.42
 ```
 
 `--nats-mode` and `--nebula-mode` each take one of:
@@ -315,7 +315,8 @@ comes from your active context.
 
 `get`, `update`, `delete` and `edit` take a 15-char PocketBase id or the
 entity's **natural key** from the table above (`code`, `name`, `hostname` and
-so on).
+so on). Relation flags take the same values (from stone 0.9.0):
+`--location hq` and `--location <id>` both work.
 
 - Key lookups are scoped to the current Organization and match exactly, except
   that a **code ignores case**: `stone thing get ca-9kd-4px` finds
@@ -325,7 +326,8 @@ so on).
   match, it fails with `no <entity> with <key> "<arg>"`.
 - An entity with a second key (`organization`: `code`, then `name`) tries each
   key in order.
-- `membership` takes an id only.
+- `membership` takes an id only. So do the relation flags that point at a user:
+  `--owner`, `--user` and `--invited-by`.
 
 ### Field types
 
@@ -334,11 +336,9 @@ so on).
 | string / int / bool | `--name foo` · `--validity-years 5` · `--active=false` | to set a bool false, use `=` (see below) |
 | select | `--capability publish` | checked against a whitelist |
 | multiselect | comma-separated, checked against a whitelist | supported, but no entity uses one yet |
-| relation (id) | `--type abc123def456ghi` | **15-char id only**. Natural keys work on positional args, not on relation flags. |
-| relation list | `--operations id1,id2` | comma-separated or repeated flag |
+| relation | `--type temp-sensor` · `--type abc123def456ghi` | the target's natural key or its id, looked up as above |
+| relation list | `--operations heartbeat,reboot` | comma-separated or repeated flag; each value is looked up |
 | JSON | `--metadata '{"k":"v"}'` · `--metadata @file.json` · `--metadata -` | inline, file or stdin |
-
-> **Relation flags take ids, not names.** Find an id first with `stone <type> get <key> --fields id -o json` or `stone <type> ls -o json`.
 
 ### Auth collections
 
@@ -350,7 +350,7 @@ For headless provisioning, let the CLI create the password:
 
 ```sh
 stone thing create --email reader-01@acme.thing.local --code reader-01 \
-    --type <thing_type_id> --random-password -o json 2> reader-01.pw
+    --type card-reader --random-password -o json 2> reader-01.pw
 ```
 
 Typed CRUD writes the collection directly, so you supply the email. Use the
@@ -718,8 +718,8 @@ and `delete` accept. PocketBase returns the related record in the same query,
 so this costs no extra request.
 
 **`json` and `yaml` show relation ids.** They are the scripting interface: a
-pipeline that reads `type` gets an id, and `--fields id -o json` is how you find
-one. `edit` and `pull` also use raw ids. `edit` PATCHes what you save straight
+pipeline that reads `type` gets an id. You can pass the code from a table to a
+relation flag, so you seldom need to find an id. `edit` and `pull` also use raw ids. `edit` PATCHes what you save straight
 back, and `apply` relies on the ids in the workspace.
 
 An **unset** relation shows an empty cell, and so does one you cannot read.
@@ -742,10 +742,9 @@ The skill tells the assistant to:
 - Check context, auth, org and workspace in order (§3), and fix only what is
   missing.
 - Use `-o json` for any output it reads, never the table.
-- Look up ids (`get <key> --fields id -o json`) and never guess them.
+- Pass natural keys that it has seen, or look up ids, and never guess them.
 - Expect `apply` to be idempotent and to **never delete**.
-- Treat `nats-sync: skipped — …` as information, and read a PocketBase 400 as
-  an invalid relation id.
+- Treat `nats-sync: skipped — …` as information.
 
 > **The assistant cannot sign in for you.** `stone auth login` prompts for credentials, and the skill tells the assistant to ask you to sign in yourself. The assistant then has the same per-organization scope and API rules as you.
 
@@ -755,9 +754,6 @@ When command shapes change, update both files.
 
 ## 10. Limitations
 
-- Relation flags (`--type`, `--location`, …) take 15-char PocketBase ids only.
-  Natural keys work on positional args. Table and `get` output show relations
-  as codes (§8).
 - `apply` never deletes server records that have no local file.
 - No JetStream **consumer** management. Use the `nats` CLI.
 - `nats-account` and `nebula-ca` are read-only for every tenant role. Only a

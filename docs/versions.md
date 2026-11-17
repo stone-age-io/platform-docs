@@ -10,7 +10,7 @@ version says so.
 | Component | Version | Where its own docs are |
 | :--- | :--- | :--- |
 | Control Plane and console (`stone-age`) | v0.20.0 | The Platform section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
-| `stone` CLI | v0.8.0 | [Stone CLI](./stone-cli.md) |
+| `stone` CLI | v0.9.0 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.8.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.23.1 | [Rule Router docs](./vendor/rule-router/README.md) |
 | Services (Watchdog and creds-keeper) | v0.2.0 | [Services docs](./vendor/services/README.md) |
