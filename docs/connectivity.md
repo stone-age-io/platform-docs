@@ -375,12 +375,38 @@ addresses. See [Overlay Network §4](./concepts/overlay.md#4-firewall-by-group)
 for an example.
 
 ::: note Group membership is in the certificate, so a change needs a re-issue
-Four host fields are signed into the certificate: **`hostname`, `overlay_ip`,
-`groups` and `unsafe_networks`**. Saving a change to any of them re-signs the
-host's certificate at once. It applies when the host fetches its new config,
-and peers apply the old group's rules until then, so redeploy that host.
-Everything else about a host, firewall *rules* included, goes into
-`config_yaml` and applies on the next pull.
+Five host fields are in the certificate: **`hostname`, `overlay_ip`, `groups`,
+`unsafe_networks` and `validity_years`**. Saving a change to any of them
+re-signs the host's certificate at once. Everything else about a host, firewall
+*rules* included, goes into `config_yaml` and applies on the next pull.
+:::
+
+### What a re-issue does to the old certificate
+
+From v0.20.0, a re-issue that you ask for **revokes** the certificate it
+replaces. These re-issues revoke:
+
+- a change to one of the five certificate fields above,
+- **Re-issue** in the console (`renew` on the record),
+- reactivating the host or its Thing.
+
+The platform adds the old certificate to the blocklist of every host under the
+organization's CA, and regenerates all of those configs. Each peer refuses the
+old certificate when it loads its new config. Until the re-issued host loads
+its own new config, it **cannot reach the peers that did**. That gap is at most
+the host's `nebula.sync_interval`. Re-issue is also the remedy for a leaked host
+key.
+
+The nightly renewal and a CA rotation also re-sign hosts, but they do **not**
+revoke. The old certificate stays valid, so a host that has not fetched yet
+stays on the mesh. It goes on the blocklist only when you deactivate the host.
+
+::: warning A certificate replaced before v0.20.0 stays valid
+Before v0.20.0 a re-issue kept no copy of the old certificate, so the platform
+cannot put it on a blocklist. It stays valid until it expires. If one of them
+matters, for example a key that leaked, rotate the organization's Nebula CA
+([Authorization §4.3](./authorization.md#43-rolling-a-nebula-ca)). After
+`finish`, no certificate from the old CA is valid.
 :::
 
 ---

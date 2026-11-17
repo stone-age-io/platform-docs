@@ -149,6 +149,9 @@ refuse. A revocation applies on each peer when that peer loads its new config.
 
 - Deactivating a Thing adds its certificate's fingerprint to the blocklist of
   every host under the same CA.
+- A re-issue that you ask for, such as a change to the host's groups, adds the
+  certificate it replaces to the same blocklists. See
+  [Connectivity §2](../connectivity.md#what-a-re-issue-does-to-the-old-certificate).
 - The Agent reads its config every `nebula.sync_interval`. That interval is the
   longest time a peer can still accept a revoked certificate. See
   [The Agent §2](../agent.md#the-lifecycle-of-a-thing).

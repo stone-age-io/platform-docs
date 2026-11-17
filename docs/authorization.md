@@ -343,6 +343,11 @@ platform token ended with the `tokenKey`, so its Agent must sign in again before
 it can fetch anything. See [Agent §2.1](./agent.md#21-removing-the-password)
 for a device whose password was removed.
 
+**Reactivating also issues a new Nebula certificate** (from v0.20.0). The old
+certificate stays on every blocklist, so a key that leaked before the
+deactivation stays refused. Before v0.20.0, reactivation removed the old
+certificate from the blocklists.
+
 For a device, use `things.active`, which moves the NATS identity, the Nebula
 host and the session together. The NATS user's detail view also has **Revoke**
 (replace leaked credentials, stay active), which the Thing's page has too, and

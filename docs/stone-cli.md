@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.7.0   # the stone version on the Versions page
+VERSION=0.8.0   # the stone version on the Versions page
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -265,7 +265,7 @@ stone thing-type-operation create --name heartbeat --capability publish \
     --subject-suffix heartbeat
 stone thing get warehouse-hvac --fields code,name,location   # read back by natural key
 stone thing ls --fields code,name                            # requested fields become the columns
-stone nebula-host edit edge-west                             # opens $EDITOR as YAML, PATCHes on save
+stone nebula-host edit edge-west                             # opens $EDITOR as YAML, sends only the fields you changed
 ```
 
 **The server generates a code if you leave it out**
@@ -428,7 +428,8 @@ Keep a tenant's whole configuration as YAML files in a `git` repo:
 mkdir my-workspace && cd my-workspace && git init
 stone pull --workspace . --set-workspace   # writes <collection>/<key>.yaml, one file per record
 # …edit files, commit for review…
-stone apply                       # sends the workspace back to the server
+stone apply --dry-run             # shows what apply would create and update
+stone apply                       # sends the changes back to the server
 ```
 
 **`pull`** writes one YAML file per record into `<workspace>/<collection>/`.
@@ -441,22 +442,40 @@ stone apply                       # sends the workspace back to the server
   Platform Operator, because only a Platform Operator can update them. For
   anyone else it skips them and says so.
 - It removes server-managed fields (`collectionId`, `collectionName`,
-  `created`, `updated`, `expand`), and the credential and server-generated
-  fields below. It prints what it left out, per collection.
+  `created`, `expand`), and the credential and server-generated fields below.
+  It prints what it left out, per collection.
+- It keeps each record's `updated` time. `apply` uses it to find a file that
+  is older than the record on the server.
 - It skips the `activity` feed.
 
 **`apply`** reads the workspace (or only the paths you pass), groups records
 into batches of up to 50, and sends each batch to PocketBase's `/api/batch`
-endpoint. It PATCHes records with an `id`. It POSTs records without one and
-writes the new id **back into the file**.
+endpoint. It compares each record that has an `id` with the server, and
+PATCHes only the fields that are different. It does not send a record that has
+no differences. It POSTs records without an `id`. After each create or update,
+it writes the new `id` and `updated` **back into the file**, and this removes
+the comments in that file.
 
+- **A file older than the record is refused.** If someone changed the record
+  after your pull, the server's `updated` is different from the file's. Then
+  `apply` lists those files and sends **nothing**. Commit your edits, `pull`
+  again, put your changes back from `git diff`, and apply again. `--force`
+  sends the files anyway and overwrites the change on the server. A file with
+  no `updated` (written by hand, or pulled by `stone` before 0.8.0) is not
+  checked. Pull again to start the check.
+- **One organization at a time.** `pull` never clears a workspace, so a second
+  organization pulled into the same directory puts its files next to the
+  first. If a file belongs to an organization that is not the current one,
+  `apply` stops before it sends anything. Use one workspace per organization,
+  or pass `--any-org`.
 - **Not all-or-nothing.** The platform leaves batch requests off by default,
   and when a batch is refused or one of its records fails, `apply` re-sends that
   batch one record at a time so it can name the record that failed. Records
   before a failure stay applied. Fix the file and run `apply` again.
-- **Safe to repeat, but not a diff.** `apply` PATCHes every file that has an
-  `id`, changed or not, so a second run sends the same values again. File names
-  do not matter: `apply` uses only the `id` field in each file.
+- **Safe to repeat.** A second run finds no differences and sends nothing.
+  File names do not matter: `apply` uses only the `id` field in each file.
+  A file in a directory that is not a collection (`thing/` instead of
+  `things/`) gets a `skip` line.
 - **A workspace pulled by an older `stone` can hold records you cannot
   update:** `organizations/`, `nats_accounts/`, `nebula_ca/` and Memberships in
   other organizations. `apply` fails on each of them. Delete those files, or
@@ -479,8 +498,15 @@ return to an owner or admin:
 | `invites.token` | A bearer token that redeems into a membership. |
 
 `pull` also leaves out the server-generated certificates, JWTs and action
-triggers next to them. `apply` sends back every key in a file, so a pulled
-certificate would overwrite whatever the server rotated to since.
+triggers next to them. `apply` sends each key that is different from the
+server, so a pulled certificate would overwrite the one the server rotated to
+since.
+
+**`pull` leaves out a Nebula host's `revoked_certificates` and
+`retired_certificates`.** The platform builds every peer's blocklist from these
+lists. If `apply` sent back an old copy, the next config regeneration would
+remove each revocation made since the pull. `stone` before 0.7.1 pulled them:
+delete both keys from each file under `nebula_hosts/` in an older workspace.
 
 **`pull` leaves out every `active` flag the platform acts on**: `things`,
 `nats_users`, `nebula_hosts`, `nats_accounts` and `organizations`. The platform
@@ -514,14 +540,15 @@ server and stops. It is not a reconciliation loop like Flux or Argo CD.
 | Creates and updates from files | ✅ | ✅ |
 | All-or-nothing apply | ❌ Records before a failure stay applied | Varies |
 | Deletes server records missing from git | ❌ **Never** | ✅ (pruning) |
-| Detects drift when someone edits in the console | ❌ Not until the next `pull` | ✅ Continuously |
+| Detects drift when someone edits in the console | ⚠️ Only at `apply`, which refuses a file older than its record | ✅ Continuously |
 | Runs unattended in a control loop | ❌ You run it | ✅ |
 
 - **The workspace is not the source of truth.** It is a snapshot from the last
   `pull`, plus your edits. A Thing someone created in the console this morning
   is not in your workspace until you pull again.
-- **The last `apply` wins, field by field, with no warning.** If people share a
+- **A refused file means someone changed the record.** If people share a
   workspace, `pull` before `apply`, as you would `git pull` before a push.
+  `--force` makes the last `apply` win.
 - **Deletion is manual.** Removing a file does nothing. This protects you from a
   stray `rm -rf`, but git history does not show the current server state.
 
