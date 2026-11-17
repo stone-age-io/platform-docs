@@ -10,11 +10,11 @@ probe has an inventory record, a NATS identity, and permission to publish on
 its own subjects and nowhere else.
 
 You need an Organization with a running NATS server
-([Getting Started §3](./getting-started.md#3-start-the-nats-server)) and an
+([Getting Started](./getting-started.md)) and an
 **Owner or Admin** login in that Organization. The commands use `curl`, `jq`
 and the [`nats` CLI](https://github.com/nats-io/natscli). `$TOKEN` is your auth
-token and `$ORG_ID` is your active organization, as in
-[Getting Started §2](./getting-started.md#checkpoint-a-working-inventory).
+token. `$ORG_ID` is your active organization, which is
+`record.current_organization` in the sign-in response ([HTTP API §2](./concepts/http-api.md#2-the-rest-api)).
 
 ---
 
@@ -132,7 +132,7 @@ NATS role needs `temp-probe.>` in its subscribe allow list.
 
 - **In the console:** add a **Console** widget to a dashboard and set its
   subject to `temp-probe.>`
-  ([Getting Started §5](./getting-started.md#5-the-hello-world-event)).
+  ([Getting Started §5](./getting-started.md#5-send-a-message)).
 - **From a terminal:** subscribe first, then publish again from §5.
 
     ```bash

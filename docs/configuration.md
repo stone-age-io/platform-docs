@@ -320,6 +320,28 @@ export STONE_AGE_TENANCY_INVITE_EXPIRY_DAYS=2
 Use environment variables for secrets and per-environment values (dev, staging,
 prod), so you keep one YAML file.
 
+### 3.1 Container variables
+
+The container image reads every `STONE_AGE_*` variable above. Its entrypoint
+script also reads the variables in this table. `stone-age` does not read them,
+so they do nothing outside the container. The one exception is
+`STONE_AGE_BOOTSTRAP_PASSWORD`, which `stone-age init` also reads.
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `STONE_AGE_BOOTSTRAP_PASSWORD` | none (**required on first boot**) | Password for the SuperUser and the Platform Operator user. If it is missing, the container stops and says why. |
+| `STONE_AGE_BOOTSTRAP_EMAIL` | `admin@example.com` | Email for both accounts. |
+| `STONE_AGE_BOOTSTRAP_ORG` | `System` | Name of the `$SYS` organization. |
+| `STONE_AGE_BOOTSTRAP_OPERATOR_ORG` | `Operator` | Name of your own organization. Its NATS account is the hub for shared services. |
+| `STONE_AGE_DATA_DIR` | `/data` | Where the database and NATS config are inside the container. |
+| `STONE_AGE_HTTP_PORT` | `8090` | The HTTP listen port. |
+
+On first boot the entrypoint runs `stone-age init` (§4.1) and then
+`stone-age serve --nats`. It runs `init` only when `nats-config/nats.conf` is
+missing from the data directory. So a restart never seeds again, and your edits
+to `nats.conf` stay. The image has a Docker `HEALTHCHECK` on `GET /api/ready`
+([Health & Metrics](./health-metrics.md)).
+
 ---
 
 ## 4. CLI Flags
@@ -353,13 +375,81 @@ most useful:
 They apply to all subcommands (`serve`, `init`, `migrate`, `bootstrap`, `nats export`,
 `superuser upsert`).
 
+### 4.1 What `init` runs
+
+`stone-age init` prepares a new data directory. It does not need a running
+server or a NATS server, because it opens the database directly:
+
+```bash
+./stone-age init --email admin@example.com --operator-org "Acme MSP"
+```
+
+`init` asks for the password, or reads `STONE_AGE_BOOTSTRAP_PASSWORD`. If you
+omit `--operator-org`, it asks for that too. It writes the NATS config where
+`--nats-config` points (`./nats-config/nats.conf` by default). That file is its
+marker: when the file exists, `init` does nothing. A run that fails part of the
+way writes no marker, so run `init` again after you fix the cause. You can
+safely repeat each step.
+
+`init` runs these four commands, in this order. You can also run them yourself.
+
+1. **`./stone-age superuser upsert EMAIL PASS`** creates the **SuperUser**, a
+   service account with full database access that ignores API rules. The first
+   run also seeds the NATS Operator, System Account and System User, and starts
+   audit logging. If you run this command yourself, the password goes into your
+   shell history and the process list. `init` runs it in-process and prevents
+   that.
+2. **`./stone-age migrate up`** applies the embedded migrations. They import
+   `schema.json`: the collections, and the API rules that are the platform's
+   authorization ([Authorization](./authorization.md)).
+3. **`./stone-age bootstrap --email admin@example.com --org "System"
+   --operator-org "Acme MSP"`** does four things:
+   - It creates the first **Platform Operator** user (`is_operator = true`).
+   - It creates the `System` organization (`--org`, default `System`), and
+     links the seeded NATS System Account, User and Role to it.
+   - It creates your own organization (`--operator-org`). Its NATS account is
+     the hub for shared provider services.
+   - It gives the user an Owner membership in both organizations, and makes the
+     operator organization the user's active organization.
+
+   If you omit `--email` or `--operator-org`, the command asks for them. If you
+   omit `--password`, it reads `STONE_AGE_BOOTSTRAP_PASSWORD`, and asks only if
+   that is also empty. Do not use `--password`, because it goes into your shell
+   history and the process list.
+4. **`./stone-age nats export --output ./nats-config/`** writes the NATS server
+   config that matches the seeded NATS Operator. Its paths are absolute, so it
+   works from any directory. The `nats.conf` has a WebSocket listener on port
+   9222 for browsers, a leaf node listener on port 7422 for
+   [gateways](./leaf-nodes.md), and the hub's JetStream domain from
+   `nats.jetstream_domain`. For TLS (`wss://`), edit its `websocket { }` block,
+   or pass `--websocket-port` to the export.
+
+**The order is necessary.** `bootstrap` writes `is_operator`,
+`is_system_org` and `is_operator_org`, and these fields exist only after step 2.
+PocketBase drops a write to a field that does not exist and gives no error, so
+`bootstrap` refuses to run before the migrations. `nats export` needs the
+operator that `bootstrap` links, so it is last.
+
+**`bootstrap` and the admin panel are the only ways to make a Platform
+Operator.** No API rule allows a write to `is_operator`, so no REST caller can
+grant it. Use the Platform Operator user for daily work. Keep the SuperUser for
+infrastructure work: schema imports, NATS Operator key custody, and
+troubleshooting in the admin UI at `/_/`.
+
+**`serve` without NATS queues the NATS work.** If `serve` starts and cannot
+reach a NATS server, it logs *"Publisher will continue operating"* and puts
+credential work into the `nats_publish_queue` collection. The queue drains when
+the first connection succeeds. This is how `bootstrap` can create organizations
+before a NATS server exists. Do not run like this for long: the queue grows, and
+the account claims on the NATS server fall behind the database.
+
 ---
 
 ## 5. Operational Notes
 
 - **Do not change `operator_name` after the first run.** The NATS Operator JWT
   is generated once, on the binary's first run against a new database. That is
-  usually `init`. A rename would orphan the existing identity hierarchy. Set
+  usually `init` (§4.1). A rename would orphan the existing identity hierarchy. Set
   the encryption keys (§2.2) before that first run too.
 - **API rules are the platform's authorization.** Nothing in `config.yaml`
   grants or limits access. The rules in the embedded schema do all of it, with

@@ -145,7 +145,7 @@ console:
 3. Link the user to the person's Membership. Only an Owner or Admin can choose
    which identity a Membership uses.
 
-[Getting Started §4](./getting-started.md#4-connect-the-browser-to-nats) has
+[Getting Started §4](./getting-started.md#4-give-yourself-a-nats-identity) has
 these steps in detail.
 
 ---

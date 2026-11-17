@@ -79,7 +79,7 @@ outage pauses provisioning, not production traffic.
 The table above assumes the Control Plane and `nats-server` run as separate
 processes. `stone-age serve --nats` runs the NATS server inside the Control
 Plane instead, from the same `nats.conf` that `nats export` writes
-([Getting Started §3](./getting-started.md#3-start-the-nats-server)).
+([Configuration §4.1](./configuration.md#41-what-init-runs)).
 
 This is a valid production option, but it changes the first row of that table.
 There are three options. You move between them by editing config, with two
@@ -207,7 +207,7 @@ identity material.
 
 ### 3.5 The container
 
-The container from [Getting Started](./getting-started.md#the-short-version)
+The container from [Getting Started](./getting-started.md#1-start-the-platform)
 always runs the NATS server inside the Control Plane. All of its state is on the
 `/data` volume:
 
@@ -486,7 +486,7 @@ other's code.
 | **Agent** | PocketBase API and NATS protocol | It signs in at bootstrap. After that it reads its credentials from the platform again at intervals, so the platform must stay reachable ([The Agent](./agent.md)). |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
-| **`nats-server`** | The exported NATS Operator and resolver config ([Getting Started §3](./getting-started.md#3-start-the-nats-server)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([Versions](./versions.md)) or a newer one. |
+| **`nats-server`** | The exported NATS Operator and resolver config ([Configuration §4.1](./configuration.md#41-what-init-runs)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([Versions](./versions.md)) or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
 
 - **Upgrade the Control Plane first** when a release changes the schema. `stone`
@@ -556,7 +556,7 @@ The versions these docs describe are in [Versions](./versions.md).
   ([Authorization §3.1](./authorization.md#31-suspending-an-organization)).
 - [ ] **SuperUser kept for infrastructure work**, with daily administration done
   as a Platform Operator
-  ([Getting Started §2](./getting-started.md#2-initialize-the-control-plane)).
+  ([Configuration §4.1](./configuration.md#41-what-init-runs)).
 - [ ] **Least-privilege review:** check each org's memberships. `admin` is the
   same as `owner` in every API rule, including every credential collection. Most
   people need `member` ([Authorization](./authorization.md)).

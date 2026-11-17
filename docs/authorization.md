@@ -153,7 +153,7 @@ API rules. Use it for infrastructure work: schema imports, NATS Operator key
 custody and troubleshooting. It signs in at the admin UI (`/_/`). SuperUsers are
 not members of any organization.
 
-> **The API cannot grant Platform Operator status.** Only the `bootstrap` command and the admin panel can, and both ignore API rules. `users.updateRule` refuses `is_operator` on your own record. Both branches of `users.createRule` refuse it on a new record, including the branch that lets a Platform Operator onboard users. So an operator cannot create another operator over REST. See [Getting Started §2](./getting-started.md#2-initialize-the-control-plane).
+> **The API cannot grant Platform Operator status.** Only the `bootstrap` command and the admin panel can, and both ignore API rules. `users.updateRule` refuses `is_operator` on your own record. Both branches of `users.createRule` refuse it on a new record, including the branch that lets a Platform Operator onboard users. So an operator cannot create another operator over REST. See [Configuration §4.1](./configuration.md#41-what-init-runs).
 
 ### The organization record is Platform Operator territory
 
@@ -497,5 +497,5 @@ for any new column a rule reads; and add a paired "can" and "cannot" check to
 - The same rules from the terminal: [Stone CLI](./stone-cli.md)
 - The edge identity model: [Leaf Nodes](./leaf-nodes.md)
 - NATS roles and permissions: [Connectivity](./connectivity.md)
-- Creating the first Platform Operator and SuperUser: [Getting Started](./getting-started.md)
+- Creating the first Platform Operator and SuperUser: [Configuration §4.1](./configuration.md#41-what-init-runs)
 - Audit retention: [Configuration Reference](./configuration.md)

@@ -75,7 +75,7 @@ a record or a payload is an addition, not a break.
 | Surface | What is stable | Reference |
 | :--- | :--- | :--- |
 | `config.yaml` keys and `STONE_AGE_*` variables | The key names, their meaning and their defaults | [Configuration](./configuration.md) |
-| `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags | [Getting Started §2](./getting-started.md#2-initialize-the-control-plane) |
+| `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags | [Configuration §4.1](./configuration.md#41-what-init-runs) |
 | The exported `nats.conf` | That a stock `nats-server` accepts it, and that the embedded server reads the same file | [ADR 0001](./decisions/0001-embedded-nats-server.md) |
 | `stone` commands | The command names, the flags, the exit status, and the `-o json` and `-o yaml` output | [Stone CLI](./stone-cli.md) |
 | The `stone` workspace | One YAML file for each record, and that `apply` never deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply) |

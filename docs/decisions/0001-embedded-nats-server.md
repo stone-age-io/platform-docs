@@ -17,7 +17,7 @@ nav_order: 10
 
 ## Context
 
-The Control Plane and the NATS server are configured separately today. `stone-age nats export` reads the NATS Operator JWT and System Account out of the database and writes an `operator.jwt`, an `operator.conf`, and a `nats.conf`; you then run `nats-server -c nats.conf` yourself. That is [Getting Started §3](../getting-started.md#3-start-the-nats-server), and §4 exists only because §3 does.
+The Control Plane and the NATS server are configured separately today. `stone-age nats export` reads the NATS Operator JWT and System Account out of the database and writes an `operator.jwt`, an `operator.conf`, and a `nats.conf`; you then run `nats-server -c nats.conf` yourself. When this was written, that was §3 of [Getting Started](../getting-started.md), and its §4 existed only because §3 did.
 
 That split costs us three things:
 
