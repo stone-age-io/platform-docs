@@ -23,7 +23,7 @@ The Agent is one Go binary with no external dependencies.
 - **No inbound management API:** every instruction arrives over the
   authenticated NATS connection that the Agent opened outbound. You never need a
   port forward to manage a device. It does have listening ports: `/ready` and
-  `/metrics` bind `127.0.0.1:9100` unless you set `observability.addr` empty,
+  `/metrics` bind `127.0.0.1:10063` unless you set `observability.addr` empty,
   and a site gateway hosts a NATS server that local devices connect *in* to.
   See [§6](#6-what-listens-and-what-dials-out).
 - **Reconnects by itself:** it handles NATS reconnection and backoff.
@@ -41,17 +41,18 @@ Linux amd64/arm64, Windows amd64 and FreeBSD amd64. Each has the binary, example
 configs per OS under `configs/`, and install guides under `docs/`:
 
 ```sh
-VERSION=0.6.1   # the Agent version on the Versions page
+VERSION=0.8.0   # the Agent version on the Versions page
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
-sudo mkdir -p /etc/agent /opt/agent/scripts
+sudo mkdir -p /etc/agent
 sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
 ```
 
-Create the scripts directory. `commands.scripts_directory` defaults to
-`/opt/agent/scripts`, and the Agent **refuses to start** if that directory does
-not exist. Set it to `""` to turn off script execution.
+The example config sets only `code`, `nats.urls` and `nats.auth`. All other
+keys are commented out at their defaults, and nothing is allowed until you list
+it. Scripts are off until `commands.scripts_directory` names a directory. The
+Agent **refuses to start** if that directory does not exist.
 
 Run Agent 0.3.1 or later: earlier versions let anyone who could publish to
 `cmd.exec` run any command on a device with a scripts directory.
@@ -194,7 +195,7 @@ buckets. Use
 `sync: { twin: true }` instead ([Leaf Nodes §6](./leaf-nodes.md#6-offline-autonomy-and-kv-bucket-sync)).
 
 **Local health is on every Agent.** `observability.addr` serves `/ready` and
-`/metrics` on every Agent, by default on `127.0.0.1:9100`. `cmd.health` goes
+`/metrics` on every Agent, by default on `127.0.0.1:10063`. `cmd.health` goes
 over NATS, and NATS is the link that fails, so you need a local answer most
 from the box that has gone quiet. `nebula.enabled` is also a per-device
 capability, not a gateway one.
@@ -226,9 +227,7 @@ processors can compute baselines per device. Layer 3 keeps the full history.
 The Agent can monitor system services such as `nginx`, `docker` or `mssql`.
 
 - **Monitoring:** `tasks.service_check` reports the state of each service in
-  its `services` list on a schedule. It is **on by default**. A config that
-  leaves it on with an empty list is refused at load. List your services, or set
-  `enabled: false`.
+  its `services` list on a schedule. It is off until you list services.
 - **Remote control:** `cmd.service` takes `start`, `stop`, `restart` or
   `status`, each limited by `commands.allowed_services`. `status` reads one
   service's state without a change, in the same words as the telemetry
@@ -365,7 +364,7 @@ tasks:
   system_metrics:
     enabled: true
     interval: "1m"
-  service_check:            # on by default: list services or set enabled: false
+  service_check:            # off until services are listed
     enabled: true
     interval: "1m"
     services: ["nginx"]
@@ -374,7 +373,7 @@ tasks:
     interval: "24h"
 
 commands:
-  scripts_directory: "/opt/agent/scripts"   # must exist; "" disables scripts
+  scripts_directory: "/opt/agent/scripts"   # must exist; unset = no scripts
   allowed_services: ["nginx"]
   allowed_commands:
     - "df -h"
@@ -402,7 +401,7 @@ Give this table to whoever writes the firewall rules.
 | NATS: telemetry, commands, heartbeats | **outbound** | 4222 (or your hub's) | always |
 | Platform HTTPS: credentials, Nebula config, leaf bootstrap | **outbound** | 443 | when the `platform:` block is set |
 | Nebula overlay | **outbound** UDP to a lighthouse | the lighthouse's port, commonly 4242 | when `nebula.enabled` |
-| `/ready` + `/metrics` | **listens** | `127.0.0.1:9100` | unless `observability.addr` is empty |
+| `/ready` + `/metrics` | **listens** | `127.0.0.1:10063` | unless `observability.addr` is empty |
 | Embedded `nats-server` | **listens** | set in its own config | only when `nats.server_config` is set |
 
 The important property is the first row's direction: **nothing can instruct an
@@ -415,5 +414,5 @@ writes `listen.port: 0` for every host except lighthouses and relays, because
 only those two are reached at a fixed address through `static_host_map`. So
 Nebula needs no inbound rule either.
 
-Securing `/ready` and `/metrics` on the box, and the port they share with
-node_exporter: [Health & Metrics §5](./health-metrics.md#5-the-edge-agent).
+Securing `/ready` and `/metrics` on the box:
+[Health & Metrics §5](./health-metrics.md#5-the-edge-agent).

@@ -310,4 +310,25 @@ Releases are tagged and summarised in [CHANGELOG.md](https://github.com/stone-ag
 says which surfaces a version number is worth pinning against. The helpdesk is
 before 1.0, so a minor version can still change any of them.
 
+Pushing a `v*` tag runs [the release workflow](https://github.com/stone-age-io/helpdesk/blob/main/.github/workflows/release.yml):
+goreleaser cross-compiles binaries for linux, darwin, windows and freebsd, and
+a multi-arch image goes to `ghcr.io/stone-age-io/helpdesk`. The release body is
+built from `CHANGELOG.md` by [`scripts/release-notes.sh`](https://github.com/stone-age-io/helpdesk/blob/main/scripts/release-notes.sh),
+so the section for the tag has to exist before the tag is pushed — the script
+refuses to publish an empty body, and fails the run before anything is
+published.
+
+**Build the SPA before tagging.** `internal/webui/public` is committed and
+embedded, so the bundle in the tag is the bundle that ships; nothing in the
+release path rebuilds it.
+
+Running the container needs no toolchain:
+
+```bash
+docker run -d -p 8090:8090 -v helpdesk-data:/data ghcr.io/stone-age-io/helpdesk:latest
+```
+
+It seeds a staff admin on first boot and prints the password once, so read it
+with `docker logs` and change it after signing in.
+
 Licensed under the [MIT License](https://github.com/stone-age-io/helpdesk/blob/main/LICENSE).

@@ -22,7 +22,7 @@ Complete guide for installing and configuring the agent on FreeBSD systems.
 ```bash
 # Download and extract the release archive (set VERSION to the latest release)
 cd /tmp
-VERSION=0.6.1
+VERSION=0.8.0
 fetch https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_freebsd_amd64.tar.gz
 tar xzf agent_${VERSION}_freebsd_amd64.tar.gz
 
@@ -33,12 +33,10 @@ sudo chmod +x /usr/local/bin/agent
 
 # Create directories
 sudo mkdir -p /usr/local/etc/agent
-sudo mkdir -p /usr/local/etc/agent/scripts
 sudo mkdir -p /var/log/agent
 
 # Set permissions
 sudo chmod 755 /usr/local/etc/agent
-sudo chmod 755 /usr/local/etc/agent/scripts
 sudo chmod 755 /var/log/agent
 ```
 
@@ -46,93 +44,12 @@ sudo chmod 755 /var/log/agent
 
 ### 2. Configure Agent
 
-Create configuration file:
+Start from the example config in the release archive. Only the identity and
+the NATS connection are live in it; every other setting is commented out at
+its default, and nothing is allowed until you list it.
 
 ```bash
-sudo tee /usr/local/etc/agent/config.yaml > /dev/null <<'EOF'
-# Agent Configuration for FreeBSD
-
-# Agent identity: code is the NATS subject token (legacy key: device_id),
-# location is optional and carried in heartbeat/telemetry payloads
-code: "freebsd-server-01"
-location: "hq"
-
-# NATS subject prefix (optional)
-subject_prefix: "agents"
-
-# NATS Connection
-nats:
-  urls: 
-    - "nats://nats.example.com:4222"
-  
-  # Authentication (choose one method)
-  auth:
-    type: "creds"
-    creds_file: "/usr/local/etc/agent/device.creds"
-  
-  # TLS Configuration (optional)
-  tls:
-    enabled: false
-    cert_file: "/usr/local/etc/agent/client-cert.pem"
-    key_file: "/usr/local/etc/agent/client-key.pem"
-    ca_file: "/usr/local/etc/agent/ca-cert.pem"
-  
-  max_reconnects: -1
-  reconnect_wait: "2s"
-  drain_timeout: "30s"
-
-# Scheduled Tasks
-tasks:
-  heartbeat:
-    enabled: true
-    interval: "1m"
-  
-  system_metrics:
-    enabled: true
-    interval: "5m"
-    # Built-in (gopsutil). You can still run node_exporter for Prometheus to
-    # scrape directly; the agent does not read it. Its port, 9100, is also the
-    # default observability.addr, so move one of them.
-  
-  service_check:
-    enabled: true
-    interval: "1m"
-    services:
-      - "nginx"
-      - "postgresql"
-      - "redis"
-  
-  inventory:
-    enabled: true
-    interval: "24h"
-
-# Command Execution
-commands:
-  scripts_directory: "/usr/local/etc/agent/scripts"
-  
-  allowed_services:
-    - "nginx"
-    - "postgresql"
-    - "redis"
-  
-  allowed_commands:
-    - "df -h | grep -E '^/dev/'"
-    - "uptime"
-    - "top -b | head -20"
-  
-  allowed_log_paths:
-    - "/var/log/nginx/*.log"
-    - "/usr/local/www/app/*.log"
-  
-  timeout: "30s"
-
-# Logging
-logging:
-  level: "info"
-  file: "/var/log/agent/agent.log"
-  max_size_mb: 100
-  max_backups: 3
-EOF
+sudo cp configs/freebsd/config.yaml.example /usr/local/etc/agent/config.yaml
 ```
 
 **Edit configuration:**
@@ -146,7 +63,9 @@ sudo ee /usr/local/etc/agent/config.yaml
 1. Set unique `code` (and optionally `location`)
 2. Update `nats.urls` with your NATS server
 3. Configure authentication (credentials file, stone-age.io platform, token, or userpass)
-4. Adjust monitored services in `tasks.service_check.services`
+
+Everything else is optional: uncomment a block to turn it on. The sections below
+cover services, commands, log paths and scripts.
 
 **Copy NATS credentials (if using creds auth):**
 
@@ -216,7 +135,7 @@ sudo service agent status
 ps aux | grep agent
 
 # Check its sockets: the outbound NATS connection, and the /ready + /metrics
-# listener on 127.0.0.1:9100
+# listener on 127.0.0.1:10063
 sockstat -4 | grep agent
 ```
 
@@ -319,6 +238,13 @@ allowlist is the only check. If a path matches a pattern, it can be read.
 ---
 
 ## Example Scripts
+
+Scripts are off until `commands.scripts_directory` names a directory that
+exists. Set it to `/usr/local/etc/agent/scripts` and create it:
+
+```bash
+sudo mkdir -p /usr/local/etc/agent/scripts
+```
 
 Create custom scripts in `/usr/local/etc/agent/scripts/`:
 
@@ -504,7 +430,7 @@ sudo cp /usr/local/bin/agent /usr/local/bin/agent.backup
 
 # Download and extract the new release archive
 cd /tmp
-VERSION=0.6.1
+VERSION=0.8.0
 fetch https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_freebsd_amd64.tar.gz
 tar xzf agent_${VERSION}_freebsd_amd64.tar.gz
 
@@ -604,7 +530,7 @@ commands:
    # Credentials, Nebula config and leaf bootstrap: outbound HTTPS (443) to the
    # Control Plane, when the `platform:` block is set.
    #
-   # Inbound: none by default -- /ready and /metrics bind 127.0.0.1:9100, which
+   # Inbound: none by default -- /ready and /metrics bind 127.0.0.1:10063, which
    # is not reachable off the box. A SITE GATEWAY is the exception: local
    # devices connect in to the nats-server it hosts (4222 by default).
    ```

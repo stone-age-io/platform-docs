@@ -291,11 +291,11 @@ Control Plane cannot see it ([§1](#1-why-this-exists-at-all)), and the Agent
 keeps answering locally when the WAN, and with it `cmd.health`, is down.
 
 It is **on by default, on loopback**: `observability.addr` defaults to
-`127.0.0.1:9100`. Set it empty to serve neither endpoint:
+`127.0.0.1:10063`. Set it empty to serve neither endpoint:
 
 ```yaml
 observability:
-  addr: "127.0.0.1:9100"    # the default; "" = no listener at all
+  addr: "127.0.0.1:10063"   # the default; "" = no listener at all
   metrics_token: ""         # set this before moving addr off loopback
   interval: 15s
 ```
@@ -304,11 +304,10 @@ The paths are `/ready` and `/metrics`, with no `/api` prefix. With an empty
 `addr`, the checks still run and log. A bind failure is logged, not fatal, so
 the agent keeps working if the monitoring port cannot bind.
 
-::: warning 9100 is also node_exporter's port
-On Linux and FreeBSD, the default port conflicts with `node_exporter` if you run
-one on the same box. Move one of them. A bind failure is only logged, so the
-symptom is a scrape target that never comes up, not a crash. `windows_exporter`
-uses 9182, so Windows is not affected.
+::: warning Agents before 0.8.0 used port 9100
+Before Agent 0.8.0 the default was `127.0.0.1:9100`, which is also
+`node_exporter`'s port. Move each probe and scrape target to 10063, or keep the
+old port with `observability.addr: "127.0.0.1:9100"`.
 :::
 
 Every Agent has these checks, gateway or not:
@@ -372,12 +371,11 @@ scrape_configs:
 
   - job_name: stone-age-edge
     static_configs:
-      - targets: ["site-01:9101", "site-02:9101"]
+      - targets: ["site-01:10063", "site-02:10063"]
 ```
 
-The edge targets use **9101**, not the default 9100. This avoids
-`node_exporter`, and a scrapeable target means `addr` is already off loopback.
-Set `metrics_token` when you do that. These endpoints have no per-organization
+A scrapeable edge target means that `addr` is already off loopback. Set
+`metrics_token` when you do that. These endpoints have no per-organization
 labels, but they show a named device's health, and `/metrics` is open when the
 token is empty.
 

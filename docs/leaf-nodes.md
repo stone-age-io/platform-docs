@@ -151,20 +151,11 @@ Then, for each gateway:
       auth:
         type: "platform"
         creds_file: "/etc/agent/device.creds"
-    tasks:
-      service_check:
-        enabled: false       # on by default, and refused with no services listed
     sync:
-      twin: true             # optional, see §6
+      twin: true              # optional, see §6
     observability:
-      addr: "127.0.0.1:9100" # optional, see §7
+      addr: "127.0.0.1:10063" # optional, see §7
     ```
-
-    Two startup checks often fail here. `tasks.service_check` is on by default,
-    and the Agent refuses a config that lists no services. Turn it off, as
-    above, or list the gateway's services. `commands.scripts_directory` defaults to
-    `/opt/agent/scripts`, which must exist. The install steps in
-    [The Agent §1](./agent.md#getting-the-binary) create it.
 
 3. Run `agent -leaf-config` once, on its own. It writes `nats-leaf.conf` and
    the creds in the same directory, and the leaf needs write access to that

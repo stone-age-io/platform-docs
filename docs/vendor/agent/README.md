@@ -28,7 +28,7 @@ Worth being exact, because it decides your firewall rules:
 |---|---|---|
 | NATS (telemetry, commands, heartbeats) | **outbound** to your hub | always |
 | Platform HTTPS (credentials, Nebula config, leaf bootstrap) | **outbound** to the Control Plane | when the `platform:` block is set |
-| `/ready` + `/metrics` | **listens**, `127.0.0.1:9100` by default | unless `observability.addr` is empty |
+| `/ready` + `/metrics` | **listens**, `127.0.0.1:10063` by default | unless `observability.addr` is empty |
 | Nebula overlay (UDP) | **outbound** to a lighthouse | when `nebula.enabled` |
 | Embedded `nats-server` | **listens**, per its own config | only when `nats.server_config` is set |
 
@@ -78,7 +78,7 @@ to reach the leaf server it hosts.
 - **Nebula mesh host**, run in-process rather than as a separate service. The config is re-read on an interval, which is what makes revocation, renewal and CA rotation actually reach the device -- Nebula has no CRL, so `nebula.sync_interval` **is** this device's revocation latency. A newly applied config that cannot reach a lighthouse is rolled back to the last one known to work.
 
 ### Local health (on by default)
-- **`/ready` and `/metrics`** on `127.0.0.1:9100`. This is not a gateway feature: any agent can say whether it is healthy, and `cmd.health` travels over NATS, which is the link that breaks. The box you most need to ask is the one whose uplink is down, and that is exactly when it goes quiet over the bus.
+- **`/ready` and `/metrics`** on `127.0.0.1:10063`. This is not a gateway feature: any agent can say whether it is healthy, and `cmd.health` travels over NATS, which is the link that breaks. The box you most need to ask is the one whose uplink is down, and that is exactly when it goes quiet over the bus.
 
 ### Site gateway (all optional)
 - **NATS leaf node**: bootstrap a site's `nats-leaf.conf` from the platform (`agent -leaf-config`) and, if you want, host that server in this process
@@ -101,13 +101,13 @@ Choose your platform:
 
 ```powershell
 # 1. Download and extract the release archive
-$version = "0.6.1"
+$version = "0.8.0"
 Invoke-WebRequest -Uri "https://github.com/stone-age-io/agent/releases/download/v$version/agent_${version}_windows_amd64.zip" -OutFile "$env:TEMP\agent.zip"
 Expand-Archive -Path "$env:TEMP\agent.zip" -DestinationPath "$env:TEMP\agent" -Force
 
 # 2. Install (the archive carries the per-OS example configs under configs\)
 New-Item -ItemType Directory -Force -Path "C:\Program Files\Agent"
-New-Item -ItemType Directory -Force -Path "C:\ProgramData\Agent\Scripts"  # scripts_directory must exist
+New-Item -ItemType Directory -Force -Path "C:\ProgramData\Agent"
 Copy-Item "$env:TEMP\agent\agent.exe" "C:\Program Files\Agent\"
 Copy-Item "$env:TEMP\agent\configs\windows\config.yaml.example" "C:\ProgramData\Agent\config.yaml"
 
@@ -129,14 +129,14 @@ Start-Service agent
 
 ```bash
 # 1. Install agent
-VERSION=0.6.1
+VERSION=0.8.0
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent
 sudo chmod +x /usr/local/bin/agent
 
 # 2. Configure (the example config ships in the archive)
-sudo mkdir -p /etc/agent /opt/agent/scripts   # scripts_directory must exist
+sudo mkdir -p /etc/agent
 sudo cp configs/linux/config.yaml.example /etc/agent/config.yaml
 sudo nano /etc/agent/config.yaml
 
@@ -154,14 +154,14 @@ sudo systemctl start agent
 
 ```bash
 # 1. Install agent
-VERSION=0.6.1
+VERSION=0.8.0
 fetch https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_freebsd_amd64.tar.gz
 tar xzf agent_${VERSION}_freebsd_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent
 sudo chmod +x /usr/local/bin/agent
 
 # 2. Configure (the example config ships in the archive)
-sudo mkdir -p /usr/local/etc/agent/scripts   # scripts_directory must exist
+sudo mkdir -p /usr/local/etc/agent
 sudo cp configs/freebsd/config.yaml.example /usr/local/etc/agent/config.yaml
 sudo ee /usr/local/etc/agent/config.yaml
 
@@ -276,11 +276,8 @@ tasks:
 
 # /ready and /metrics on this box. ON by default, on loopback -- set addr to ""
 # to serve neither. The checks still run and still log either way.
-#
-# NOTE on Linux and FreeBSD: 9100 is also node_exporter's default port. If you
-# run the exporter on this box, move one of them.
 observability:
-  addr: "127.0.0.1:9100"
+  addr: "127.0.0.1:10063"
 
 # Nebula overlay (optional, off by default). sync_interval is a security number,
 # not a tuning knob: Nebula has no CRL, so it is this device's revocation
