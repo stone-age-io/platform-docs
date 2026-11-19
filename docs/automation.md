@@ -31,6 +31,12 @@ it:
 - **or both**: central rules for cross-site alerts, edge rules for site-local
   reactions.
 
+Each release publishes [container images](./vendor/rule-router/README.md#published-images)
+for amd64 and arm64, so the same image runs on a server or on edge hardware.
+Keep the engine close to the NATS server it connects to: each worker waits a
+round trip per message. If it must connect across a WAN, raise `workerCount`
+([Running far from NATS](./vendor/rule-router/docs/11-configuration.md#running-far-from-nats)).
+
 One binary has three features, which share the YAML rule syntax and the KV
 buckets:
 
@@ -47,7 +53,10 @@ holds in memory is throttle windows.
 **A NATS trigger is a JetStream consumer by default, so a stream must already
 cover its subject**, or the engine rejects the rule at load ("no stream found
 for trigger subject"). Actions publish to JetStream and wait for an ack by
-default too. For subjects you do not stream, such as heartbeats or high-rate
+default too. When a JetStream-triggered message is redelivered, its actions
+run again, but each publish carries a `Nats-Msg-Id`, so the output stream
+stores it once ([Duplicate publishes](./vendor/rule-router/docs/11-configuration.md#duplicate-publishes)).
+For subjects you do not stream, such as heartbeats or high-rate
 telemetry, set `mode: core` on the trigger or the action. Creating streams:
 [The Console §4](./console.md#4-jetstream-streams-and-kv-buckets).
 

@@ -38,8 +38,9 @@ The config file is **optional**: if it doesn't exist, the app runs entirely from
 ```
 features.router    features.gateway    features.scheduler
 nats.urls          nats.username       nats.password      nats.token
+nats.consumers.workerCount   nats.consumers.fetchBatchSize   nats.consumers.maxAckPending
 logging.level
-metrics.enabled    metrics.address     metrics.path
+metrics.enabled    metrics.address     metrics.path       metrics.pprof
 ```
 
 These always work via `RR_*` regardless of the file. Any other key is overridable only if it also appears in the config file. Examples:
@@ -120,10 +121,8 @@ Used by the **router** and **gateway** features (for NATS-triggered rules).
 nats:
   consumers:
     consumerPrefix: "rule-router"
-    workerCount: 4
-    fetchBatchSize: 10
+    workerCount: 64          # fetchBatchSize and maxAckPending follow it
     fetchTimeout: 5s
-    maxAckPending: 1000
     ackWaitTimeout: 30s
     maxDeliver: 3
     deliverPolicy: "new"
@@ -133,14 +132,30 @@ nats:
 | Field | Type | Default | Bounds / valid values | Description |
 |-------|------|---------|------------------------|-------------|
 | `consumerPrefix` | string | `"rule-router"` | — | Prefix for generated durable consumer names. Give each app a unique prefix when several share a stream. |
-| `workerCount` | int | `2` | `1`–`1000` | Parallel workers per subscription. |
-| `fetchBatchSize` | int | `1` | `1`–`10000` | Messages fetched per pull. |
+| `workerCount` | int | `64` | `1`–`2500` | Parallel workers per subscription, and the one knob for how many messages a subscription keeps in flight. Each worker waits on a synchronous publish (or outbound HTTP call), so throughput ≈ workers ÷ round-trip time. See [Running far from NATS](#running-far-from-nats). |
+| `fetchBatchSize` | int | 4 × `workerCount` | `1`–`10000` | Messages the consumer buffers per subscription. It asks for more once half the buffer is gone, so 4× workers brings two messages per worker each round trip. Set it only to buffer less: a buffered message's ack-wait clock is already running while it waits behind about four actions per worker, so with actions slower than about `ackWaitTimeout` ÷ 5 (6s at the default), lower this or raise `ackWaitTimeout`. |
 | `fetchTimeout` | duration | `5s` | `> 0` | Pull fetch timeout. |
-| `maxAckPending` | int | `1000` | `1`–`100000` | Max in-flight unacknowledged messages. Effective concurrency ceiling. |
+| `maxAckPending` | int | `fetchBatchSize` + `workerCount` | `1`–`100000` | Max unacknowledged messages per consumer: everything buffered plus one in each worker. Set lower and workers sit idle waiting for the server. The limit belongs to the consumer, so instances sharing one (same `consumerPrefix`) share it: set it to instances × (`fetchBatchSize` + `workerCount`). |
 | `ackWaitTimeout` | duration | `30s` | — | Time JetStream waits for an ACK before redelivering. Also the deadline for a message's actions, HTTP retries included — actions still running when it expires are cancelled and the message is NAK'd. |
 | `maxDeliver` | int | `3` | `≥ 1` | Max delivery attempts before JetStream stops redelivering (see [Dead-letter behavior](#dead-letter-behavior)). |
 | `deliverPolicy` | string | `"new"` | `all`, `new`, `last`, `by_start_time`, `by_start_sequence` | Where a new consumer starts reading. |
 | `replayPolicy` | string | `"instant"` | `instant`, `original` | Replay pacing. |
+
+#### Running far from NATS
+
+Each worker waits one round trip to NATS per message, so a subscription handles about `workerCount ÷ RTT` messages per second, up to whatever the router's CPU and the NATS server can sustain. Next to the server, the default of 64 is already fast. On an 8-core test machine it gave about 16k msg/s, and 512 workers reached that machine's ceiling of about 24k. Across a WAN, 64 isn't enough: at 100 ms RTT, 64 workers handle about 600 msg/s.
+
+Raise `workerCount` to the rate you need × the RTT in seconds, with some headroom. For example, 5,000 msg/s at 150 ms needs about 750 workers. Workers are cheap goroutines that spend their time waiting. `fetchBatchSize` and `maxAckPending` follow automatically, so `workerCount` is the only setting to change.
+
+Measured with the benchmark harness through a proxy adding 100 ms RTT:
+
+| `workerCount` | Throughput |
+|---|---|
+| 64 (default) | ~600 msg/s |
+| 1000 | ~9,300 msg/s |
+| 2500 (maximum) | ~18,400 msg/s |
+
+Each message still takes at least a round trip or two end to end, so latency stays around 1–2× RTT whatever you set. For the lowest latency, run the router next to its NATS server.
 
 ### `nats.connection`
 
@@ -188,7 +203,7 @@ http:
     idleTimeout: 120s
     maxHeaderBytes: 1048576
     shutdownGracePeriod: 30s
-    inboundWorkerCount: 10
+    inboundWorkerCount: 64
     inboundQueueSize: 1000
 ```
 
@@ -200,7 +215,7 @@ http:
 | `idleTimeout` | duration | `120s` | — | Keep-alive idle timeout. |
 | `maxHeaderBytes` | int | `1048576` (1 MB) | — | Max request header size. |
 | `shutdownGracePeriod` | duration | `30s` | — | Time allowed to drain in-flight requests on shutdown. |
-| `inboundWorkerCount` | int | `10` | `1`–`1000` | Workers draining the fire-and-forget webhook queue. |
+| `inboundWorkerCount` | int | `64` | `1`–`2500` | Workers draining the fire-and-forget webhook queue. |
 | `inboundQueueSize` | int | `1000` | `1`–`100000` | Buffered webhook queue depth. A full queue returns `503` on non-synchronous routes. |
 
 Inbound request bodies are hard-capped at **10 MB** (`io.LimitReader`); anything beyond is truncated. This is a fixed safeguard, not configurable.
@@ -213,8 +228,8 @@ Inbound request bodies are hard-capped at **10 MB** (`io.LimitReader`); anything
 http:
   client:
     timeout: 30s
-    maxIdleConns: 100
-    maxIdleConnsPerHost: 10
+    maxIdleConns: 256
+    maxIdleConnsPerHost: 64
     idleConnTimeout: 90s
     tls:
       insecureSkipVerify: false
@@ -223,8 +238,8 @@ http:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `timeout` | duration | `30s` | Per-request timeout for outbound HTTP actions. |
-| `maxIdleConns` | int | `100` | Connection-pool size across all hosts. |
-| `maxIdleConnsPerHost` | int | `10` | Idle connections kept per host. |
+| `maxIdleConns` | int | `256` | Connection-pool size across all hosts. |
+| `maxIdleConnsPerHost` | int | `64` | Idle connections kept per host. Keep ≥ `workerCount` when many workers call one host, or the extra calls open new connections each time. |
 | `idleConnTimeout` | duration | `90s` | How long an idle connection is kept. |
 | `tls.insecureSkipVerify` | bool | `false` | Skip certificate verification on outbound calls. **Development / trusted-internal only.** |
 
@@ -332,6 +347,7 @@ metrics:
 | `address` | string | `":2112"` | Metrics server listen address. |
 | `path` | string | `"/metrics"` | Metrics endpoint path. |
 | `updateInterval` | duration string | `"15s"` | How often system gauges (goroutines, memory) refresh. Must parse as a Go duration. |
+| `pprof` | bool | `false` | Mount Go's `net/http/pprof` under `/debug/pprof/` on this server (env `RR_METRICS_PPROF`). For profiling only — never on a port reachable from outside. `bench/run.sh` turns it on with `PROFILE=file`. |
 
 Full metric catalogue and health-check details are in [12 Observability](./12-observability.md).
 
@@ -371,9 +387,7 @@ nats:
     caFile: /etc/ssl/nats/ca.pem
   consumers:
     consumerPrefix: rule-router
-    workerCount: 8
-    fetchBatchSize: 50
-    maxAckPending: 2000
+    workerCount: 128           # more than default: replicated JetStream acks are slower
     maxDeliver: 5
   publish:
     mode: jetstream
@@ -383,7 +397,7 @@ http:
   server:
     address: ":8080"
     writeTimeout: 30s          # keep > any bridge timeout
-    inboundWorkerCount: 20
+    inboundWorkerCount: 128
     inboundQueueSize: 5000
   client:
     timeout: 15s
@@ -428,5 +442,14 @@ There is no dedicated dead-letter *subject*. Delivery semantics are governed ent
 - A message that **fails** processing is **NAK'd** and redelivered until `maxDeliver` is reached, after which JetStream stops redelivering it.
 - A message whose failed actions **all failed permanently** (an outbound 4xx other than 408/429) is **terminated** rather than NAK'd — redelivery would fail the same way.
 - Payloads that are not JSON but are valid UTF-8 are evaluated as a raw string (`{@value}`) rather than rejected. A payload that is neither fails evaluation and is NAK'd like any other failure, so it is redelivered until `maxDeliver`.
+
+### Duplicate publishes
+
+Redelivery is at-least-once, so the same NATS action can be published more than once: after a NAK, after a crash before the ack, or when a publish retry follows a lost ack. For rules with a JetStream trigger, the router sets a `Nats-Msg-Id` header on each NATS action, built from the source message's stream and sequence plus a hash of the rule's definition (and the element index for `forEach`). The output stream then drops a repeat as a duplicate, so it stores the message once.
+
+- Deduplication only works within the output stream's duplicate window (`duplicate_window`, 2 minutes by default). A redelivery later than that is stored again. Keep the window longer than `ackWaitTimeout × maxDeliver`.
+- Editing a rule changes its hash, so a message redelivered across the edit can be stored twice. That's a duplicate, never a lost message.
+- A rule that sets its own `Nats-Msg-Id` header keeps it. NATS header names are case-sensitive, so it must be spelled exactly like that.
+- Core-mode, HTTP-triggered and scheduled rules get no generated ID, because there's no source message sequence to tie it to. HTTP actions are never deduplicated.
 
 To inspect messages that exhaust delivery, use JetStream's advisory subjects (`$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.>`) or raise `maxDeliver` and a stream-level retention policy. See [10 Troubleshooting](./10-troubleshooting.md).

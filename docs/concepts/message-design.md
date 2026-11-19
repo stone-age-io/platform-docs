@@ -173,7 +173,7 @@ methods:
 | Method | How it works | Who does it |
 | :--- | :--- | :--- |
 | **A key from the producer** | The producer sets a stable `dedupe_key`. While a ticket with that key is open, a repeat adds to a count and opens no new ticket. | The helpdesk |
-| **A `Nats-Msg-Id` header** | The stream stores each message ID once in its duplicate window. | The helpdesk's outbound events |
+| **A `Nats-Msg-Id` header** | The stream stores each message ID once in its duplicate window. | The helpdesk's outbound events, and the [rule engine's publishes](../vendor/rule-router/docs/11-configuration.md#duplicate-publishes) from a JetStream trigger |
 | **The stream sequence** | The consumer stores the message's sequence number with the result, under a unique index. It skips a sequence that it already stored. | Access control's audit consumer |
 | **A write of the end state** | The consumer writes "disarmed", not "change the arm state". A second write changes nothing. | Access control's disarm consumer |
 
