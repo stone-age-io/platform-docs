@@ -69,7 +69,7 @@ To run the NATS server as a separate process, start
 [Operations §2.1](./operations.md#21-where-the-nats-server-runs) compares the
 options.
 
-To build from source, you need Go 1.27+ and Node.js 20.19+ or 22.12+:
+To build from source, you need Go 1.27.4+ and Node.js 20.19+ or 22.12+:
 
 ```bash
 git clone https://github.com/stone-age-io/platform.git && cd platform

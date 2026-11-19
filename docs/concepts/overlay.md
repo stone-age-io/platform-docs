@@ -129,6 +129,14 @@ firewall:
 On this host, peers in the `admins` group can use SSH, and peers in the
 `gateways` group can reach port 443. The host drops all other inbound packets.
 
+::: warning A group in a rule must be a string
+From Nebula 1.12 a host refuses a firewall config whose `group` reads as a
+number, such as `group: 1.10`, or is `null` with no `host`, other group or
+`cidr` in the same rule. Quote a group name that looks like a number:
+`group: "1.10"`, or `"group": "1.10"` in JSON. Nebula 1.11 accepted these
+quietly and turned `1.10` into the group `1.1`.
+:::
+
 A group rule works because the CA signed the group into the peer's
 certificate (§2). The rule trusts the CA, not an IP address. So the rule stays
 correct when a peer moves to a new network.
