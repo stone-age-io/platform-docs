@@ -245,6 +245,28 @@ run `agent -leaf-config` again. That change also invalidates every generated
 `nats-leaf.conf`, so the console cannot push it.
 :::
 
+### 6.2 Reaching a gateway's JetStream from the hub
+
+A client at the hub can manage the streams and buckets on a gateway's own leaf
+by addressing its domain: `$JS.<code>.API.>`. `stone js pull --domain <code>`
+and `stone js apply --domain <code>` do this
+([Stone CLI §6](./stone-cli.md#jetstream-config-in-a-workspace)). Two
+credentials have to allow it:
+
+- **The leaf's uplink credential needs `$JS.*.API.>` (or `$JS.<code>.API.>`) on
+  subscribe.** The hub forwards a request to a leaf only if the uplink may
+  subscribe to it, the same rule as for `$SRV` in §7. Without it the request
+  fails at once with "no responders". The demo seed's `gateway` role has it from
+  platform v0.20.1. Add it to any role you wrote yourself.
+- **Your own credential needs `$JS.*.API.>` on publish.** The seeded
+  `console-operator` role (`>`) has it; `application` has only `$JS.API.>`,
+  which reaches the hub's JetStream and not a leaf's.
+
+A role change does not reach a gateway that is already connected. The
+permission travels in the user JWT the leaf presented when it connected, so the
+gateway has to fetch its leaf config again and reconnect before the request
+gets through.
+
 ---
 
 ## 7. Is the gateway up?

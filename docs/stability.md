@@ -78,7 +78,7 @@ a record or a payload is an addition, not a break.
 | `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags | [Configuration §4.1](./configuration.md#41-what-init-runs) |
 | The exported `nats.conf` | That a stock `nats-server` accepts it, and that the embedded server reads the same file | [ADR 0001](./decisions/0001-embedded-nats-server.md) |
 | `stone` commands | The command names, the flags, the exit status, and the `-o json` and `-o yaml` output | [Stone CLI](./stone-cli.md) |
-| The `stone` workspace | One YAML file for each record, and that `apply` never deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply) |
+| The `stone` workspace | One YAML file for each record, and for each stream and KV bucket under `jetstream/`, and that neither `apply` nor `js apply` ever deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply), [§6](./stone-cli.md#jetstream-config-in-a-workspace) |
 
 ### The Agent
 

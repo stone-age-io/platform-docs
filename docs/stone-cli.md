@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.9.0   # the stone version on the Versions page
+VERSION=0.10.0  # the stone version on the Versions page
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -481,7 +481,14 @@ the comments in that file.
   other organizations. `apply` fails on each of them. Delete those files, or
   pass only the paths you manage, for example `stone apply things/ locations/`.
 - **No deletes.** `apply` leaves alone any server record that has no local file.
-  To delete, use `stone <type> delete <id|key>` or the console.
+  To delete, use `stone <type> delete <id|key>` or the console. A
+  whole-workspace `apply` lists those records as `no file` lines, for each
+  collection that has a directory in the workspace, so one created in the
+  console since your pull is not invisible (from stone 0.10.0).
+- **Drift checks.** `stone apply --dry-run --exit-code` exits 2 when apply would
+  create or update something, 0 when the workspace and the server agree, and 1
+  on an error. Run it on a schedule to catch an edit made in the console.
+  `no file` records do not count.
 - **Reviewable.** In `git` you get diff, history, blame and PR review of your
   configuration.
 
@@ -540,7 +547,7 @@ server and stops. It is not a reconciliation loop like Flux or Argo CD.
 | Creates and updates from files | ✅ | ✅ |
 | All-or-nothing apply | ❌ Records before a failure stay applied | Varies |
 | Deletes server records missing from git | ❌ **Never** | ✅ (pruning) |
-| Detects drift when someone edits in the console | ⚠️ Only at `apply`, which refuses a file older than its record | ✅ Continuously |
+| Detects drift when someone edits in the console | ⚠️ When you run `apply --dry-run --exit-code`, and at `apply`, which refuses a file older than its record | ✅ Continuously |
 | Runs unattended in a control loop | ❌ You run it | ✅ |
 
 - **The workspace is not the source of truth.** It is a snapshot from the last
@@ -587,7 +594,7 @@ stone kv bucket delete recipes
 # JetStream streams
 stone js stream ls
 stone js stream create CAMERA --subject 'camera.>' --max-age 24h --storage file
-stone js stream create CAMERA --config stream.yaml     # advanced config from a file
+stone js stream create CAMERA --config stream.yaml     # advanced config; keys as the server names them
 stone js stream info CAMERA
 stone js stream view CAMERA --last 20                  # newest first (alias: tail)
 stone js stream purge CAMERA
@@ -603,6 +610,38 @@ and so do the rule engine and stream processors. See
 and [Automation](./automation.md).
 
 > **`stone` does not manage JetStream consumers.** Use the `nats` CLI for that.
+
+### JetStream config in a workspace
+
+From stone 0.10.0, `stone js pull` and `stone js apply` do for streams and KV
+buckets what `pull` and `apply` (§5) do for records, in the same workspace:
+
+```sh
+stone js pull                          # → jetstream/streams/<stream>.yaml, jetstream/kv/<bucket>.yaml
+stone js apply --dry-run               # which files would create or update, and which fields
+stone js apply
+stone js pull --domain GW-KC-01        # one gateway's leaf → jetstream/domains/GW-KC-01/
+stone js apply --domain GW-KC-01
+```
+
+- **Configuration only.** No messages and no consumers. To back up a stream's
+  data, use the `nats` CLI with the context `stone` writes:
+  `nats --context stone-<ctx>-<org> stream backup <stream> <dir>`, and keep the
+  backup out of the workspace.
+- **A file is the whole config.** A field you delete goes back to the server's
+  default on the next apply. Values the server fills in are left out of pulled
+  files, and durations read `24h`.
+- **A KV bucket is a bucket file** (`history`, `ttl`, …), not its `KV_`
+  stream. Object stores are skipped.
+- **Stale files are refused.** Each file keeps a `config_hash`. If the stream
+  changed on the server, or was deleted, since the pull, `js apply` sends
+  nothing. `--force` overrides.
+- **No deletes.** As with records, a stream with no file is left alone and
+  listed as `no file`.
+- **`--domain <code>`** reaches a gateway's leaf through the hub. The gateway's
+  NATS role must allow it, and a role change reaches a connected gateway only
+  after it reconnects
+  ([Leaf Nodes §6.2](./leaf-nodes.md#62-reaching-a-gateways-jetstream-from-the-hub)).
 
 ---
 
