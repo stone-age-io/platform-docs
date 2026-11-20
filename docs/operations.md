@@ -31,7 +31,7 @@ the inventory and are in every backup. `stone_age_database_size_bytes` counts
 only the database, so also watch the directory's disk use
 ([Health & Metrics §3](./health-metrics.md#3-get-metrics)).
 
-> **Backups contain secrets.** A Control Plane backup has the NATS Operator key, every org's Nebula CA private key, and every issued `.creds` file and Nebula host config in plaintext. At-rest encryption covers the minting keys, not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). Protect backups like the live database: restrict the S3 bucket, encrypt at rest, and do not leave copies on workstations. Use `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
+> **Backups contain secrets.** A Control Plane backup has the NATS Operator key, every org's Nebula CA private key, and every issued `.creds` file and Nebula host config in plaintext. At-rest encryption covers the minting keys, not issued credentials ([Configuration §2.2](./configuration.md#22-the-encryption-keys)). A Thing with a [device-held key](./concepts/nats-security.md#device-held-keys) is the exception: the backup has only its public keys, and the device's own key file is replaced, not restored. Protect backups like the live database: restrict the S3 bucket, encrypt at rest, and do not leave copies on workstations. Use `--encryptionEnv` ([Configuration §4](./configuration.md#pocketbase-flags)) to encrypt app settings at rest.
 
 ---
 
@@ -499,6 +499,16 @@ other's code.
   them together when the notes mention schema changes. The Agent has its own
   repository and version numbers. After 1.0, changes within a major version are
   additive only.
+- **Device-held keys need platform v0.21.0 and Agent 0.11.0** on each device
+  that holds its own key. An older Agent finds no `creds_file` and stops. A
+  Thing whose keys the platform holds works with any Agent version. Upgrade the
+  Control Plane first (its migration `schema_update_device_keys` adds the
+  fields), then the Agent on each device, and only then provision a Thing with
+  **Key held by device**. The `stone` flags need stone 0.11.0. The migration
+  also adds a unique index on non-empty `nats_users.public_key`. If a hand edit
+  gave two NATS identities the same key, pb-nats refuses to start and names the
+  collection. See
+  [NATS Security §4](./concepts/nats-security.md#device-held-keys).
 
 ---
 

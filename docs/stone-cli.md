@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.10.0  # the stone version on the Versions page
+VERSION=0.11.0  # the stone version on the Versions page
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -311,6 +311,22 @@ stone thing provision --code gw-01 --name "Gateway 01" \
 identities. A member can provision with both modes at `none`. The organization
 comes from your active context.
 
+**Device-held keys** (stone 0.11.0, platform v0.21.0). Add `--nats-device-key`
+and `--nebula-device-key` to an `auto` mode, and the device makes its own key
+pairs. The platform holds only the public halves, and issues no credential until
+the device's Agent enrolls its keys. For a device with no Agent, pass the public
+keys at provision (`--nats-public-key` from `nk -gen user -pubout`,
+`--nebula-public-key @host.pub` from `nebula-cert keygen`), or later:
+
+```sh
+stone nats-user update device-01 --public-key UDXU4R…
+stone nebula-host update gw-01 --public-key @host.pub
+```
+
+The choice is made at provision and cannot be changed. A key can be set only
+while the identity has none. See
+[NATS Security §4](./concepts/nats-security.md#device-held-keys).
+
 ### Lookup by id or natural key
 
 `get`, `update`, `delete` and `edit` take a 15-char PocketBase id or the
@@ -515,6 +531,10 @@ lists. If `apply` sent back an old copy, the next config regeneration would
 remove each revocation made since the pull. `stone` before 0.7.1 pulled them:
 delete both keys from each file under `nebula_hosts/` in an older workspace.
 
+**`pull` writes `device_key` and leaves out `public_key`**, on both `nats_users`
+and `nebula_hosts` (from stone 0.11.0). A public key is device state: a device
+enrolls its own key wherever the workspace is applied.
+
 **`pull` leaves out every `active` flag the platform acts on**: `things`,
 `nats_users`, `nebula_hosts`, `nats_accounts` and `organizations`. The platform
 acts on a change of the flag, so a pulled `active: true` applied after an admin
@@ -718,6 +738,11 @@ prints `nats-sync: skipped — <reason>`, which is information, not an error.
 | `no membership found for this user+org` | You are a Platform Operator in an org where you are not a member. NATS credentials are per membership. |
 | `membership has no linked nats_user` | Your membership in this org has no NATS identity. An owner or admin must link one. |
 | `(--no-nats)` | You passed the flag. |
+
+One case is a failure, not a skip: a membership linked to an identity whose key
+its device holds (`device_key`) prints `nats-sync: FAILED — this NATS identity's
+key is held by its device`. The platform has no seed or creds file to hand out.
+Link an identity whose key the platform holds.
 
 Add `--verbose` to either command to print the user, membership and NATS user
 ids on stderr. See [Connectivity](./connectivity.md) for how these credentials

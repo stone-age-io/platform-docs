@@ -184,6 +184,13 @@ a new one), `link` (attach an existing one) and `none`.
 `POST /api/org/things` creates the Thing and both identities in one
 transaction, so a device is never half-provisioned.
 
+Each `auto` section has a **Key held by device** checkbox (from v0.21.0). With
+it checked, the device makes its own private key, and the platform holds only
+the public half. The identity shows **Waiting for the device** until the
+device enrolls its key. The choice cannot change after create. See
+[NATS Security §4](./concepts/nats-security.md#device-held-keys) and
+[Overlay Network §2](./concepts/overlay.md#device-held-keys).
+
 A Thing usually links to:
 
 - **A Thing Type:** the contract that declares which subjects the Thing uses.

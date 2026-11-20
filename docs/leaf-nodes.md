@@ -52,14 +52,15 @@ the account's own users (§5 and §6).
 ## 3. `GET /api/me/leaf-config`
 
 Bound to the `things` collection, with **no record id**. It targets the
-caller's own record, like `POST /api/me/nats-creds/rotate`. It returns ten named
+caller's own record, like `POST /api/me/nats-creds/rotate`. It returns eleven named
 fields:
 
 | Field | What it is |
 | :--- | :--- |
 | `code` | The Thing's code |
 | `domain` | The leaf's JetStream domain, **the same string as `code`** |
-| `creds` | This Thing's own NATS credential |
+| `creds` | This Thing's own NATS credential. Empty for a device-held key |
+| `jwt` | This Thing's user JWT, the one inside `creds` |
 | `account_jwt`, `account_pub` | The organization's NATS account |
 | `operator_jwt` | The NATS Operator |
 | `sys_account_jwt`, `sys_account_pub` | The `$SYS` account (see §4) |
@@ -70,6 +71,13 @@ The two hub fields come from `nats.leaf_url` and `nats.jetstream_domain`
 ([Configuration §2](./configuration.md#2-section-reference)). If either is
 empty, the route answers `503` and names the setting, because that hub is not
 set up for gateways (§5).
+
+**A Thing that holds its own key** (platform v0.21.0) gets an empty `creds`,
+because the platform never had its seed. The Agent builds the `.creds` from
+`jwt` and its own seed. Until the device has enrolled its key, the route
+answers `409` and names `POST /api/me/keys`. Agent 0.11.0 enrolls on that `409`,
+so `agent -leaf-config` works on a box that has never synced. See
+[NATS Security §4](./concepts/nats-security.md#device-held-keys).
 
 **There is no flag or capability check on it.** Everything it returns is public
 trust material or the caller's own credential. Every server in the network
@@ -82,7 +90,7 @@ The route does *not* return account **seeds**, signing keys or any `$SYS`
 **user** credential. Only superusers can read `nats_system_operator`. A gateway
 can read only its own linked NATS identity and Nebula host from `nats_*` and
 `nebula_*`, and no inventory collection, not even other Things in its
-organization. A leaked edge credential exposes those ten values plus that
+organization. A leaked edge credential exposes those eleven values plus that
 Thing's own access, whatever the collection rules become later.
 
 ### The domain is the code, computed and never stored
@@ -101,7 +109,7 @@ remove.
 
 ## 4. Two required directives
 
-The Agent generates `nats-leaf.conf` from the ten fields above. Operator mode
+The Agent generates `nats-leaf.conf` from the eleven fields above. Operator mode
 requires two directives in it: an `account` key on every leaf remote, and the
 `$SYS` account JWT in `resolver_preload`. That is why the route serves the
 `$SYS` **account** JWT. It is public trust material and grants nothing. To
@@ -109,7 +117,7 @@ connect *as* `$SYS` you need a `$SYS` **user** credential, and the platform
 never serves one. See [Agent: leaf node §2](./vendor/agent/docs/leaf-node.md#2-two-directives-that-are-not-optional)
 for the error each one prevents and the test that checks the generated file.
 
-The platform tests its side of the contract, the ten field names, separately.
+The platform tests its side of the contract, the eleven field names, separately.
 Keep both tests if you change either side.
 
 ---

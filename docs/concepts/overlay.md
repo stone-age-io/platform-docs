@@ -79,8 +79,31 @@ it fetch its config. See
   host belongs to one network. Hosts trust only hosts from the same CA.
 - The platform makes each key pair and signs each certificate. A host's
   `config_yaml` holds its private key, so only Owners and Admins can read hosts.
+  A device-held key is the exception (below).
 - Certificates use Curve25519. A new CA is valid for 10 years by default. A
   host certificate always expires, and it never outlives its CA.
+
+### Device-held keys
+
+From platform v0.21.0, a Thing can make its own Nebula key pair. You choose this
+with **Key held by device** when you provision the Thing. The host is created
+with `device_key` set, and the platform stores only its `public_key`, the PEM
+that `nebula-cert keygen` writes.
+
+1. Until the device sends its key, the host has no certificate and no config.
+2. The Agent makes an X25519 key pair and sends the public key with
+   [`POST /api/me/keys`](../api-reference.md#post-apimekeys).
+3. The CA signs a certificate for that key. In the host's config, `pki.key` is
+   the path `/etc/nebula/host.key`, not a key. The Agent points it at its own
+   key file.
+
+The choice is per Thing, made at create, and cannot change. An enrolled key
+cannot be replaced. For a device with no Agent, an Owner or Admin pastes the
+public key on the Nebula host page while it waits.
+
+**There is no Nebula key reset.** Nebula revokes certificates, not keys (§5), so
+signing a leaked key again changes nothing. If a device key leaks, deactivate
+the host, which blocklists its certificates, and attach a new host to the Thing.
 
 ---
 

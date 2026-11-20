@@ -153,6 +153,31 @@ button gives a user their own file. The Agent writes the file with `0600`
 permissions. See [Credential Sync](../vendor/agent/docs/credentials.md#credential-sync)
 and [Authorization §4](../authorization.md#4-the-row-scoped-credential-model).
 
+### Device-held keys
+
+From platform v0.21.0, a Thing can make its own key pair. You choose this with
+**Key held by device** when you provision the Thing. The platform then stores
+the public key and the user JWT it signs, and no seed and no `.creds` file. A
+stolen database or backup holds no working credential for that device.
+
+1. The Thing's NATS identity is created with `device_key` set. It has no key
+   and no JWT yet.
+2. The Agent makes a user key pair and sends the public key with
+   [`POST /api/me/keys`](../api-reference.md#post-apimekeys).
+3. The platform signs a user JWT for that key. The Agent builds its `.creds`
+   file from the JWT and its own seed.
+
+The choice is per Thing, made at create, and cannot change. Console users keep
+keys that the platform holds. An enrolled key cannot be replaced, only revoked.
+For a device with no Agent, an Owner or Admin pastes the public key
+(`nk -gen user -pubout`) on the NATS user page while it waits.
+
+**Revoke** (§6) works differently on a device-held key. It puts the key on the
+revocation list and empties it, and the platform issues nothing. On its next
+sync the Agent makes a new pair and enrolls it. The platform refuses a revoked
+key sent again. **If the device itself is compromised, also reset the Thing's
+password**: whoever can sign in as the Thing enrolls the next key.
+
 ---
 
 ## 5. Permissions

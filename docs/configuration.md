@@ -183,7 +183,10 @@ protect credentials already issued:
 
 So if someone steals the database but not the key, they cannot mint new
 identities, but they have **every credential already issued**. Protect against
-that with disk encryption, encrypted backups and host access control. The
+that with disk encryption, encrypted backups and host access control. A Thing
+with a [device-held key](./concepts/nats-security.md#device-held-keys) is the
+exception: the database holds only its public keys, so it gives no working
+credential for that device. The
 platform repository's
 [`SECURITY.md`](https://github.com/stone-age-io/platform/blob/main/SECURITY.md) explains
 what a stolen database does and does not give an attacker.

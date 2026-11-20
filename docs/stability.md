@@ -40,12 +40,13 @@ a record or a payload is an addition, not a break.
 
 | Surface | What is stable | Reference |
 | :--- | :--- | :--- |
-| The ten platform routes | The path, the method, who can call it, the request fields and the response fields | [API Reference §1](./api-reference.md#1-the-whole-surface) |
-| `GET /api/me/leaf-config` | The ten field names. The Agent reads them by name. | [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) |
+| The eleven platform routes | The path, the method, who can call it, the request fields and the response fields | [API Reference §1](./api-reference.md#1-the-whole-surface) |
+| `GET /api/me/leaf-config` | The eleven field names. The Agent reads them by name. | [Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config) |
+| `POST /api/me/keys` | The body fields `nats_public_key` and `nebula_public_key`, the `enrolled` response, `200` for the key already enrolled and `409` for a different one. The Agent sends the fields by name and acts on the status. | [API Reference §3](./api-reference.md#post-apimekeys) |
 | `GET /api/ready` | The response fields, the four states, the check names, and `503` only on `fail` | [Health & Metrics §2](./health-metrics.md#2-get-apiready) |
 | `GET /metrics` | The metric names, types and labels | [Health & Metrics §3](./health-metrics.md#3-get-metrics) |
 | The record API | The collection names and field names that the Agent, `stone` and sibling apps read. The record API itself is PocketBase's. | [HTTP API](./concepts/http-api.md) |
-| The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file` and `updated` fields, and the `nebula_host` relation the Agent reads its Nebula config from | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
+| The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file`, `jwt`, `updated`, `device_key` and `public_key` fields, and the `nebula_host` relation the Agent reads its Nebula config from, with its `device_key` and `public_key` | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
 | MQTT bearer tokens | `nats_users.bearer_token`, and that the user JWT is accepted as the MQTT password when it is set | [Connectivity §1](./connectivity.md#mqtt-clients) |
 
 ### Authorization

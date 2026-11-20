@@ -41,7 +41,7 @@ Linux amd64/arm64, Windows amd64 and FreeBSD amd64. Each has the binary, example
 configs per OS under `configs/`, and install guides under `docs/`:
 
 ```sh
-VERSION=0.10.0  # the Agent version on the Versions page
+VERSION=0.11.0  # the Agent version on the Versions page
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent
@@ -158,6 +158,17 @@ NATS, so it still works when NATS rejects the credential. The Agent exits, the
 service manager restarts it, and the sync at startup picks up the current
 credential. **Deactivating** the Thing stops this recovery on purpose; see
 [Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service).
+
+### 2.3 Device-held keys
+
+A Thing provisioned with **Key held by device** (platform v0.21.0) keeps its own
+NATS seed and Nebula private key, and the platform holds only the public halves.
+The Agent makes each key pair on first boot, enrolls the public half with
+`POST /api/me/keys`, and builds its `.creds` from the JWT the platform signs.
+You configure nothing. This needs Agent 0.11.0: an older Agent finds no
+`creds_file` and stops. **Revoke** empties the key, and the Agent enrolls a new
+one on its next sync. Key file names, the enrollment rule and recovery:
+[Device-Held Keys](./vendor/agent/docs/credentials.md#device-held-keys).
 
 ---
 

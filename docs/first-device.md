@@ -72,6 +72,12 @@ The command also prints the Thing's login email and password. **The password is
 shown only once.** Record it if the device will sign in to the platform, as the
 [Agent](./agent.md) does.
 
+For a device that runs the Agent, you can add `--nats-device-key`. The device
+then makes its own private key, the platform holds only the public half, and
+there is no `.creds` file to download in §4. In the console this is the **Key
+held by device** checkbox. See
+[The Agent §2.3](./agent.md#23-device-held-keys).
+
 ---
 
 ## 4. Give the device its credential

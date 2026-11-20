@@ -270,6 +270,35 @@ NATS would accept it, so the rotation would end the suspension. Owners and
 admins suspend and reactivate through the normal update rule. Deactivating the
 device that holds the identity also suspends it (§4.2).
 
+### Device-held keys
+
+A Thing provisioned with **Key held by device** (from v0.21.0) has `device_key`
+set on its NATS identity, its Nebula host, or both. The platform then stores no
+seed, no `creds_file` and no Nebula private key for it, only the public key.
+The device enrolls that key itself:
+
+```
+POST /api/me/keys      { "nats_public_key": "U…", "nebula_public_key": "-----BEGIN NEBULA X25519 PUBLIC KEY-----…" }
+```
+
+Only a `things` session can call it, and it takes **no id**. It targets the
+caller's own linked identities. A `users` session of any role, `dashboard`
+included, is refused. It is a route for the same reason as rotation: the update
+rules on `nats_users` and `nebula_hosts` are owner/admin only, and a rule cannot
+let a Thing write one field on its own row.
+
+**No API rule changed for this.** pb-nats and pb-nebula enforce the rest, for
+the route and for REST alike: `device_key` is set at create and never changes,
+`public_key` changes only from empty, an invalid or revoked key is refused, and
+a NATS identity cannot have both `device_key` and `bearer_token`. An owner or
+admin can paste a key for a device with no Agent through the normal update
+rule. On an identity whose key the platform holds, `public_key` changes only
+through **Revoke**: a hand edit is refused.
+
+Whoever can sign in as the Thing enrolls its next key after a Revoke. So if the
+device itself is compromised, reset the Thing's password as well as revoking.
+See [NATS Security §4](./concepts/nats-security.md#device-held-keys).
+
 ### 4.1 Account signing keys
 
 `nats_accounts.updateRule` is **Platform-Operator-only**. The record has some
@@ -469,7 +498,7 @@ and when, without one.
 it reads only its own record, its linked NATS identity and its linked Nebula
 host: no inventory, and nothing else in `nats_*` or `nebula_*`. What a leaf
 node needs beyond that (account, operator and `$SYS` JWTs) comes from
-`GET /api/me/leaf-config`, which returns named fields and never a record
+`GET /api/me/leaf-config`, which returns eleven named fields and never a record
 ([Leaf Nodes §3](./leaf-nodes.md#3-get-apimeleaf-config)).
 
 **Do not add a device read branch** to `nats_users` or `nats_accounts` for an

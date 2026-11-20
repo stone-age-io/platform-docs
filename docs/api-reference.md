@@ -10,7 +10,7 @@ Most of the Stone-Age.io API is stock PocketBase REST on a collection, such as
 control it ([Authorization & Roles](./authorization.md)). The
 [PocketBase API docs](https://pocketbase.io/docs/api-records/) describe it.
 
-This page covers the **ten endpoints the platform adds**: nine under `/api/`,
+This page covers the **eleven endpoints the platform adds**: ten under `/api/`,
 and `/metrics`. Each application route exists because a PocketBase API rule
 cannot express what it does.
 
@@ -21,9 +21,10 @@ cannot express what it does.
 | Route | Method | Who can call it | Does |
 | :--- | :--- | :--- | :--- |
 | [`/api/client-config`](#get-apiclient-config) | `GET` | any `users` session | Deployment settings the SPA cannot contain at build time |
-| [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Ten fields an agent needs to run a NATS leaf server |
+| [`/api/me/leaf-config`](#get-apimeleaf-config) | `GET` | any `things` session | Eleven fields an agent needs to run a NATS leaf server |
 | [`/api/me/account-jwt`](#get-apimeaccount-jwt) | `GET` | any `things` session | The caller's account JWT, so a gateway can tell when its leaf config is out of date |
 | [`/api/me/nats-creds/rotate`](#post-apimenats-credsrotate) | `POST` | any `users` or `things` session | Rotate the caller's own NATS credential |
+| [`/api/me/keys`](#post-apimekeys) | `POST` | any `things` session | Enroll the public keys of a device that holds its own keys |
 | [`/api/org/invites/accept`](#post-apiorginvitesaccept) | `POST` | any `users` session | Redeem an invitation token |
 | [`/api/org/things`](#post-apiorgthings) | `POST` | `member` and up for inventory, `owner`/`admin` for identities | Create a Thing and, optionally, its NATS and Nebula identities, in one transaction |
 | [`/api/org/nats-account/keys`](#post-apiorgnats-accountkeys) | `POST` | `owner` / `admin` | Manage the organization's NATS account signing keys |
@@ -67,7 +68,7 @@ check, the route would let a caller steal another tenant's credential.
 
 | Reason | Routes |
 | :--- | :--- |
-| A rule cannot allow only one field. The alternative is `:isset = false` on every other field, a deny-list that opens silently when someone adds a field. | `nats-creds/rotate`, `nats-account/keys`, `nebula-ca/rotate` |
+| A rule cannot allow only one field. The alternative is `:isset = false` on every other field, a deny-list that opens silently when someone adds a field. | `nats-creds/rotate`, `me/keys`, `nats-account/keys`, `nebula-ca/rotate` |
 | One operation needs two authority levels | `org/things` |
 | The answer needs data the caller cannot compute or must not read whole | `leaf-config`, `account-jwt`, `client-config` |
 
@@ -107,6 +108,7 @@ to the `things` collection, and the target is the caller's own record.
   "code": "s01",
   "domain": "s01",
   "creds": "-----BEGIN NATS USER JWT-----\n…",
+  "jwt": "eyJ0…",
   "account_jwt": "eyJ0…",
   "account_pub": "AD3…",
   "operator_jwt": "eyJ0…",
@@ -124,6 +126,12 @@ agent writes it into `server_name` and `jetstream { domain }`.
 `hub_leaf_url` and `hub_domain` are `nats.leaf_url` and
 `nats.jetstream_domain`. If either is empty, the route answers `503` and names
 the setting, rather than serve a config the agent would reject.
+
+`jwt` is the Thing's user JWT, the one inside `creds`. For a
+[device-held key](./concepts/nats-security.md#device-held-keys), `creds` is
+empty, because the seed never left the device, and the agent builds the
+`.creds` from `jwt` and its own seed. Until that device has enrolled its key,
+the route answers `409` and names `POST /api/me/keys`.
 
 **The route checks only that the caller is an authenticated Thing.** Everything
 it returns is public trust material or the caller's own credential. It does
@@ -206,6 +214,45 @@ same seed, so the leaked `.creds` keeps working. Use `revoke`, which moves to a
 new key pair (owner/admin).
 :::
 
+### `POST /api/me/keys`
+
+A Thing whose identities were created with `device_key` enrolls the public keys
+it made itself (from v0.21.0). Requires a `things` session. A `users` session,
+whatever its role, gets `403`. See
+[NATS Security §4](./concepts/nats-security.md#device-held-keys) and
+[Overlay Network §2](./concepts/overlay.md#device-held-keys).
+
+```json
+{
+  "nats_public_key": "UDXU4R…",
+  "nebula_public_key": "-----BEGIN NEBULA X25519 PUBLIC KEY-----\n…"
+}
+```
+
+```json
+{ "enrolled": { "nats_user": "a1b2c3d4e5f6g7h", "nebula_host": "h7g6f5e4d3c2b1a" } }
+```
+
+Both keys are optional, and the body needs at least one. The targets are the
+`nats_user` and `nebula_host` on the caller's own Thing. Nothing comes from the
+request. `enrolled` names only the identities whose key was sent.
+
+| Response | When |
+| :--- | :--- |
+| `200` | The key is enrolled. Also `200` when it is the key already enrolled, so a retry is safe. |
+| `400` | No key in the body, an invalid key, a revoked key, or an identity whose key the platform holds |
+| `401` | No session |
+| `403` | A session that is not a Thing's |
+| `404` | The Thing has no such identity |
+| `409` | A different key is already enrolled |
+
+The route writes with `app.Save()`, because the update rules on `nats_users`
+and `nebula_hosts` admit only an owner or admin. It repeats none of the key
+checks: pb-nats and pb-nebula refuse a write that changes `device_key`, replaces
+an enrolled key or sends an invalid or revoked one, for this route and for REST
+alike. An owner or admin pastes a key for a device with no Agent through the
+normal update rule, and the same checks apply.
+
 ---
 
 ## 4. Organization routes (`/api/org/*`)
@@ -285,6 +332,11 @@ Each identity block has a `mode`:
   is [suspended](./authorization.md#31-suspending-an-organization), it returns
   `400` ("no active NATS account for this organization"). `link` and `none`
   still work.
+- In `auto` mode, `device_key: true` in either block makes an identity whose
+  key the device holds, and an optional `public_key` enrolls it now. Without
+  it, the device enrolls through `POST /api/me/keys`. `device_key` cannot change
+  after create. See
+  [NATS Security §4](./concepts/nats-security.md#device-held-keys).
 
 ```json
 {

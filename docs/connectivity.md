@@ -159,6 +159,9 @@ Anyone who has the JWT can connect as that user. Use TLS on the MQTT listener.
 Give each MQTT device its own NATS user and a narrow role. To stop a leaked
 JWT, use **Revoke** on the NATS user
 ([Authorization §4.2](./authorization.md#42-taking-a-device-out-of-service)).
+A bearer-token identity cannot also have a
+[device-held key](./concepts/nats-security.md#device-held-keys): the bearer
+JWT never signs the challenge, so the key would protect nothing.
 :::
 
 **Topics become subjects.** The server changes `/` to `.`, so the topic
