@@ -179,9 +179,24 @@ JWT, use **Revoke** on the NATS user
 - Do not put `$MQTT.sub.>` in a deny list. A subscription with QoS 1 or 2 uses
   it. Before nats-server 2.12.3, add `$MQTT.sub.>` to the subscribe allow list.
 
-**MQTT listens at the hub.** The Agent's generated leaf config has no `mqtt`
-block, and the Agent rewrites that file whenever the generated content changes,
-for example after the account JWT changes, so an edit there does not last.
+**MQTT at a site's leaf.** From Agent 0.10.0, a gateway's leaf can accept a
+site's MQTT devices too, so they keep working while the WAN is down. Set
+`platform.leaf_mqtt` in the Agent's config to the address to listen on, for
+example `0.0.0.0:1883`, then restart the leaf. Leave it empty, the default, for
+no listener. The Agent writes the `mqtt` block into the leaf config it
+generates, embedded or separately supervised. Do not edit that file by hand:
+the Agent rewrites it whenever the account JWT changes.
+
+At a leaf, devices authenticate the same way as at the hub. Two things differ:
+
+- **Sessions and retained messages stay at the site**, in the leaf's own
+  JetStream domain. A client at the hub does not see a value retained at a
+  leaf.
+- **There is no TLS option yet.** Keep the listener on the site's own network.
+
+See
+[Leaf Node §3](./vendor/agent/docs/leaf-node.md#mqtt-for-site-devices) in the
+Agent docs for the details.
 
 See [Messaging §7](./concepts/messaging.md#7-if-you-know-mqtt) for how MQTT
 terms map to NATS terms, and the

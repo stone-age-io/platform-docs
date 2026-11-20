@@ -101,7 +101,7 @@ Choose your platform:
 
 ```powershell
 # 1. Download and extract the release archive
-$version = "0.9.0"
+$version = "0.10.0"
 Invoke-WebRequest -Uri "https://github.com/stone-age-io/agent/releases/download/v$version/agent_${version}_windows_amd64.zip" -OutFile "$env:TEMP\agent.zip"
 Expand-Archive -Path "$env:TEMP\agent.zip" -DestinationPath "$env:TEMP\agent" -Force
 
@@ -129,7 +129,7 @@ Start-Service agent
 
 ```bash
 # 1. Install agent
-VERSION=0.9.0
+VERSION=0.10.0
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent
@@ -154,7 +154,7 @@ sudo systemctl start agent
 
 ```bash
 # 1. Install agent
-VERSION=0.9.0
+VERSION=0.10.0
 fetch https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_freebsd_amd64.tar.gz
 tar xzf agent_${VERSION}_freebsd_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent
@@ -222,6 +222,8 @@ location: "hq"            # Optional deployment location, carried in telemetry p
 #   sync_interval: "24h"                       # credential refresh, 1h-72h
 #   leaf_refresh_interval: "5m"                # gateways: keep the leaf's account JWT, and so
 #                                              # its revocations, current. 0 = off, else 30s-1h
+#   leaf_mqtt: "0.0.0.0:1883"                  # gateways: MQTT for site devices at the leaf.
+#                                              # Empty = off. Restart the leaf after changing it
 
 # NATS Connection
 nats:

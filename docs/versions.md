@@ -11,7 +11,7 @@ version says so.
 | :--- | :--- | :--- |
 | Control Plane and console (`stone-age`) | v0.20.2 | The Platform section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
 | `stone` CLI | v0.10.0 | [Stone CLI](./stone-cli.md) |
-| Agent | v0.9.0 | [Agent docs](./vendor/agent/README.md) |
+| Agent | v0.10.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.25.0 | [Rule Router docs](./vendor/rule-router/README.md) |
 | Services (Watchdog and creds-keeper) | v0.2.0 | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.2.0 | [Access Control docs](./vendor/access-control/README.md) |

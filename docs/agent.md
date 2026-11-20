@@ -41,7 +41,7 @@ Linux amd64/arm64, Windows amd64 and FreeBSD amd64. Each has the binary, example
 configs per OS under `configs/`, and install guides under `docs/`:
 
 ```sh
-VERSION=0.9.0   # the Agent version on the Versions page
+VERSION=0.10.0  # the Agent version on the Versions page
 wget https://github.com/stone-age-io/agent/releases/download/v${VERSION}/agent_${VERSION}_linux_amd64.tar.gz
 tar xzf agent_${VERSION}_linux_amd64.tar.gz
 sudo mv agent /usr/local/bin/agent && sudo chmod +x /usr/local/bin/agent

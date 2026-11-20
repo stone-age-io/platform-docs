@@ -430,7 +430,8 @@ receives data can connect. Webhooks, WebSockets and MQTT clients all work.
 ### MQTT
 
 NATS has native MQTT support through JetStream. Enable the MQTT listener on
-your hub server or cluster. An MQTT client sends a bearer-token user JWT as its
+your hub server or cluster, or on a gateway's leaf with the Agent's
+`platform.leaf_mqtt`. An MQTT client sends a bearer-token user JWT as its
 password, and the same subject permissions apply. See
 [Connectivity §1](./connectivity.md#mqtt-clients) for the steps.
 
