@@ -191,8 +191,8 @@ The helpdesk authenticates to the hub account with a **platform-minted
    ([Wire Protocol](protocol.md#1-the-whole-surface)).
 2. Export its creds file, and point `nats.creds_file` at it.
 3. Start the helpdesk. On first serve it creates `HELPDESK_EVENTS` (subjects
-   `helpdesk.*.tickets.>`) and begins consuming. If publish is granted, it also
-   creates `HELPDESK_NOTIFICATIONS` (subjects `helpdesk.*.events.>`) for the
+   `helpdesk.*.cmd.tickets.>`) and begins consuming. If publish is granted, it also
+   creates `HELPDESK_NOTIFICATIONS` (subjects `helpdesk.*.evt.>`) for the
    outbound channel. If not, that setup fails softly and email still sends.
 
 Setting `nats.urls` without `nats.creds_file` is a startup error. A broker that

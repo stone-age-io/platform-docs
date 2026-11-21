@@ -135,7 +135,7 @@ nats:
 | `workerCount` | int | `64` | `1`–`2500` | Parallel workers per subscription, and the one knob for how many messages a subscription keeps in flight. Each worker waits on a synchronous publish (or outbound HTTP call), so throughput ≈ workers ÷ round-trip time. See [Running far from NATS](#running-far-from-nats). |
 | `fetchBatchSize` | int | 4 × `workerCount` | `1`–`10000` | Messages the consumer buffers per subscription. It asks for more once half the buffer is gone, so 4× workers brings two messages per worker each round trip. Set it only to buffer less: a buffered message's ack-wait clock is already running while it waits behind about four actions per worker, so with actions slower than about `ackWaitTimeout` ÷ 5 (6s at the default), lower this or raise `ackWaitTimeout`. |
 | `fetchTimeout` | duration | `5s` | `> 0` | Pull fetch timeout. |
-| `maxAckPending` | int | `fetchBatchSize` + `workerCount` | `1`–`100000` | Max unacknowledged messages per consumer: everything buffered plus one in each worker. Set lower and workers sit idle waiting for the server. The limit belongs to the consumer, so instances sharing one (same `consumerPrefix`) share it: set it to instances × (`fetchBatchSize` + `workerCount`). |
+| `maxAckPending` | int | 4 × (`fetchBatchSize` + `workerCount`) | `1`–`100000` | Max unacknowledged messages per consumer. One instance holds its buffer plus one message in each worker (`fetchBatchSize` + `workerCount`, 320 at the defaults). The limit belongs to the consumer, so instances sharing one (same `consumerPrefix`) share it. The default leaves room for four. For more, set it to instances × (`fetchBatchSize` + `workerCount`). Set lower and workers sit idle waiting for the server. |
 | `ackWaitTimeout` | duration | `30s` | — | Time JetStream waits for an ACK before redelivering. Also the deadline for a message's actions, HTTP retries included — actions still running when it expires are cancelled and the message is NAK'd. |
 | `maxDeliver` | int | `3` | `≥ 1` | Max delivery attempts before JetStream stops redelivering (see [Dead-letter behavior](#dead-letter-behavior)). |
 | `deliverPolicy` | string | `"new"` | `all`, `new`, `last`, `by_start_time`, `by_start_sequence` | Where a new consumer starts reading. |
@@ -156,6 +156,12 @@ Measured with the benchmark harness through a proxy adding 100 ms RTT:
 | 2500 (maximum) | ~18,400 msg/s |
 
 Each message still takes at least a round trip or two end to end, so latency stays around 1–2× RTT whatever you set. For the lowest latency, run the router next to its NATS server.
+
+#### Shared limit across instances
+
+On shutdown and on rule reload, each subscription NAKs the messages still in its buffer so another instance can take them right away. They don't hold `maxAckPending` slots until `ackWaitTimeout` expires. A crash can't do this, so its buffered messages wait out the ack window.
+
+Watch the limit with `nats consumer info <stream> <consumer>`. If `Ack Pending` stays at or near `Max Ack Pending` while `Unprocessed` grows, either more than four instances share the consumer and `maxAckPending` wasn't raised, or the actions can't keep up.
 
 ### `nats.connection`
 
@@ -439,7 +445,7 @@ forEach:
 There is no dedicated dead-letter *subject*. Delivery semantics are governed entirely by JetStream and `nats.consumers.maxDeliver`:
 
 - A message that **panics** during processing is **terminated** (`msg.Term()`) immediately so it cannot loop.
-- A message that **fails** processing is **NAK'd** and redelivered until `maxDeliver` is reached, after which JetStream stops redelivering it.
+- A message that **fails** processing is **NAK'd with a 5-second delay** and redelivered until `maxDeliver` is reached, after which JetStream stops redelivering it. The delay gives a briefly unavailable downstream time to recover, so a retry isn't wasted against it milliseconds after the first failure. A failure caused by shutdown cancelling the actions is NAK'd with no delay.
 - A message whose failed actions **all failed permanently** (an outbound 4xx other than 408/429) is **terminated** rather than NAK'd — redelivery would fail the same way.
 - Payloads that are not JSON but are valid UTF-8 are evaluated as a raw string (`{@value}`) rather than rejected. A payload that is neither fails evaluation and is NAK'd like any other failure, so it is redelivered until `maxDeliver`.
 
@@ -447,7 +453,7 @@ There is no dedicated dead-letter *subject*. Delivery semantics are governed ent
 
 Redelivery is at-least-once, so the same NATS action can be published more than once: after a NAK, after a crash before the ack, or when a publish retry follows a lost ack. For rules with a JetStream trigger, the router sets a `Nats-Msg-Id` header on each NATS action, built from the source message's stream and sequence plus a hash of the rule's definition (and the element index for `forEach`). The output stream then drops a repeat as a duplicate, so it stores the message once.
 
-- Deduplication only works within the output stream's duplicate window (`duplicate_window`, 2 minutes by default). A redelivery later than that is stored again. Keep the window longer than `ackWaitTimeout × maxDeliver`.
+- Deduplication only works within the output stream's duplicate window (`duplicate_window`, 2 minutes by default). A redelivery later than that is stored again. Keep the window longer than `(ackWaitTimeout + 5s) × maxDeliver`, where the 5s is the redelivery delay after a failure.
 - Editing a rule changes its hash, so a message redelivered across the edit can be stored twice. That's a duplicate, never a lost message.
 - A rule that sets its own `Nats-Msg-Id` header keeps it. NATS header names are case-sensitive, so it must be spelled exactly like that.
 - Core-mode, HTTP-triggered and scheduled rules get no generated ID, because there's no source message sequence to tie it to. HTTP actions are never deduplicated.

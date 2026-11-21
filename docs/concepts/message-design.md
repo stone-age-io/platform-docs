@@ -80,10 +80,9 @@ The subject says **who** and **what kind**. The payload holds the facts.
   | `telemetry` | Measurement | Yes |
 
   An application may add a channel of its own for raw input, such as access
-  control's `tap`, as long as no stream captures it. Kiosk (`event`) and the
-  helpdesk (`tickets`, `events`) don't use these words yet, and access control
-  still puts the channel after the portal. ADR 0008 lists the
-  renames.
+  control's `tap`, as long as no stream captures it. Kiosk (`event`) doesn't
+  use these words yet, and access control still puts the channel after the
+  portal. ADR 0008 lists the renames.
 - **Put the verb last.** After the channel, the rest of the subject belongs to
   the application, and ends with what happened or what to do:
   `evt.door.lobby-main.alarm`, `cmd.door.lobby-main.grant`. The platform's
@@ -134,7 +133,7 @@ This is an Agent telemetry message, shortened:
 
 | Convention | Example | Who does it |
 | :--- | :--- | :--- |
-| **Time as an RFC 3339 string in UTC, named `ts`** | `"ts": "2026-10-24T14:02:11Z"` | The Agent and access control. The helpdesk and kiosk send `occurred_at` until they adopt [ADR 0008](../decisions/0008-application-namespace.md). |
+| **Time as an RFC 3339 string in UTC, named `ts`** | `"ts": "2026-10-24T14:02:11Z"` | The Agent, access control and the helpdesk. Kiosk sends `occurred_at` until it adopts [ADR 0008](../decisions/0008-application-namespace.md). |
 | **The unit in the field name** | `cpu_usage_percent`, `memory_free_gb` | The Agent |
 | **Numbers as JSON numbers** | `"temp": 21.5`, not `"21.5"` | The Agent |
 | **Fixed strings for states and reasons** | `"reason": "deny_schedule_closed"` | Access control |

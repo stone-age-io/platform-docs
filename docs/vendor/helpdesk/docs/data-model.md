@@ -730,7 +730,7 @@ Each template has two channels:
 
 - `enabled`: email.
 - `publish_nats`: publish a JSON envelope to
-  `helpdesk.{customerCode}.events.{event_type}`. Token 2 is `customers.code`; a
+  `helpdesk.{customerCode}.evt.{event_type}`. Token 2 is `customers.code`; a
   customer without a code is skipped, not published under a fallback.
 
 `notification_send_log.channel` (`email` or `nats`) records which path each row

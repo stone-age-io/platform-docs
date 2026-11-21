@@ -4,7 +4,7 @@ nav_order: 80
 ---
 # ADR 0008: One Namespace, Event Shape and Identity for Applications
 
-**Status:** Accepted — not yet implemented. No application follows all of it yet. See [What changes in each application](#what-changes-in-each-application).
+**Status:** Accepted — partly implemented. The helpdesk follows its subjects and event shape; access control and kiosk do not yet. See [What changes in each application](#what-changes-in-each-application).
 **Date:** 2026-11-21
 
 > This ADR is ecosystem-scoped, like [ADR 0002](./0002-organization-code-namespace.md). It decides how the applications built on the platform (helpdesk, access control, kiosk and the services) name their subjects, shape their events, connect, and refer to inventory. It changes nothing in the platform itself.

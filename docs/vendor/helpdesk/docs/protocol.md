@@ -16,8 +16,8 @@ channels read, see [Configuration Reference](configuration.md).
 
 | Channel | Subject or route | Direction | Authenticated by |
 | :--- | :--- | :--- | :--- |
-| [NATS ticket events](#2-nats-ticket-events) | `helpdesk.{orgCode}.tickets.create` | in | the operator-signed subject rewrite |
-| [NATS notification events](#3-nats-notification-events-outbound) | `helpdesk.{customerCode}.events.{event_type}` | out | the helpdesk's hub-account creds |
+| [NATS ticket events](#2-nats-ticket-events) | `helpdesk.{orgCode}.cmd.tickets.create` | in | the operator-signed subject rewrite |
+| [NATS notification events](#3-nats-notification-events-outbound) | `helpdesk.{customerCode}.evt.{event_type}` | out | the helpdesk's hub-account creds |
 | [HTTP webhook](#4-http-webhook) | `POST /api/helpdesk/inbound/{token}` | in | the per-customer token |
 | [Email provider webhook](#5-email-provider-webhook) | `POST /api/helpdesk/inbound/email/{provider}` | in | Basic auth with `inbound.secret` |
 
@@ -41,14 +41,14 @@ Customer-side apps (things, rule-router) publish inside their own
 organization's NATS account:
 
 ```
-helpdesk.tickets.create
+helpdesk.cmd.tickets.create
 ```
 
 The platform's managed-org export/import delivers those into the operator hub
 account, with the organization code (`customers.code`) injected as token 2:
 
 ```
-helpdesk.{orgCode}.tickets.create
+helpdesk.{orgCode}.cmd.tickets.create
 ```
 
 ::: note The tenant comes from the subject, never the payload
@@ -66,7 +66,7 @@ the unmapped-org path below — warned and **acked**, invisible to the publisher
 Only the `create` verb is consumed. The `{verb}` token leaves room for
 `comment` and `resolve` later without a subject migration.
 
-### Payload (`helpdesk.tickets.create`)
+### Payload (`helpdesk.cmd.tickets.create`)
 
 ```json
 {
@@ -141,7 +141,7 @@ The helpdesk creates and owns its inbox stream in the hub account:
 
 | Resource | Default name | Config key | Details |
 | :--- | :--- | :--- | :--- |
-| Stream | `HELPDESK_EVENTS` | `nats.stream` | Subjects `helpdesk.*.tickets.>`, file storage, 7-day age limit. |
+| Stream | `HELPDESK_EVENTS` | `nats.stream` | Subjects `helpdesk.*.cmd.tickets.>`, file storage, 7-day age limit. |
 | Durable consumer | `helpdesk-ingest` | `nats.durable` | Explicit ack. A restart resumes from the last-acked sequence. |
 
 The helpdesk's NATS identity is a hub-account `nats_user` minted by the
@@ -162,7 +162,7 @@ channel beside email, and each template turns the two on separately.
 ### Subjects
 
 ```
-helpdesk.{customerCode}.events.{event_type}
+helpdesk.{customerCode}.evt.{event_type}
 ```
 
 - **`{customerCode}` is `customers.code`**, the ecosystem's tenant token. It is
@@ -175,8 +175,8 @@ helpdesk.{customerCode}.events.{event_type}
 - **`{event_type}`** is the notification event (`ticket.created`,
   `ticket.status_changed`, `visit.scheduled`, ...). Its embedded dot supplies
   the trailing `domain.verb` tokens.
-- **Token 3 is the literal `events`**, which keeps this stream disjoint from the
-  ingest stream (`helpdesk.*.tickets.>`). Because `events` is not `tickets`,
+- **Token 3 is the channel `evt`**, which keeps this stream disjoint from the
+  ingest stream (`helpdesk.*.cmd.tickets.>`). Because `evt` is not `cmd`,
   JetStream accepts both streams, and an outbound event can never be
   re-ingested as a ticket.
 
@@ -190,14 +190,15 @@ Set `customers.code` to turn the channel on for that tenant.
 
 ### Envelope
 
-The envelope is `schema: helpdesk.event`, `version: 1`:
+The envelope is `schema: helpdesk.event`, `version: 2`. Version 2 renamed
+`occurred_at` to `ts` (ADR 0008 in platform-docs).
 
 ```json
 {
   "schema": "helpdesk.event",
-  "version": 1,
+  "version": 2,
   "event_type": "ticket.status_changed",
-  "occurred_at": "2026-07-15T14:02:11Z",
+  "ts": "2026-07-15T14:02:11Z",
   "customer": { "id": "cust123", "name": "Acme Corp", "platform_org_id": "org_..." },
   "ticket": {
     "id": "rec123", "number": 42, "title": "Pump fault on line 3",
@@ -252,7 +253,7 @@ transition. `ticket_events` is the complete record.
 ### Stream
 
 - **Stream `HELPDESK_NOTIFICATIONS`** (config `nats.notify_stream`), subjects
-  `helpdesk.*.events.>`, file storage, 7-day age limit, 2-minute `Duplicates`
+  `helpdesk.*.evt.>`, file storage, 7-day age limit, 2-minute `Duplicates`
   window.
 - **Each publish carries a `Nats-Msg-Id` header**
   (`{event_type}:{occurrenceKey}`), so a republished event collapses inside

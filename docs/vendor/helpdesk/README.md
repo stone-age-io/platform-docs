@@ -266,8 +266,8 @@ docs/                overview guide, data model, wire protocol, notifications,
 - **The org in a machine ticket comes from the subject**, which the
   operator-signed platform import rewrites, never from the payload.
 - **The helpdesk owns an outbound stream** (`HELPDESK_NOTIFICATIONS`, subjects
-  `helpdesk.*.events.>`). It is disjoint from the ingest stream at token 3
-  (`events` vs `tickets`), so an emitted event cannot loop back through ingest.
+  `helpdesk.*.evt.>`). It is disjoint from the ingest stream at token 3
+  (`evt` vs `cmd`), so an emitted event cannot loop back through ingest.
 - **`things` and `locations` join the platform** by `(customer, code)`. They
   are not synced and cannot be. Bulk loading is an operator-run export and
   seed, so both shapes stay a faithful subset of the platform's.

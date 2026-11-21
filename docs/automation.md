@@ -161,7 +161,7 @@ any alarm, into one:
         value: "down"
   action:
     nats:
-      subject: "helpdesk.tickets.create"
+      subject: "helpdesk.cmd.tickets.create"
       mode: core
       payload: |
         {

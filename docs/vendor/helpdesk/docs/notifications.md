@@ -47,7 +47,7 @@ The same eight events drive both channels. Each template gates them
 
 - **`enabled`:** send email to the resolved recipient classes.
 - **`publish_nats`:** publish a fixed JSON envelope to
-  `helpdesk.{customerCode}.events.{event_type}` (see
+  `helpdesk.{customerCode}.evt.{event_type}` (see
   [Wire Protocol](protocol.md), *NATS notification events*). Token 2 is
   `customers.code`, the ecosystem's tenant handle. The *inbound* subject
   carries the same token, so both directions name a tenant the same way.
