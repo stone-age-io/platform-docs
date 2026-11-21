@@ -118,7 +118,16 @@ organizations, invite users, build a location tree and place Things on floor
 plans and maps. See [Platform Entities](./platform-ui-entities.md).
 
 ::: note A demo estate in one command
-`./stone-age demo-seed --confirm` fills the database with three tenants, a type
+With the container from §1, run it inside the container. `--dir` names the
+database the container serves:
+
+```bash
+docker exec stone-age stone-age demo-seed --confirm --dir /data/pb_data
+```
+
+From source, it is `./stone-age demo-seed --confirm`.
+
+It fills the database with three tenants, a type
 taxonomy, locations on a map, Things, NATS roles and identities, a Nebula
 network and edge gateways. It uses the same provisioning hooks as the console,
 and you can run it again safely. It writes real signed credentials, so use a
