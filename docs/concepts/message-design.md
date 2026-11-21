@@ -22,8 +22,8 @@ Each message says one of six things. The kind decides the transport.
 
 | Kind | What it says | Transport | Example |
 | :--- | :--- | :--- | :--- |
-| **Event** | Something happened. | Publish, stored in a stream | An access decision at a door: `acc.hq.door.lobby-main.evt.tap` |
-| **Command** | Do this now. | Core NATS publish | A strike pulse: `acc.hq.door.lobby-main.cmd.grant` |
+| **Event** | Something happened. | Publish, stored in a stream | An access decision at a door: `acc.hq.evt.door.lobby-main.tap` |
+| **Command** | Do this now. | Core NATS publish | A strike pulse: `acc.hq.cmd.door.lobby-main.grant` |
 | **Request** | Answer me. | Request and reply | The Agent's health: `agents.gw-99.cmd.health` |
 | **State** | This is true now. | A KV key, latest value wins | A reported temperature: key `thing.S01.temp` in `twin` |
 | **Liveness** | I am alive. | Core NATS publish, not stored | The Agent's heartbeat: `agents.gw-99.heartbeat` |
@@ -69,8 +69,8 @@ The subject says **who** and **what kind**. The payload holds the facts.
   scope is a fixed number of code tokens and the channel is one of the four
   below ([ADR 0008](../decisions/0008-application-namespace.md)). The Agent's
   `agents.gw-99.cmd.health` and access control's
-  `acc.hq.door.lobby-main.evt.tap` both have this shape. A filter then selects
-  a kind of message in one pattern, such as `acc.*.*.*.evt.>`.
+  `acc.hq.evt.door.lobby-main.tap` both have this shape. A filter then selects
+  a kind of message in one pattern, such as `acc.*.evt.>`.
 
   | Channel | Kind (§1) | Stored |
   | :--- | :--- | :--- |
@@ -81,11 +81,13 @@ The subject says **who** and **what kind**. The payload holds the facts.
 
   An application may add a channel of its own for raw input, such as access
   control's `tap`, as long as no stream captures it. Kiosk (`event`) and the
-  helpdesk (`tickets`, `events`) don't use these words yet. ADR 0008 lists the
+  helpdesk (`tickets`, `events`) don't use these words yet, and access control
+  still puts the channel after the portal. ADR 0008 lists the
   renames.
 - **Put the verb last.** After the channel, the rest of the subject belongs to
-  the application, and ends with what happened or what to do: `.evt.alarm`,
-  `.cmd.grant`. The platform's default subject ends with the operation suffix
+  the application, and ends with what happened or what to do:
+  `evt.door.lobby-main.alarm`, `cmd.door.lobby-main.grant`. The platform's
+  default subject ends with the operation suffix
   in the same way.
 
 ---

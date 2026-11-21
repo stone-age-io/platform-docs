@@ -71,8 +71,10 @@ Five rules.
   [Message Design §2](../concepts/message-design.md#2-identity-in-the-subject-facts-in-the-payload)
   already require.
 - **`{scope}` is a fixed number of tokens for each application, and each one
-  is a code.** It is the instance's Thing code for kiosk and the Agent (one
-  token), and `{location}.{type}.{thing}` for access control (three tokens).
+  is a code.** It is the instance's Thing code for kiosk and the Agent, and
+  the location code for access control, because a door controller's
+  permissions are scoped to a site. Each is one token. The portal type and
+  code come after the channel, in `{rest}`.
   The helpdesk has no scope inside a tenant account, and at the hub the
   organization code is its scope. An application states its count once, in
   its protocol document.
@@ -145,10 +147,27 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
 | Application | Change |
 |---|---|
 | **helpdesk** | `helpdesk.tickets.create` → `helpdesk.cmd.tickets.create` (`helpdesk.{org}.cmd.tickets.create` at the hub). `helpdesk.{org}.events.{type}` → `helpdesk.{org}.evt.{type}`. `occurred_at` → `ts`. The managed-org export maps the whole of `helpdesk.>`, so the platform doesn't change. |
-| **access control** | The fire alarm moves to `acc.{location}.site.{location}.evt.fire`, a three-token scope with the reserved type `site`, so the events stream needs one filter: `acc.*.*.*.evt.>`. `acc.{location}.ctrl.{code}.health` → `acc.{location}.ctrl.{code}.cmd.health`. `Nats-Msg-Id` on every event. |
+| **access control** | The scope becomes the location alone, and the portal type and code move after the channel. Every subject changes: see the table below. The events stream then needs one filter, `acc.*.evt.>`. `Nats-Msg-Id` on every event. |
 | **kiosk** | `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`. `occurred_at` → `ts`. `Nats-Msg-Id` on every event. |
 | **Agent** | None. It already fits rules 1 to 3. |
 | **All of them** | Rule 4: a Thing per process, creds-keeper, reconnect after a Revoke, `metadata.code`. |
+
+Access control's subjects, before and after:
+
+| Message | Today | After |
+|---|---|---|
+| Card read | `acc.{location}.{type}.{thing}.tap` | `acc.{location}.tap.{type}.{thing}` |
+| Posture override | `acc.{location}.{type}.{thing}.cmd.posture` | `acc.{location}.cmd.{type}.{thing}.posture` |
+| Door pop | `acc.{location}.{type}.{thing}.cmd.grant` | `acc.{location}.cmd.{type}.{thing}.grant` |
+| Aux output | `acc.{location}.auxout.{thing}.cmd.output` | `acc.{location}.cmd.auxout.{thing}.output` |
+| Decision, posture change, alarm | `acc.{location}.{type}.{thing}.evt.{tap,state,alarm}` | `acc.{location}.evt.{type}.{thing}.{tap,state,alarm}` |
+| Fire alarm | `acc.{location}.evt.fire` | unchanged |
+| Controller liveness change | `acc.{location}.ctrl.{code}.evt.state` | `acc.{location}.evt.ctrl.{code}.state` |
+| Controller heartbeat | `acc.{location}.ctrl.{code}.heartbeat` | `acc.{location}.heartbeat.ctrl.{code}` |
+| Controller health | `acc.{location}.ctrl.{code}.health` | `acc.{location}.cmd.ctrl.{code}.health` |
+
+A reader can still be limited to its own door with a literal subject, such as
+`acc.hq.tap.door.lobby-main`, and a site's controller to `acc.hq.>`.
 
 ---
 
@@ -170,9 +189,10 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
   document, its demo rules and its tests, once.
 - **One more process per application instance**: creds-keeper runs beside it,
   as a sidecar container or a second systemd unit (ADR 0007 §8).
-- **Access control's fire subject repeats the location code**
-  (`acc.hq.site.hq.evt.fire`). That is the price of a scope that has the same
-  length everywhere.
+- **Every access control subject changes,** not only the two that differed
+  from the others. After the channel, the rest of a subject varies in length
+  (`evt.fire` against `evt.door.lobby-main.tap`), so a consumer that parses
+  it checks the token count.
 - **Inventory is still typed twice.** Rule 5 keeps today's code join.
 
 ---
@@ -205,7 +225,12 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
 - **An application signs in to the platform as a `viewer` member to read
   inventory.** It works without a platform change, but it gives a machine a
   person's login, where the platform's model is that a Thing is the login.
-- **The fire alarm keyed by its aux input** (`acc.{location}.auxin.{code}.evt.fire`).
+- **A three-token scope for access control, `{location}.{type}.{thing}`.**
+  It changes fewer subjects, but the fire alarm belongs to a location and has
+  no type or thing, so it would need padding such as
+  `acc.hq.site.hq.evt.fire`. A location-only scope says what access control
+  actually scopes by.
+- **The fire alarm keyed by its aux input** (`acc.{location}.evt.auxin.{code}.fire`).
   The protocol defines fire as a location's state, which every controller at
   that location applies. Keyed by contact, each subscriber would have to
   combine the states of however many fire contacts the location has.

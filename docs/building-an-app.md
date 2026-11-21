@@ -80,7 +80,7 @@ printed label.
   from every other stream in the account.
 - **`{scope}`** is a fixed number of code tokens, the same for every subject
   your application uses. Usually it is the instance's Thing code. Access
-  control uses `{location}.{type}.{thing}`, because a door controller's
+  control uses the location code, because a door controller's
   permissions are scoped to a site.
 - **`{channel}`** is `evt`, `cmd`, `heartbeat` or `telemetry`
   ([Message Design §2](./concepts/message-design.md#2-identity-in-the-subject-facts-in-the-payload)).
