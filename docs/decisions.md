@@ -14,3 +14,7 @@ ADRs 0005 to 0007 decide things in the services repository and live there. These
 - [ADR 0005: A Watchdog Service for Message Absence](vendor/services/docs/decisions/0005-watchdog-service.md)
 - [ADR 0006: History Services for Metrics and Logs](vendor/services/docs/decisions/0006-history-services.md) (deferred)
 - [ADR 0007: creds-keeper, Platform-Managed Credentials for Account Services](vendor/services/docs/decisions/0007-creds-keeper.md)
+
+ADR 0008 is ecosystem-scoped, like ADR 0002, and lives here.
+
+- [ADR 0008: One Namespace, Event Shape and Identity for Applications](decisions/0008-application-namespace.md) (accepted, not yet implemented)

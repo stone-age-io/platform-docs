@@ -60,14 +60,33 @@ The subject says **who** and **what kind**. The payload holds the facts.
 - **A payload can repeat identity for convenience.** Each Agent payload carries
   `code`, `location` and `ts`, so a stored message makes sense alone. A
   consumer that makes a security decision still reads the subject.
-- **Put the verb or kind last.** Access control ends each subject with `.tap`,
-  `.cmd.grant` or `.evt.alarm`. The platform's default subject ends with the
-  operation suffix. A wildcard on the last token then selects a kind of
-  message.
 - **Give an application its own tree.** Access control owns `acc.>` and the
   helpdesk owns `helpdesk.>`. A literal first token keeps their streams from
   overlapping other streams in the same account
   ([Persistence §1](./persistence.md#1-streams)).
+- **Put the kind of message right after the identity, as a channel token.**
+  An application's subjects are `{app}.{scope}.{channel}.{rest}`, where the
+  scope is a fixed number of code tokens and the channel is one of the four
+  below ([ADR 0008](../decisions/0008-application-namespace.md)). The Agent's
+  `agents.gw-99.cmd.health` and access control's
+  `acc.hq.door.lobby-main.evt.tap` both have this shape. A filter then selects
+  a kind of message in one pattern, such as `acc.*.*.*.evt.>`.
+
+  | Channel | Kind (§1) | Stored |
+  | :--- | :--- | :--- |
+  | `evt` | Event | Yes |
+  | `cmd` | Command or request | No |
+  | `heartbeat` | Liveness | Never |
+  | `telemetry` | Measurement | Yes |
+
+  An application may add a channel of its own for raw input, such as access
+  control's `tap`, as long as no stream captures it. Kiosk (`event`) and the
+  helpdesk (`tickets`, `events`) don't use these words yet. ADR 0008 lists the
+  renames.
+- **Put the verb last.** After the channel, the rest of the subject belongs to
+  the application, and ends with what happened or what to do: `.evt.alarm`,
+  `.cmd.grant`. The platform's default subject ends with the operation suffix
+  in the same way.
 
 ---
 
@@ -113,7 +132,7 @@ This is an Agent telemetry message, shortened:
 
 | Convention | Example | Who does it |
 | :--- | :--- | :--- |
-| **Time as an RFC 3339 string in UTC** | `"ts": "2026-10-24T14:02:11Z"` | The Agent and access control (`ts`), the helpdesk (`occurred_at`) |
+| **Time as an RFC 3339 string in UTC, named `ts`** | `"ts": "2026-10-24T14:02:11Z"` | The Agent and access control. The helpdesk and kiosk send `occurred_at` until they adopt [ADR 0008](../decisions/0008-application-namespace.md). |
 | **The unit in the field name** | `cpu_usage_percent`, `memory_free_gb` | The Agent |
 | **Numbers as JSON numbers** | `"temp": 21.5`, not `"21.5"` | The Agent |
 | **Fixed strings for states and reasons** | `"reason": "deny_schedule_closed"` | Access control |
@@ -177,6 +196,13 @@ methods:
 | **The stream sequence** | The consumer stores the message's sequence number with the result, under a unique index. It skips a sequence that it already stored. | Access control's audit consumer |
 | **A write of the end state** | The consumer writes "disarmed", not "change the arm state". A second write changes nothing. | Access control's disarm consumer |
 
+**Set `Nats-Msg-Id` on every publish to a stream**, whatever else the consumer
+does ([ADR 0008](../decisions/0008-application-namespace.md)). It costs one
+header, and it stops a producer's retry at the stream. A consumer that also
+removes duplicates itself keeps doing so, because the stream remembers message
+IDs only for its duplicate window. Today only the helpdesk and the rule engine
+set it.
+
 Prefer messages that state a value ("set to 21") over messages that state a
 change ("add 1" or "toggle"). A repeated value is harmless. A repeated change
 is a bug.
@@ -212,12 +238,14 @@ examples. Each one has a table of subject, direction, transport and body.
 Before you publish a new kind of message, check these:
 
 - [ ] I chose the kind: event, command, request, state, liveness or intent (§1).
-- [ ] The subject holds the identity and ends with the kind or verb (§2).
+- [ ] The subject holds the identity, then a channel (`evt`, `cmd`,
+      `heartbeat` or `telemetry`), and ends with the verb (§2).
 - [ ] The subject and payload use codes, not database ids (§3).
 - [ ] The payload is a JSON object with an RFC 3339 UTC `ts` (§4).
 - [ ] The payload holds nothing that a subscriber must not see (§4).
 - [ ] The contract has a name and a version, or a plan for one (§5).
-- [ ] A second copy of the message does no harm (§6).
+- [ ] A second copy of the message does no harm, and a publish to a stream
+      sets `Nats-Msg-Id` (§6).
 - [ ] A malformed message is acknowledged and logged, not retried forever (§7).
 - [ ] The contract is written down (§8).
 
