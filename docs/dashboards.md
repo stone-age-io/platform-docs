@@ -24,7 +24,7 @@ in one of two places, which are the two tabs of the dashboard sidebar:
 
 | Storage | Where | Who sees it |
 | :--- | :--- | :--- |
-| **Local** | the browser's `localStorage` | that browser only |
+| **Local** | the browser's `localStorage` | you, in that organization, in that browser only |
 | **Shared** | a key in the `dashboards` KV bucket | anyone whose credential can read the bucket |
 
 Local is the default and needs no setup. It holds up to 25 dashboards, and the
