@@ -46,6 +46,7 @@ a record or a payload is an addition, not a break.
 | `GET /api/ready` | The response fields, the four states, the check names, and `503` only on `fail` | [Health & Metrics §2](./health-metrics.md#2-get-apiready) |
 | `GET /metrics` | The metric names, types and labels | [Health & Metrics §3](./health-metrics.md#3-get-metrics) |
 | The record API | The collection names and field names that the Agent, `stone` and sibling apps read. The record API itself is PocketBase's. | [HTTP API](./concepts/http-api.md) |
+| What a refused rule returns | A list leaves out the records a rule refuses and answers `200`. A view, update or delete that a rule refuses answers `404`, the same as a record that does not exist. A client must not read a `404` as proof that a record is absent; to decide between create and update, list first. This is PocketBase behavior, and the platform keeps it: it does not tell a caller that a record it may not see exists. | [HTTP API](./concepts/http-api.md#what-a-failed-rule-returns) |
 | The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file`, `jwt`, `updated`, `device_key` and `public_key` fields, and the `nebula_host` relation the Agent reads its Nebula config from, with its `device_key` and `public_key` | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
 | MQTT bearer tokens | `nats_users.bearer_token`, and that the user JWT is accepted as the MQTT password when it is set | [Connectivity §1](./connectivity.md#mqtt-clients) |
 
@@ -76,9 +77,9 @@ a record or a payload is an addition, not a break.
 | Surface | What is stable | Reference |
 | :--- | :--- | :--- |
 | `config.yaml` keys and `STONE_AGE_*` variables | The key names, their meaning and their defaults | [Configuration](./configuration.md) |
-| `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags | [Configuration §4.1](./configuration.md#41-what-init-runs) |
+| `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags. Under `serve --nats`, `SIGHUP` reloads `nats.conf` into the running server | [Configuration §4.1](./configuration.md#41-what-init-runs), [Operations §2.2](./operations.md#22-reloading-natsconf) |
 | The exported `nats.conf` | That a stock `nats-server` accepts it, and that the embedded server reads the same file | [ADR 0001](./decisions/0001-embedded-nats-server.md) |
-| `stone` commands | The command names, the flags, the exit status, and the `-o json` and `-o yaml` output | [Stone CLI](./stone-cli.md) |
+| `stone` commands | The command names, the flags, the exit status, and the `-o json` and `-o yaml` output. `stone` ships separately, so a flag for a field that a platform release adds can arrive in a later `stone` release; until then, set the field with `stone <type> edit`, `apply` or the console. Each `stone` release names, in its release notes, the platform release its flags were checked against | [Stone CLI §10](./stone-cli.md#10-limitations) |
 | The `stone` workspace | One YAML file for each record, and for each stream and KV bucket under `jetstream/`, and that neither `apply` nor `js apply` ever deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply), [§6](./stone-cli.md#jetstream-config-in-a-workspace) |
 
 ### The Agent
@@ -126,18 +127,16 @@ the versions the platform is built on.
 
 ## 4. Known gaps before 1.0
 
-These surfaces are not yet in the state that the contract needs:
+None. The three gaps listed here until 2026-11-22 are resolved:
 
-- **`stone`'s flags are written by hand**, so a `stone` release can lag the
-  platform's schema. Its tests now compare them with a schema taken from a live
-  server, which makes the lag visible but does not remove it
-  ([Stone CLI §10](./stone-cli.md#10-limitations)).
-- **An update that a rule refuses returns `404`, not `403`.** This is
-  PocketBase behavior, and clients must not read `404` as "no such record"
-  ([HTTP API](./concepts/http-api.md#what-a-failed-rule-returns)).
-- **Step 3 of ADR 0001, config reload, is not built.** A change to `nats.conf`
-  under `serve --nats` needs a Control Plane restart
-  ([ADR 0001](./decisions/0001-embedded-nats-server.md#as-implemented)).
+- **`stone`'s hand-written flags** are now a stated rule in the `stone` row
+  above: a flag for a new field can lag, and each release names the platform
+  release it was checked against. After 1.0 a platform release only adds
+  fields, so the lag can leave a field without a flag but cannot break one.
+- **A refused update returns `404`.** It is now part of the contract, in the
+  HTTP API table above, rather than a gap.
+- **Config reload (ADR 0001 step 3)** is built: `SIGHUP` reloads `nats.conf`
+  under `serve --nats` ([Operations §2.2](./operations.md#22-reloading-natsconf)).
 
 ---
 

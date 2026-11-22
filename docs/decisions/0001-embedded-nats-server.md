@@ -4,7 +4,7 @@ nav_order: 10
 ---
 # ADR 0001: Embed the NATS Server in the Control Plane Binary
 
-**Status:** Accepted — implemented, except step 3 (config reload), which was not built
+**Status:** Accepted — implemented. Step 3 (config reload) followed on 2026-11-22, as `SIGHUP`
 **Date:** 2026-08-14 (implemented 2026-08-15)
 
 > The Context below describes the state of things when the decision was made. Two of the problems it names have since been fixed; see [As implemented](#as-implemented) at the end for what shipped and what building it turned up.
@@ -203,7 +203,11 @@ Both were pre-existing. Neither was visible until something actually consumed th
 
 The `4422` / `4222` port disagreement named in the Context is fixed; `--nats` additionally refuses to start when `nats.server_url` and the config's listen port differ.
 
-**Step 3, config reload, was not built.** There is no `s.Reload()` call, no `SIGHUP` handler and no `stone-age nats reload` command. Editing `nats.conf` under an embedded server therefore still means restarting the Control Plane, which at rung 1 is a brief total bus outage. Account and user changes are unaffected — they reach the server as pushed JWTs, not through the config file — so this only bites for server-level settings (listeners, limits, clustering).
+**Step 3, config reload, was built later (2026-11-22), as `SIGHUP` only.** Under `serve --nats`, `SIGHUP` re-reads `nats.conf` and applies it with nats-server's own `ReloadOptions`, the same reload `nats-server --signal reload` does ([Operations §2.2](../operations.md#22-reloading-natsconf)). Three points:
+
+- **No `stone-age nats reload` command.** A second process would have to find the running one to signal it, and `kill -HUP`, `docker kill --signal=HUP` and systemd's `ExecReload` already do that. A command can be added later without breaking anything.
+- **Refusals are nats-server's.** A change it cannot make live, such as the client port (`config reload not supported for Port`), is refused whole, and the server keeps its config. That also keeps the port check from start-up true after a reload.
+- **The resolver survives it.** `nats export` writes a `full` resolver with a directory, so account JWTs pushed over `$SYS` are kept across a reload; only the system account is preloaded from the file. `TestSIGHUPReloadsTheEmbeddedNATSConfig` in the platform's e2e suite checks that a pushed account still connects after a reload, and that an open connection stays up.
 
 ---
 

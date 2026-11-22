@@ -119,6 +119,8 @@ imports, and the System Account connection.
 > **`embedded` does not configure the NATS server.** The `nats.conf` does: ports, JetStream, WebSockets, clustering, TLS. `embedded` only decides whether the Control Plane runs that config or a separate `nats-server` does. Both give the same server, so moving between them is a config change, not a migration. See [Operations §2.1](./operations.md#21-where-the-nats-server-runs).
 >
 > The **port** must agree across the two files. `server_url` is where the Control Plane connects, and `port` in `nats.conf` is where the server listens. `--nats` refuses to start when they differ, because the process could not reach the server it started.
+>
+> **An edit to `nats.conf` applies on `SIGHUP`** under `--nats`, without a restart, except for the few settings nats-server cannot change live, such as the port. See [Operations §2.2](./operations.md#22-reloading-natsconf).
 
 ### 2.1 `server_url` and `websocket_urls` are different addresses
 

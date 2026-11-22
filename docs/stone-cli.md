@@ -873,9 +873,11 @@ When command shapes change, update both files.
 - **The CLI's flags are written by hand**, so a `stone` release can lag a
   platform release. Its tests check every flag against a copy of the
   platform's schema that `scripts/vendor-schema.sh` takes from a live server,
-  and fail on a platform field the CLI neither exposes nor explains. If a field
+  and fail on a platform field the CLI neither exposes nor explains. Each
+  release's notes name the platform release it was checked against. If a field
   is in the console but has no flag, set it with `stone <type> edit`, with
-  `apply`, or in the console.
+  `apply`, or in the console. This lag is part of the stability contract
+  ([Stability §2](./stability.md#configuration-and-commands)).
 
 ---
 

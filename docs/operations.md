@@ -119,6 +119,33 @@ the embedded node leaving one
 ([§5.5](#55-moving-the-nats-server-out-of-the-control-plane)). The reasons are in
 [ADR 0001](./decisions/0001-embedded-nats-server.md).
 
+### 2.2 Reloading `nats.conf`
+
+Under `serve --nats`, send the process `SIGHUP` to apply an edited `nats.conf`
+without a restart. It is the same reload a stock `nats-server` does on
+`nats-server --signal reload`, and connections stay up.
+
+```bash
+kill -HUP "$(pidof stone-age)"             # a host install
+docker kill --signal=HUP stone-age         # the container
+systemctl reload stone-age                 # with ExecReload=/bin/kill -HUP $MAINPID
+```
+
+- **The log says whether it applied:** `Embedded NATS server reloaded …`, or
+  `… not applied, the server keeps its current config:` and the reason.
+- **It is all or nothing.** nats-server refuses a change it cannot make live,
+  such as the client `port` or the `server_name`, and keeps running on the
+  config it had. A file that does not parse is refused the same way. Those
+  changes still need a restart.
+- **Accounts and users never need it.** Their JWTs reach the server over
+  `$SYS` when they change, and the resolver keeps them across a reload. A
+  reload is for server settings: limits, TLS, WebSockets, leaf node remotes,
+  clustering.
+- **A separate `nats-server`** reloads the same way, with its own
+  `nats-server --signal reload`.
+- Windows has no `SIGHUP`. There, a change to `nats.conf` under `--nats` needs
+  a restart.
+
 ---
 
 ## 3. Backups

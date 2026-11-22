@@ -166,7 +166,9 @@ lets a Thing read its own record.
 - **List:** the response leaves out each record that fails. It is a `200` with
   fewer records, not an error.
 - **View, update and delete:** a `404`, not a `403`. A caller cannot tell a
-  record it cannot see from a record that does not exist.
+  record it cannot see from a record that does not exist. This is part of the
+  [stability contract](../stability.md#http-api): do not read a `404` as proof
+  that a record is absent, and list first to decide between create and update.
 
 ### What skips the rules
 
