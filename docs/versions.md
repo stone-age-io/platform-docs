@@ -13,11 +13,11 @@ version says so.
 | `stone` CLI | v0.12.0 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.11.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.25.0 | [Rule Router docs](./vendor/rule-router/README.md) |
-| Services (Watchdog and creds-keeper) | v0.4.0 | [Services docs](./vendor/services/README.md) |
+| Services (Watchdog and creds-keeper) | v0.5.0 | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.3.0 | [Access Control docs](./vendor/access-control/README.md). [CHANGELOG](https://github.com/stone-age-io/access-control/blob/main/CHANGELOG.md) |
 | Helpdesk | v0.2.0 | [Helpdesk docs](./vendor/helpdesk/README.md). [CHANGELOG](https://github.com/stone-age-io/helpdesk/blob/main/CHANGELOG.md) |
 | Kiosk | v0.1.1 | [Kiosk docs](./vendor/kiosk/README.md). [CHANGELOG](https://github.com/stone-age-io/kiosk/blob/main/CHANGELOG.md) |
-| Application kit (`stone-age-io/kit`) | v0.1.0 | [README](https://github.com/stone-age-io/kit#readme). A Go library the applications build on, not something you run |
+| Application kit (`stone-age-io/kit`) | v0.2.0 | [README](https://github.com/stone-age-io/kit#readme). A Go library the applications build on, not something you run |
 
 Platform v0.21.0 is built on these upstream versions:
 
