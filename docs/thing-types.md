@@ -130,9 +130,9 @@ To put the location in a type's subjects, set an explicit prefix, such as
 The platform enforces two things about subjects: what an empty prefix resolves
 to, and the [character rules](#what-a-code-may-contain) for codes. The account
 owner designs the rest. A prefix can have as many literal tokens as you need.
-The demo's access-control hardware uses `acc.{location}.door.{thing}`, and its
-kiosks use `kiosk.{thing}`, because those are the subject hierarchies of the
-apps that drive them. `acc.>` and `kiosk.>` then capture everything each app
+The demo's access-control hardware uses `acc.{location}`, with operation
+suffixes such as `evt.door.{thing}.tap`, and its kiosks use `kiosk.{thing}`,
+because those are the subject hierarchies of the apps that drive them. `acc.>` and `kiosk.>` then capture everything each app
 does.
 
 A suggested starting layout:

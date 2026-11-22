@@ -35,7 +35,7 @@ requester sees only their own company's non-internal data.**
 Every request comes from one of two auth collections. Rules tell them apart
 with `@request.auth.collectionName`.
 
-Both collections set `emailVisibility = true` on create (`internal/authfix`).
+Both collections set `emailVisibility = true` on create (`pbx.EnforceEmailVisibility` from stone-age-io/kit).
 PocketBase hides emails by default, which would break the staff roster and the
 pickers.
 

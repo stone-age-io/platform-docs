@@ -97,11 +97,12 @@ spaces.
 | `nats.stream` | string | `"HELPDESK_EVENTS"` | The helpdesk-owned inbox stream in the hub account. |
 | `nats.durable` | string | `"helpdesk-ingest"` | Durable consumer name. Stable across restarts. |
 | `nats.notify_stream` | string | `"HELPDESK_NOTIFICATIONS"` | The helpdesk-owned outbound event stream. |
+| `nats.code` | string | `""` | This helpdesk's Thing code on the platform (ADR 0008). It goes into the NATS service discovery metadata as `code`. Empty skips discovery registration and changes nothing else. |
 | `inbound.secret` | string | `""` | Basic-auth password for the email webhook. Empty disables inbound email, and mail then arrives only via portal, agent, webhook or NATS. See [Inbound email](#inbound-email). |
 | `inbound.allowed_ips` | string list | `[]` | Optional. Restricts the email webhook to the provider's egress ranges (IPs or CIDRs). |
 | `inbound.reply_to` | string | `""` | Reserved. Read but **not** wired in v1. Replies thread via the PocketBase sender address. |
 | `readiness.interval_seconds` | int | `30` | How often the background prober runs the readiness checks. The endpoint serves the last result, so this is how stale an answer may be, not what a probe costs. |
-| `readiness.timeout_seconds` | int | `10` | Bounds one check, so a slow dependency cannot stall the loop or the others. |
+| `readiness.timeout_seconds` | int | `10` | Bounds one probe. The checks run concurrently, so a slow dependency cannot stall the loop or hold up the others. |
 | `metrics.enabled` | bool | `true` | Registers `GET /metrics`. `false` removes the route rather than serving one that 401s. |
 | `metrics.token` | string | `""` | Required as `Authorization: Bearer <token>`, or as the **password** half of Basic auth (the username is ignored). Empty leaves the endpoint open. |
 

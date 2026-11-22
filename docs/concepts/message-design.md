@@ -81,8 +81,7 @@ The subject says **who** and **what kind**. The payload holds the facts.
 
   An application may add a channel of its own for raw input, such as access
   control's `tap`, as long as no stream captures it. Kiosk (`event`) doesn't
-  use these words yet, and access control still puts the channel after the
-  portal. ADR 0008 lists the renames.
+  use these words yet. ADR 0008 lists the rename.
 - **Put the verb last.** After the channel, the rest of the subject belongs to
   the application, and ends with what happened or what to do:
   `evt.door.lobby-main.alarm`, `cmd.door.lobby-main.grant`. The platform's
@@ -193,7 +192,7 @@ methods:
 | Method | How it works | Who does it |
 | :--- | :--- | :--- |
 | **A key from the producer** | The producer sets a stable `dedupe_key`. While a ticket with that key is open, a repeat adds to a count and opens no new ticket. | The helpdesk |
-| **A `Nats-Msg-Id` header** | The stream stores each message ID once in its duplicate window. | The helpdesk's outbound events, and the [rule engine's publishes](../vendor/rule-router/docs/11-configuration.md#duplicate-publishes) from a JetStream trigger |
+| **A `Nats-Msg-Id` header** | The stream stores each message ID once in its duplicate window. | The helpdesk's outbound events, access control's events, and the [rule engine's publishes](../vendor/rule-router/docs/11-configuration.md#duplicate-publishes) from a JetStream trigger |
 | **The stream sequence** | The consumer stores the message's sequence number with the result, under a unique index. It skips a sequence that it already stored. | Access control's audit consumer |
 | **A write of the end state** | The consumer writes "disarmed", not "change the arm state". A second write changes nothing. | Access control's disarm consumer |
 
@@ -201,8 +200,8 @@ methods:
 does ([ADR 0008](../decisions/0008-application-namespace.md)). It costs one
 header, and it stops a producer's retry at the stream. A consumer that also
 removes duplicates itself keeps doing so, because the stream remembers message
-IDs only for its duplicate window. Today only the helpdesk and the rule engine
-set it.
+IDs only for its duplicate window. Today the helpdesk, access control and the
+rule engine set it.
 
 Prefer messages that state a value ("set to 21") over messages that state a
 change ("add 1" or "toggle"). A repeated value is harmless. A repeated change

@@ -174,11 +174,11 @@ history. That is stateful, windowed computation, which rules cannot express
 well.
 
 1. **The edge controllers** publish each decision on
-   `acc.{location}.{type}.{thing}.evt.tap`, with `user`, `allow` and `ts` in the
+   `acc.{location}.evt.{type}.{thing}.tap`, with `user`, `allow` and `ts` in the
    payload ([Access Control wire protocol](./vendor/access-control/docs/protocol.md)).
    The `ACC_EVENTS` stream stores them.
 2. **Layer 2** (eKuiper or a custom Go processor) reads the granted taps from
-   `acc.*.*.*.evt.tap` through a JetStream consumer. It keeps rolling
+   `acc.*.evt.*.*.tap` through a JetStream consumer. It keeps rolling
    statistics per user over the last 30 days: hour-of-day distribution, door
    use and sequences. For each new event it computes a score against the
    baseline. When the score crosses a threshold, it publishes to

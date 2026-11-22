@@ -270,12 +270,12 @@ stream stores what the controllers report.
 **The decision is not in a layer.** A tap must open the door when the site's
 link is down, so the edge controller decides it: a pure function over the
 policy it mirrors from KV into memory. It then publishes the outcome on
-`acc.{location}.{type}.{thing}.evt.tap`. A rule engine could make the same
+`acc.{location}.evt.{type}.{thing}.tap`. A rule engine could make the same
 decision from KV lookups, but only while it can reach the bus. This is the rule
 of thumb for any application: logic that must keep working offline belongs in a
 process at the edge, and the layers react to what it reports.
 
-**Layer 1** reacts to events. A rule on `acc.*.*.*.evt.alarm` (door forced or
+**Layer 1** reacts to events. A rule on `acc.*.evt.*.*.alarm` (door forced or
 held open) can open a [Helpdesk](./vendor/helpdesk/README.md) ticket or call a
 webhook.
 

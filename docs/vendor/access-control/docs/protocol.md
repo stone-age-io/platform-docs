@@ -29,10 +29,13 @@ this contract is in [Central Service (accessd)](accessd.md) and
 
 ## 1. Subject Namespace
 
-Every subject starts with the app token `acc`. The access app owns the `acc.>`
-subtree. A **portal** (a controllable opening or logical access target) is a
-Thing addressed under it as `acc.{location}.{type}.{thing}`, with the verb at
-the end (`.tap`, `.cmd.*`, `.evt.*`).
+Every subject follows the ecosystem's grammar `{app}.{scope}.{channel}.{rest}`
+([ADR 0008](https://github.com/stone-age-io/platform-docs/blob/main/docs/decisions/0008-application-namespace.md)
+in platform-docs). The app token is `acc`, and the access app owns the `acc.>`
+subtree. The scope is the location code. The channel comes next: `cmd`, `evt`,
+`heartbeat`, or `tap`, access control's own channel for raw reader input. A
+**portal** (a controllable opening or logical access target) is then addressed
+as `{type}.{thing}`, with the verb at the end: `acc.{location}.cmd.door.lobby.grant`.
 
 The leading literal keeps `ACC_EVENTS`'s subjects disjoint from every sibling
 app's stream on a shared NATS account. JetStream forbids overlapping stream
@@ -53,7 +56,7 @@ cuts policy, commands and events.
 record **codes** (e.g. `hq`, `door`, `lobby-main`), never PocketBase ids. The
 mirror rejects a location, portal, controller, aux input/output or area code
 (or a portal type) that is not a single token or that matches a reserved
-keyword (`acc`/`evt`/`cmd`/`tap`/`fire`). It logs the record and never mirrors
+keyword (`acc`/`evt`/`cmd`/`tap`/`fire`/`heartbeat`). It logs the record and never mirrors
 it.
 
 ---
@@ -62,33 +65,38 @@ it.
 
 | Subject | Dir* | Transport | Body |
 | :--- | :--- | :--- | :--- |
-| `acc.{location}.{type}.{thing}.tap` | → ctrl | core NATS | `{"cred":"..."}` or a bare credential string |
-| `acc.{location}.{type}.{thing}.cmd.posture` | → ctrl | core NATS | `{"posture":"…","actor":"…","reason":"…","until":"…"}` |
-| `acc.{location}.{type}.{thing}.cmd.grant` | → ctrl | core NATS | `{"seconds":N,"actor":"…","reason":"…","source"?}` |
-| `acc.{location}.auxout.{thing}.cmd.output` | → ctrl | core NATS | `{"action":"on"\|"off"\|"pulse","seconds":N,"actor":"…","reason":"…"}` |
+| `acc.{location}.tap.{type}.{thing}` | → ctrl | core NATS | `{"cred":"..."}` or a bare credential string |
+| `acc.{location}.cmd.{type}.{thing}.posture` | → ctrl | core NATS | `{"posture":"…","actor":"…","reason":"…","until":"…"}` |
+| `acc.{location}.cmd.{type}.{thing}.grant` | → ctrl | core NATS | `{"seconds":N,"actor":"…","reason":"…","source"?}` |
+| `acc.{location}.cmd.auxout.{thing}.output` | → ctrl | core NATS | `{"action":"on"\|"off"\|"pulse","seconds":N,"actor":"…","reason":"…"}` |
 | `acc.{location}.evt.fire` | ↔ | core NATS → JetStream | `{"active":bool,"ts"}` |
-| `acc.{location}.{type}.{thing}.evt.tap` | ctrl → (accessd → for a denied badge unlock) | core NATS → JetStream | `{"cred","user","allow","reason","ts","source"?}` |
-| `acc.{location}.{type}.{thing}.evt.state` | ctrl → | core NATS → JetStream | `{"posture","actor?","reason?","ts"}` |
-| `acc.{location}.{type}.{thing}.evt.alarm` | ctrl → | core NATS → JetStream | `{"type","ts"}` |
-| `acc.{location}.area.{code}.evt.alarm` | ctrl → | core NATS → JetStream | `{"type":"intrusion","point","ts"}` |
-| `acc.{location}.area.{code}.evt.state` | accessd → | core NATS → JetStream | `{"arm","previous","controller","armSource","ts"}` |
-| `acc.{location}.ctrl.{code}.evt.state` | accessd → | core NATS → JetStream | `{"status","lastSeen","ts"}` |
-| `acc.{location}.ctrl.{code}.heartbeat` | ctrl → accessd | core NATS (**not** JetStream) | `{"code","location","ts"}` |
-| `acc.{location}.ctrl.{code}.health` | → ctrl, request/reply | core NATS (**not** JetStream) | any request body; the reply is the [health report](#controller-health) |
+| `acc.{location}.evt.{type}.{thing}.tap` | ctrl → (accessd → for a denied badge unlock) | core NATS → JetStream | `{"cred","user","allow","reason","ts","source"?}` |
+| `acc.{location}.evt.{type}.{thing}.state` | ctrl → | core NATS → JetStream | `{"posture","actor?","reason?","ts"}` |
+| `acc.{location}.evt.{type}.{thing}.alarm` | ctrl → | core NATS → JetStream | `{"type","ts"}` |
+| `acc.{location}.evt.area.{code}.alarm` | ctrl → | core NATS → JetStream | `{"type":"intrusion","point","ts"}` |
+| `acc.{location}.evt.area.{code}.state` | accessd → | core NATS → JetStream | `{"arm","previous","controller","armSource","ts"}` |
+| `acc.{location}.evt.ctrl.{code}.state` | accessd → | core NATS → JetStream | `{"status","lastSeen","ts"}` |
+| `acc.{location}.heartbeat.ctrl.{code}` | ctrl → accessd | core NATS (**not** JetStream) | `{"code","location","ts"}` |
+| `acc.{location}.cmd.ctrl.{code}.health` | → ctrl, request/reply | core NATS (**not** JetStream) | any request body; the reply is the [health report](#controller-health) |
 
 \* → ctrl: the controller subscribes. ctrl →: the controller publishes.
 accessd →: accessd publishes. ↔: both (see fire under
 [Command Details](#command-details)).
 
-All bodies are JSON, except that `.tap` also accepts a bare credential string.
-`ts` is RFC 3339 UTC.
+All bodies are JSON, except that a `tap` subject also accepts a bare credential
+string. `ts` is RFC 3339 UTC.
+
+Every publish on the `evt` channel carries a `Nats-Msg-Id` header, made once per
+event, so `ACC_EVENTS` stores an event once within its duplicate window even if
+the publish is retried. Commands, taps and heartbeats carry none: no stream
+captures them.
 
 ### Events accessd publishes
 
 Besides the `evt.tap` for a denied badge remote unlock (see
 [Audit Projection](#11-audit-projection)), two event subjects come from
 **accessd**, not the edge. Both are `evt.state`, told apart by the `{type}`
-token. Both fit the existing `acc.*.*.*.evt.>` stream subject, so neither
+token. Both fit the existing `acc.*.evt.>` stream subject, so neither
 needed a stream change.
 
 **`area`: an arm/disarm transition.** Every way an area changes arm-state (the
@@ -112,21 +120,21 @@ projector emits the event from there.
 **`ctrl`: a liveness transition.** Heartbeats stay off the stream, because
 they would flood it. An online↔offline flip is one event per outage, and it is
 audited. `ctrl` is the reserved controller token the heartbeat also uses. The
-heartbeat sits outside `.evt` at 5 tokens so the stream cannot capture it; this
-event sits inside at 6 so it can. `status` is `online`/`offline`. `lastSeen` is
+heartbeat rides its own channel, so the stream cannot capture it; this event
+rides `evt`, so it can. `status` is `online`/`offline`. `lastSeen` is
 the controller record's `last_seen` in PocketBase's datetime format
 (`2006-01-02 15:04:05.000Z`), not RFC 3339. The subject's `{location}` comes
 from the `controllers` record's location, not from the heartbeat subject.
 
 ### Subscriptions
 
-The NATS reader subscribes to the **exact** `.tap` subject of each portal it
+The NATS reader subscribes to the **exact** `tap` subject of each portal it
 has armed (the portal's own location/type/code), not a location wildcard, so it
 hears only portals this box drives.
 
 Commands are subscribed per location with wildcards, on the controller's own
-`controller.location`: `acc.{location}.*.*.cmd.posture`,
-`acc.{location}.*.*.cmd.grant` and `acc.{location}.*.*.cmd.output` (aux
+`controller.location`: `acc.{location}.cmd.*.*.posture`,
+`acc.{location}.cmd.*.*.grant` and `acc.{location}.cmd.*.*.output` (aux
 outputs). Every controller at a location hears every command there and
 silently ignores those for portals and outputs it does not drive. A portal
 whose location differs from its controller's still gets its taps, but not
@@ -134,29 +142,24 @@ commands or fire.
 
 ### Stream capture
 
-The audit surface is the `acc.*.…evt` subtree. `ACC_EVENTS` captures it, and
-the audit consumer projects it into the `events` collection, through **two
-stream subjects of different fixed arity**:
+The audit surface is the `evt` channel. `ACC_EVENTS` captures all of it with
+the one stream subject `acc.*.evt.>`, and the audit consumer projects it into
+the `events` collection. That takes in the location-scoped fire
+(`acc.{location}.evt.fire`) and every portal, area and controller event
+(`acc.{location}.evt.{type}.{thing}.{kind}`). The subject leads with the
+literal `acc`, so it does not overlap a sibling stream rooted at another
+literal (`agents.>`, `kiosk.>`, `helpdesk.>`, …) on a shared account.
 
-- `acc.*.evt.fire`: the 4-token location-scoped fire
-  (`acc.{location}.evt.fire`)
-- `acc.*.*.*.evt.>`: the 6+-token portal events
-  (`acc.{location}.{type}.{thing}.evt.{kind}`)
-
-JetStream forbids overlapping subjects, so the short one has no trailing `>`.
-A 4-token subject can never match the 6+-token pattern, so the two are
-disjoint. Both lead with the literal `acc`, so neither overlaps a sibling
-stream rooted at another literal (`things.>`, `cameras.>`, `kiosk.*.event.>`,
-…) on a shared account.
+The stream is created with CreateOrUpdate, so a deployment that ran an older
+version picks up this subject at startup.
 
 ### Controller heartbeat
 
-A **controller** is addressed under the reserved `acc.{location}.ctrl.{code}`
-namespace (`ctrl` is not a portal type). Its heartbeat sits outside the `.evt`
-subtree: a 5-token subject with no `evt`, so it matches neither audit pattern
-and `ACC_EVENTS` never captures it.
+A **controller** is addressed with the reserved `{type}` `ctrl` (`ctrl` is not
+a portal type). Its heartbeat, `acc.{location}.heartbeat.ctrl.{code}`, rides the
+`heartbeat` channel, outside `evt`, so `ACC_EVENTS` never captures it.
 
-accessd subscribes to `acc.*.ctrl.*.heartbeat` over core NATS and writes the
+accessd subscribes to `acc.*.heartbeat.ctrl.*` over core NATS and writes the
 controller's `last_seen`/`status` directly on the `controllers` record, not as
 an `events` row (which would flood the audit log). A controller publishes one
 heartbeat on start, then every `controller.heartbeatInterval` (default 15s).
@@ -166,12 +169,12 @@ that window, so the flip lands up to a third late.
 
 ### Controller health
 
-A controller answers a request on `acc.{location}.ctrl.{code}.health` with its
+A controller answers a request on `acc.{location}.cmd.ctrl.{code}.health` with its
 live state, so a field check needs no SSH tunnel to the
 [status page](controller.md#5-the-local-status-page):
 
 ```
-nats req acc.hq.ctrl.ctrl-hq-1.health ''
+nats req acc.hq.cmd.ctrl.ctrl-hq-1.health ''
 ```
 
 The reply is the status page's `/status.json` report **without its recent
@@ -375,9 +378,9 @@ an extra armed-zone roll-up. A portal with no area, or whose area is disarmed,
 escalates nothing.
 
 Intrusion alarms are addressed as a Thing of type `area` and reuse the generic
-alarm subject `acc.{location}.area.{areacode}.evt.alarm`, with body
+alarm subject `acc.{location}.evt.area.{areacode}.alarm`, with body
 `{"type":"intrusion","point":"<aux-or-portal-code>","ts"}`. The existing
-6-token portal-event wildcard captures them with no new stream subject. They
+`acc.*.evt.>` stream subject captures them with no change. They
 go through the same fire-suppression gate as door alarms. Like `forced`, an
 intrusion alarm is **edge-triggered**: one per active edge, so a
 continuously-asserted point fires once. There is no controller-side latch and
@@ -416,7 +419,7 @@ audit and notify consumers:
 | :--- | :--- |
 | Durable | `acc-disarm` |
 | Deliver policy | `DeliverNew` |
-| Filter | `acc.*.*.*.evt.tap` |
+| Filter | `acc.*.evt.*.*.tap` |
 
 - Only a **credential** grant disarms: `allow` with a `cred` **and**
   `reason=allow_grant`, the one allow `policy.Decide` returns after checking
@@ -494,7 +497,7 @@ the controller's resulting `evt.tap` say so (an operator grant's says
 `command`). The grant carries no `cred`, so, like an operator door-pop, a badge
 remote unlock **cannot** trigger entry-disarm.
 
-A badge action never publishes to `.tap`. `Tap.Source` exists so a physical
+A badge action never publishes on the `tap` channel. `Tap.Source` exists so a physical
 read is distinguishable from a synthesized one. A phone-initiated open is a
 command, and recording it as a credential presentation would put something
 untrue in the audit trail.
@@ -570,7 +573,7 @@ portal at idle (from the bindings snapshot, before policy syncs).
 
 | Value | Behavior |
 | :--- | :--- |
-| `nats` (default) | Taps arrive by publishing to `acc.{location}.{type}.{thing}.tap`. The simulated and integration path, driven with `nats pub`. |
+| `nats` (default) | Taps arrive by publishing to `acc.{location}.tap.{type}.{thing}`. The simulated and integration path, driven with `nats pub`. |
 | `osdp` | A real OSDP reader polled on the model's RS485 bus. Clear-text in v1; OSDP Secure Channel is a planned fast-follow. |
 | `both` | The NATS reader for **every** portal, plus the OSDP reader for the portals that have a physical reader. |
 
@@ -975,7 +978,7 @@ exists for any of the newer shapes:
 | `area` | `alarm` | An intrusion trip |
 | `area` | `state` | An arm/disarm transition |
 | `ctrl` | `state` | A controller liveness transition |
-| *(empty)* | `fire` | A location's fire input (4-token subject) |
+| *(empty)* | `fire` | A location's fire input (`acc.{location}.evt.fire`) |
 
 - For `acc.{location}.evt.fire`, `portal` and `type` are empty and `kind` is
   `fire`.
@@ -1004,7 +1007,7 @@ values out of one more place. The badge routes also write an
 A second, independent durable consumer (`acc-notify`,
 [`internal/notify`](https://github.com/stone-age-io/access-control/blob/main/internal/notify)) on `ACC_EVENTS` emails on `alarm`/
 `fire` and controller liveness transitions. Its filter is
-`acc.*.*.*.evt.alarm`, `acc.*.evt.fire` and `acc.*.ctrl.*.evt.state`, not
+`acc.*.evt.*.*.alarm`, `acc.*.evt.fire` and `acc.*.evt.ctrl.*.state`, not
 portal or area `evt.state`.
 
 - It runs parallel to `acc-audit`, not coupled to it. The audit consumer is an

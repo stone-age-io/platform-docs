@@ -373,18 +373,18 @@ door alarm fires.
 The command handler ([`commands.go`](https://github.com/stone-age-io/access-control/blob/main/internal/controller/commands.go))
 subscribes per location over core NATS:
 
-- `acc.{location}.*.*.cmd.posture`: sets a runtime override, or `clear`
+- `acc.{location}.cmd.*.*.posture`: sets a runtime override, or `clear`
   reverts to the effective posture. Each set or clear emits one `evt.state`.
   `until` is ignored with a warning; timed reversion needs an external
   scheduler.
-- `acc.{location}.*.*.cmd.grant`: a momentary pulse, logged as an `evt.tap`
+- `acc.{location}.cmd.*.*.grant`: a momentary pulse, logged as an `evt.tap`
   with `allow_command_grant`. Under an effective `lockdown` or `disabled`
   posture, including a runtime override, it is refused whoever sent it: no
   pulse, and the `evt.tap` says `deny_lockdown` or `deny_point_disabled`. This
   is the only place a runtime override can stop a badge remote unlock, since
   accessd never sees the override. See
   [Commanded grants](protocol.md#commanded-grants).
-- `acc.{location}.*.*.cmd.output`: `on`, `off` or `pulse` on an aux output.
+- `acc.{location}.cmd.*.*.output`: `on`, `off` or `pulse` on an aux output.
 - `acc.{location}.evt.fire`: sets or clears the location's fire state.
 
 Every controller at a location hears every command there and ignores those for
@@ -430,8 +430,8 @@ posture, posture source or held flag changes. Value shapes are in
 ### Heartbeat
 
 The heartbeat publishes `{"code","location","ts"}` to
-`acc.{location}.ctrl.{code}.heartbeat` over core NATS. The subject sits
-outside the `.evt` subtree, so `ACC_EVENTS` never stores it. accessd updates
+`acc.{location}.heartbeat.ctrl.{code}` over core NATS. The subject sits
+on the `heartbeat` channel, outside `evt`, so `ACC_EVENTS` never stores it. accessd updates
 the `controllers` record from it and marks the box offline after
 `accessd.controllerOfflineAfter` (default `45s`). No heartbeat is sent when
 `controller.code` is empty. See
@@ -621,7 +621,7 @@ Notes for scripts:
 | `policy synced` but `NATS disconnected` | The box lost NATS after syncing. It keeps deciding; events are held in memory until it reconnects. |
 | No portals bound | `controller.code` does not match the code on the portals' `controller` relation, or the controller record is missing. |
 | A portal shows `bound, not armed` | Search the logs for `failed to arm portal hardware` or `failed to arm portal reader`. Usual causes: a relay or input index not on the board, a busy GPIO line, an OSDP `reader_address` of `-1` under `reader: osdp`, an address shared with another portal, or a portal with no type. It retries only on the next policy change, so fix the record and save it. |
-| Portal is armed but taps never reach the decision list | Under `nats`, publish to the exact `acc.{location}.{type}.{thing}.tap`. Under `osdp`, check `reader_address` against the reader's PD address and the logs for `card read from unmapped PD address`. |
+| Portal is armed but taps never reach the decision list | Under `nats`, publish to the exact `acc.{location}.tap.{type}.{thing}`. Under `osdp`, check `reader_address` against the reader's PD address and the logs for `card read from unmapped PD address`. |
 | Every tap denies | Read the reason code. `deny_unknown_credential` means the credential value is not in policy (OSDP reads arrive as lowercase hex). Compare the Policy tiles with what you expect. |
 | `door` stays `unknown` | `driver: mock`, no DPS wired (`dpsInput` is 0), or no DPS edge since boot. |
 | `door` reads `open` with the door shut | The contact sense is inverted. Set `dps_contact` on the portal; do not rewire. |
@@ -709,13 +709,13 @@ its version and start time. See
 [Service discovery](protocol.md#service-discovery).
 
 The service has one read-only endpoint, `health`, on
-`acc.{location}.ctrl.{code}.health`. It answers with the
+`acc.{location}.cmd.ctrl.{code}.health`. It answers with the
 [status page](#5-the-local-status-page)'s report without the recent decisions,
 which carry raw credential values. It is always on, and nothing can be
 controlled through it:
 
 ```
-nats req acc.hq.ctrl.ctrl-hq-1.health ''
+nats req acc.hq.cmd.ctrl.ctrl-hq-1.health ''
 ```
 
 Read `policy.state` first: `synced`, `cached` or `loading`. See
@@ -738,18 +738,19 @@ off a trusted network, put it behind a firewall.
 
 A controller's NATS identity needs:
 
-- **Subscribe:** `acc.{location}.*.*.cmd.posture`, `.cmd.grant` and
-  `.cmd.output`; `acc.{location}.evt.fire`; and, under `reader: nats` or
-  `both`, each armed portal's `.tap` subject.
-- **Publish:** `acc.{location}.{type}.{thing}.evt.>` for its portals,
-  `acc.{location}.area.{code}.evt.alarm` for its areas,
+- **Subscribe:** `acc.{location}.cmd.*.*.posture`, `acc.{location}.cmd.*.*.grant`
+  and `acc.{location}.cmd.*.*.output`; `acc.{location}.evt.fire`; and, under
+  `reader: nats` or `both`, each armed portal's `acc.{location}.tap.{type}.{code}`
+  subject.
+- **Publish:** `acc.{location}.evt.{type}.{thing}.>` for its portals,
+  `acc.{location}.evt.area.{code}.alarm` for its areas,
   `acc.{location}.evt.fire` if it owns a fire input, and
-  `acc.{location}.ctrl.{code}.heartbeat`.
+  `acc.{location}.heartbeat.ctrl.{code}`.
 - **JetStream KV:** read and watch `ACC_POLICY`; put and delete in
   `ACC_STATUS`.
 - **Discovery:** subscribe on `$SRV.>`, and publish on `_INBOX.>` (or
   `allow_responses`) to reply. Without it only discovery is lost.
-- **Health:** subscribe on `acc.{location}.ctrl.{code}.health`, with the same
+- **Health:** subscribe on `acc.{location}.cmd.ctrl.{code}.health`, with the same
   way to reply. Without it only the health endpoint is lost.
 
 Use one NATS identity per controller.

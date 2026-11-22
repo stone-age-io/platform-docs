@@ -81,7 +81,7 @@ credential subscribe on `$SRV.>` and a way to reply: publish on `_INBOX.>`,
 or `allow_responses: true`. Without them, discovery is refused for that
 process and nothing else changes. nats.go prints the refusal to stderr.
 A controller's [health endpoint](protocol.md#controller-health) also needs
-subscribe on `acc.{location}.ctrl.{code}.health`, with the same way to reply.
+subscribe on `acc.{location}.cmd.ctrl.{code}.health`, with the same way to reply.
 :::
 
 ### TLS
@@ -388,10 +388,10 @@ in [Edge Controller (access-controller)](controller.md).
 |---|---|---|---|
 | `controller.code` | `""` | `SA_CONTROLLER_CODE` | Matches a `controllers` record. The box arms every portal whose `controller` relation points at this code. |
 | `controller.location` | `""` | `SA_CONTROLLER_LOCATION` | Location code. Selects the timezone and scopes the command and fire subscriptions. |
-| `controller.heartbeatInterval` | `15s` | `SA_CONTROLLER_HEARTBEATINTERVAL` | Liveness cadence to `acc.{location}.ctrl.{code}.heartbeat`. |
+| `controller.heartbeatInterval` | `15s` | `SA_CONTROLLER_HEARTBEATINTERVAL` | Liveness cadence to `acc.{location}.heartbeat.ctrl.{code}`. |
 | `controller.driver` | `mock` | `SA_CONTROLLER_DRIVER` | `mock` (simulated, no I/O, no door monitoring) or `gpio` (real relays and DPS/REX; Linux only). Under `gpio`, the `model` picks the physical transport: native GPIO char device or an MCP23017 I2C expander. |
 | `controller.model` | `""` | `SA_CONTROLLER_MODEL` | Hardware profile. It maps a portal's logical relay and input indices to physical lines, selects the lock and input transport (native GPIO char device or MCP23017 over I2C), **and** provides the OSDP RS485 serial port: `kincony-server-mini` (CM4, GPIO, `/dev/ttyAMA0`) or `kincony-pi5r8` (CM5, I2C, `/dev/ttyAMA2`). **Required when `driver: gpio`, `reader: osdp` or `reader: both`.** Must match the `controllers` record. |
-| `controller.reader` | `nats` | `SA_CONTROLLER_READER` | Credential reader: `nats` (simulated taps published to `acc.{location}.{type}.{thing}.tap`, for dev), `osdp` (a real OSDP reader on the model's RS485 bus, clear-text in v1), or `both` (NATS for every portal **plus** OSDP for portals that have a reader). Independent of `driver`; the lock and door stay on GPIO or I2C. **`osdp` and `both` require `model`.** A portal opts into OSDP through its `reader_address`: `>= 0` means an OSDP reader at that PD address, `-1` means NATS-only. Tap events carry a `source` (`nats` or `osdp`). |
+| `controller.reader` | `nats` | `SA_CONTROLLER_READER` | Credential reader: `nats` (simulated taps published to `acc.{location}.tap.{type}.{thing}`, for dev), `osdp` (a real OSDP reader on the model's RS485 bus, clear-text in v1), or `both` (NATS for every portal **plus** OSDP for portals that have a reader). Independent of `driver`; the lock and door stay on GPIO or I2C. **`osdp` and `both` require `model`.** A portal opts into OSDP through its `reader_address`: `>= 0` means an OSDP reader at that PD address, `-1` means NATS-only. Tap events carry a `source` (`nats` or `osdp`). |
 
 ### Offline config cache
 

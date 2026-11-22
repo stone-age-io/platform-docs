@@ -152,7 +152,7 @@ accessd is the only binary that creates these. Names come from config (see
 | :--- | :--- | :--- | :--- |
 | KV bucket | `ACC_POLICY` | Creates or updates; writes | The policy mirror. Controllers bind it read-only |
 | KV bucket | `ACC_STATUS` | Creates or updates; watches | The device shadow. Controllers write it |
-| JetStream stream | `ACC_EVENTS` | Creates or updates (file storage); consumes | Events, on `acc.*.evt.fire` and `acc.*.*.*.evt.>` |
+| JetStream stream | `ACC_EVENTS` | Creates or updates (file storage); consumes | Events, on `acc.*.evt.fire` and `acc.*.evt.>` |
 
 The stream's subjects are derived from `subjects.app`, so `serve` rewrites them
 to match on every boot. accessd sets only the name, subjects and storage, and no
@@ -221,10 +221,10 @@ projection, and a redelivery to one never re-sends through another.
 
 | Durable | Starts from | Filter | Redelivery |
 | :--- | :--- | :--- | :--- |
-| `acc-audit` | The start of the stream (`DeliverAll`) | `acc.*.evt.fire`, `acc.*.*.*.evt.>` | Backs off 1s → 2min (about six minutes in total), then `Term` after nine deliveries |
-| `acc-notify` | New messages (`DeliverNew`) | `acc.*.*.*.evt.alarm`, `acc.*.evt.fire`, `acc.*.ctrl.*.evt.state` | `Nak`; `MaxDeliver` 5, `AckWait` 30s |
+| `acc-audit` | The start of the stream (`DeliverAll`) | `acc.*.evt.fire`, `acc.*.evt.>` | Backs off 1s → 2min (about six minutes in total), then `Term` after nine deliveries |
+| `acc-notify` | New messages (`DeliverNew`) | `acc.*.evt.*.*.alarm`, `acc.*.evt.fire`, `acc.*.evt.ctrl.*.state` | `Nak`; `MaxDeliver` 5, `AckWait` 30s |
 | `acc-webhook` | New messages (`DeliverNew`) | Same as notify | `Nak`; `MaxDeliver` 8, `AckWait` 60s, 10s request timeout |
-| `acc-disarm` | New messages (`DeliverNew`) | `acc.*.*.*.evt.tap` | `Nak`; `MaxDeliver` 5, `AckWait` 30s |
+| `acc-disarm` | New messages (`DeliverNew`) | `acc.*.evt.*.*.tap` | `Nak`; `MaxDeliver` 5, `AckWait` 30s |
 
 `DeliverNew` decides only where a durable starts the first time it is created.
 After that each durable keeps its position on the NATS server (§5).
@@ -247,16 +247,16 @@ After that each durable keeps its position on the NATS server (§5).
   [Audit Projection](protocol.md#11-audit-projection).
 - **Status projector.** Watches `ACC_STATUS` into `point_status`. At each
   watch sync it deletes rows whose key no longer exists. When an `area` row's
-  state changes it publishes `acc.{location}.area.{code}.evt.state`, one per
+  state changes it publishes `acc.{location}.evt.area.{code}.state`, one per
   participating controller; a key's first report is not a transition. See
   [Status KV](protocol.md#9-status-kv-acc_status) and
   [Events accessd publishes](protocol.md#events-accessd-publishes).
-- **Controller health.** Each heartbeat on `acc.*.ctrl.*.heartbeat` stamps
+- **Controller health.** Each heartbeat on `acc.*.heartbeat.ctrl.*` stamps
   `last_seen` and sets `status: online`. A heartbeat from a code with no
   `controllers` record is counted and ignored, never auto-created. The sweep
   marks an `online` controller `offline` once its `last_seen` is older than
   `controllerOfflineAfter`. Each online↔offline flip publishes
-  `acc.{location}.ctrl.{code}.evt.state`; heartbeats themselves never reach the
+  `acc.{location}.evt.ctrl.{code}.state`; heartbeats themselves never reach the
   events stream.
 - **Notification sink.** Emails on alarms, a fire input asserting (never its
   clear) and controller-offline when

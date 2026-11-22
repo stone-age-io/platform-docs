@@ -241,7 +241,7 @@ points. They are bound to a controller in policy like portals, and armed by
 the controller's `AuxManager`:
 
 - **`aux_output`**: a relay (`relay_index`) driven by `cmd.output` on
-  `acc.{location}.auxout.{code}.cmd.output`, with `on` / `off` (standing
+  `acc.{location}.cmd.auxout.{code}.output`, with `on` / `off` (standing
   state) or `pulse` (seconds from the command, else the record's
   `pulse_seconds`, else 5 s).
 - **`aux_input`**: an input (`input_index`, `contact`) whose edges arrive on
@@ -289,7 +289,7 @@ tap in the audit trail.
 
 ### `nats`
 
-Simulated taps are published to `acc.{location}.{type}.{thing}.tap` (see
+Simulated taps are published to `acc.{location}.tap.{type}.{thing}` (see
 [Wire Protocol](protocol.md)). Drive it with `nats pub` for development and
 integration.
 
