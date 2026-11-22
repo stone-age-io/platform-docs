@@ -15,6 +15,7 @@ ADRs 0005 to 0007 decide things in the services repository and live there. These
 - [ADR 0006: History Services for Metrics and Logs](vendor/services/docs/decisions/0006-history-services.md) (deferred)
 - [ADR 0007: creds-keeper, Platform-Managed Credentials for Account Services](vendor/services/docs/decisions/0007-creds-keeper.md)
 
-ADR 0008 is ecosystem-scoped, like ADR 0002, and lives here.
+ADRs 0008 and 0009 are ecosystem-scoped, like ADR 0002, and live here.
 
 - [ADR 0008: One Namespace, Event Shape and Identity for Applications](decisions/0008-application-namespace.md) (accepted, not yet implemented)
+- [ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit](decisions/0009-thing-credentials-in-kit.md) (proposed)
