@@ -310,9 +310,13 @@ by environment variable. A first start wrote the creds file and the session
 and connected. A restart without the password connected from the session. A
 Revoke reached the running process: the creds file was rewritten within one
 sync, the server cut the old connection, and the client reconnected with the
-new file two seconds later, with no restart. The run did not reach JetStream
-(the test machine lacked the account's storage), so the `helpdesk` role's
-JetStream grants are still unexercised under a live process.
+new file two seconds later, with no restart. That run did not reach JetStream,
+because the test machine lacked the account's storage. A later run with
+storage exercised the JetStream grants the helpdesk uses. It
+created `HELPDESK_EVENTS` and `HELPDESK_NOTIFICATIONS` and started its
+durable consumer. A `helpdesk.ops.cmd.tickets.create` from another Thing
+became a ticket, and its `ticket.created` event was published on
+`helpdesk.ops.evt.ticket.created` and stored in `HELPDESK_NOTIFICATIONS`.
 
 **Access control, against a local platform.** Its `contract/` was applied and a
 Thing provisioned for accessd and for a controller, each on its own role.
