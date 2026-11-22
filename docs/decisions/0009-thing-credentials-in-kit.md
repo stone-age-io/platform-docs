@@ -4,7 +4,7 @@ nav_order: 90
 ---
 # ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit
 
-**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by the helpdesk and access control; the kiosk has not adopted it yet. See [As implemented](#as-implemented).
+**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by all three applications: the helpdesk, access control and the kiosk. See [As implemented](#as-implemented).
 **Date:** 2026-11-21, revised 2026-11-22 after review
 
 > This ADR is ecosystem-scoped, like [ADR 0008](./0008-application-namespace.md). It decides how our own applications (the helpdesk, access control, kiosk and the services) get their NATS credential from the platform. It moves creds-keeper's package into [`stone-age-io/kit`](https://github.com/stone-age-io/kit), lets an application run it inside its own process, and adds device-held NATS keys to it.
@@ -281,7 +281,8 @@ that run comes first:
 Implemented on 2026-11-22 in `stone-age-io/kit` (`credskeeper`), `stone-age-io/services`
 (the binary and the watchdog) and the platform's e2e suite. The helpdesk
 adopted it the same day (helpdesk `4c9b915`), and so did access control, in
-both binaries (access-control `1a9e180`).
+both binaries (access-control `1a9e180`), and the kiosk, in all three
+(kiosk `f0fa847`).
 
 **Verified against the real platform binary and NATS server.** The platform's
 `e2e/credskeeper_test.go` runs the kit's keeper against the real routes. It is
@@ -323,6 +324,18 @@ reached the running controller, which reconnected with the new file within a
 second. A reboot with the platform and NATS down booted at once from the
 file it had.
 
+**The kiosk, against a local platform.** Its `contract/` was applied and a
+Thing provisioned for the kiosk controller and for a kiosk node. The
+controller wrote its credentials outside its data directory, restarted
+without the password on its session, and served every readiness check `ok`.
+A Revoke reached the running node, which reconnected with the new file two
+seconds later. The run found a defect outside the keeper: the
+`kiosk-controller` role's user JWT is 4,745 bytes, over nats-server's default
+`max_control_line` of 4,096, so the server refuses the connect whichever way
+the creds file arrives. Raising the limit in `nats.conf` and reloading it with
+`SIGHUP` let the run finish. A contract role must fit that limit, or the
+exported `nats.conf` must raise it; neither is done yet.
+
 **Not yet verified:**
 
 - **The watchdog binary with the keeper inside it.** Its wiring is a few lines
@@ -332,7 +345,8 @@ file it had.
   creds file or session file inside `data_dir` and its container keeps them
   on a separate `/creds` volume, so a backup cannot contain them. No backup
   has been taken and inspected.
-- **The kiosk** still takes a creds file by hand.
+- **The kiosk's timeclock terminal.** It shares the node's code path, but did
+  not run.
 - **A controller on its hardware.** The run used the mock driver.
 
 **Deviations from the text above:**
@@ -358,7 +372,9 @@ file it had.
    `credentials` failing, until a restart. accessd waits 30s and exits, as it
    does when NATS is unreachable. An access controller waits without a bound,
    since before its first file it has no policy or bindings to arm; a reboot
-   that finds the file never waits.
+   that finds the file never waits. A kiosk node or timeclock waits 30s and
+   serves without NATS, like the helpdesk; the kiosk controller waits 30s and
+   exits, like accessd.
 
 ---
 
