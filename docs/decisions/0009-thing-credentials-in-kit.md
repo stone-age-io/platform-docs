@@ -4,7 +4,7 @@ nav_order: 90
 ---
 # ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit
 
-**Status:** Accepted, 2026-11-22. Implemented in the kit and the services; the applications have not adopted it yet. See [As implemented](#as-implemented).
+**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by the helpdesk; access control and the kiosk have not adopted it yet. See [As implemented](#as-implemented).
 **Date:** 2026-11-21, revised 2026-11-22 after review
 
 > This ADR is ecosystem-scoped, like [ADR 0008](./0008-application-namespace.md). It decides how our own applications (the helpdesk, access control, kiosk and the services) get their NATS credential from the platform. It moves creds-keeper's package into [`stone-age-io/kit`](https://github.com/stone-age-io/kit), lets an application run it inside its own process, and adds device-held NATS keys to it.
@@ -279,7 +279,8 @@ that run comes first:
 ## As implemented
 
 Implemented on 2026-11-22 in `stone-age-io/kit` (`credskeeper`), `stone-age-io/services`
-(the binary and the watchdog) and the platform's e2e suite.
+(the binary and the watchdog) and the platform's e2e suite. The helpdesk
+adopted it the same day (helpdesk `4c9b915`).
 
 **Verified against the real platform binary and NATS server.** The platform's
 `e2e/credskeeper_test.go` runs the kit's keeper against the real routes. It is
@@ -300,15 +301,28 @@ enrollment followed by a new seed on the next sync, losing an enrollment race
 (409) to another client, and `WaitForCreds` on a first start, on a file left
 from an earlier run, and with the platform down.
 
+**The helpdesk, against a local platform.** Its `contract/` was applied with
+`stone apply --template`, a Thing was provisioned on the `helpdesk` role, and
+the helpdesk was configured from `helpdesk.yaml` with the password given only
+by environment variable. A first start wrote the creds file and the session
+and connected. A restart without the password connected from the session. A
+Revoke reached the running process: the creds file was rewritten within one
+sync, the server cut the old connection, and the client reconnected with the
+new file two seconds later, with no restart. The run did not reach JetStream
+(the test machine lacked the account's storage), so the `helpdesk` role's
+JetStream grants are still unexercised under a live process.
+
 **Not yet verified:**
 
 - **The watchdog binary with the keeper inside it.** Its wiring is a few lines
   around the package the e2e suite runs, but the watchdog itself has not run
   against a live platform.
-- **A PocketBase application's backup.** No PocketBase application has adopted
-  the keeper yet.
-- **The applications.** The helpdesk, access control and the kiosk still take a
-  creds file by hand. Each adopts the keeper in its own change.
+- **A PocketBase application's backup, as a backup.** The helpdesk refuses a
+  creds file or session file inside `data_dir` and its container keeps them
+  on a separate `/creds` volume, so a backup cannot contain them. No backup
+  has been taken and inspected.
+- **Access control and the kiosk** still take a creds file by hand. Each
+  adopts the keeper in its own change.
 
 **Deviations from the text above:**
 
@@ -322,6 +336,15 @@ from an earlier run, and with the platform down.
 4. **The lapsed-session `fix` text says "the platform password"**, not
    `PLATFORM_PASSWORD`, because an application names it in its own
    configuration.
+5. **The application makes the credential directory.** The keeper writes only
+   into a directory that exists, because a directory it made for the
+   standalone binary could have the wrong owner. The helpdesk creates it
+   (0700) before `New`, as PocketBase creates `data_dir`. §2's snippet
+   leaves this out, and the next application needs the same few lines.
+6. **A first start waits a bounded time.** §2's snippet returns the
+   `WaitForCreds` error. The helpdesk serves without NATS anyway, so it waits
+   up to 30s, then serves without NATS, with `credentials` failing, until a
+   restart.
 
 ---
 

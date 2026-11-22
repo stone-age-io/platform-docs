@@ -18,4 +18,4 @@ ADRs 0005 to 0007 decide things in the services repository and live there. These
 ADRs 0008 and 0009 are ecosystem-scoped, like ADR 0002, and live here.
 
 - [ADR 0008: One Namespace, Event Shape and Identity for Applications](decisions/0008-application-namespace.md) (accepted, implemented)
-- [ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit](decisions/0009-thing-credentials-in-kit.md) (accepted, implemented in the kit and the services)
+- [ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit](decisions/0009-thing-credentials-in-kit.md) (accepted, implemented in the kit and the services, adopted by the helpdesk)

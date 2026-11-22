@@ -43,7 +43,10 @@ names the program.
    - `go k.Run(ctx)`, then `k.WaitForCreds(ctx)` before the NATS connect,
      which fails at once on a missing creds file;
    - keep its directory persistent and out of the application's backups,
-     so not under `pb_data/`.
+     so not under `pb_data/`, and create it (0700) before `New`: the
+     keeper writes only into a directory that exists. The helpdesk is the
+     worked example: its `platform:` config block, `/creds` volume and
+     `cmd/helpdesk/main.go`.
 
    A program that cannot link Go, such as Telegraf, runs the
    [creds-keeper](./vendor/services/docs/creds-keeper.md) binary beside it
