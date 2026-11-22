@@ -347,7 +347,7 @@ A non-self punch sets exactly one actor field (`recorded_by_admin`,
 
 "Is this user clocked in" is **derived**. It is the latest punch by
 `occurred_at` (with `created` as the tiebreaker), merged with the fleet
-`punch_state` replica. There is no materialized open-shifts table, on purpose.
+`punch` replica. There is no materialized open-shifts table, on purpose.
 The migration is shared, so the controller's database has the collection too,
 and the aggregator projects fleet punches into it.
 

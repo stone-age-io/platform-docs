@@ -64,7 +64,7 @@ dev box). A `.creds` file is the recommended choice for a backend service.
 
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
-| `nats.credsFile` | `""` | `SA_NATS_CREDSFILE` | JWT + nkey `.creds` file. **Must exist** if set. |
+| `nats.credsFile` | `""` | `SA_NATS_CREDSFILE` | JWT + nkey `.creds` file. **Must exist** if set, unless `platform.url` is set, when the platform writes it ([§2.1](#21-credentials-from-the-platform)). |
 | `nats.nkeySeedFile` | `""` | `SA_NATS_NKEYSEEDFILE` | Raw nkey seed file. |
 | `nats.token` | `""` | `SA_NATS_TOKEN` | Bearer token. |
 | `nats.username` | `""` | `SA_NATS_USERNAME` | Used with `password`. |
@@ -83,6 +83,60 @@ process and nothing else changes. nats.go prints the refusal to stderr.
 A controller's [health endpoint](protocol.md#controller-health) also needs
 subscribe on `acc.{location}.cmd.ctrl.{code}.health`, with the same way to reply.
 :::
+
+### 2.1 Credentials from the platform
+
+Set `platform.url` and the binary keeps `nats.credsFile` current itself, as
+its own Thing on the platform (ADR 0009 in platform-docs). It signs in with the
+kit's `credskeeper`, writes the creds file, and rewrites it after a Regenerate
+or a Revoke. The open connection moves to the new file on its next reconnect,
+without a restart. accessd and each controller are separate Things, each with
+its own identity and role from [`contract/`](https://github.com/stone-age-io/access-control/blob/main/contract).
+
+| Key | Default | Env var | Purpose |
+|---|---|---|---|
+| `platform.url` | `""` | `SA_PLATFORM_URL` | The platform's base URL. Empty starts nothing, and `nats.credsFile` is a file you provide. |
+| `platform.identity` | `""` | `SA_PLATFORM_IDENTITY` | This binary's Thing login email, printed once when the Thing is provisioned. |
+| `platform.password` | `""` | `SA_PLATFORM_PASSWORD` | The Thing's password. Needed only until the first sync has saved a session. Set it by env var, not in the file, and remove it after the first start. |
+| `platform.sessionFile` | `""` | `SA_PLATFORM_SESSIONFILE` | Defaults to `platform-session.json` beside `nats.credsFile`. |
+| `platform.syncInterval` | `5m` | `SA_PLATFORM_SYNCINTERVAL` | How often the platform is asked for a change. A failed sync is retried after 30s. |
+| `platform.allowInsecure` | `false` | `SA_PLATFORM_ALLOWINSECURE` | Lets `platform.url` be `http://`. Development only: the first sync sends the password and receives a private key. |
+
+To set it up:
+
+1. Apply the contract to the organization, as an owner or admin:
+   `stone apply --template contract/`.
+2. Provision a Thing for accessd on the `accessd` Thing Type and NATS role,
+   and one per controller on `access-controller`:
+   `stone thing provision --code ctrl-hq-1 --name "HQ controller 1" --type <type id> --nats-mode auto --nats-role <role id>`.
+   Record the email and password it prints once.
+3. Set `platform.url`, `platform.identity` and `nats.credsFile`, and start
+   once with `SA_PLATFORM_PASSWORD`. The binary creates the directory
+   (0700), writes the creds file and a session beside it, then connects.
+
+What to know:
+
+- **Keep the files on persistent storage.** The session is what lets the
+  password go, and the creds file is what lets a restart connect while the
+  platform is down.
+- **accessd's files go outside `accessd.dataDir`**, such as `pb_creds/`.
+  PocketBase backups archive the whole data directory, and a restored copy
+  would give a second host accessd's identity. accessd refuses a path inside
+  it.
+- **A first start waits for its first file.** accessd waits up to 30s and then
+  exits, naming the reason, as it does for NATS. A controller waits as long
+  as it takes ([Edge Controller](controller.md#what-stops-it-at-boot)). A
+  restart that finds a file goes on at once.
+- **accessd's readiness gains `credentials` and `platform`**, and both
+  binaries' metrics gain `creds_keeper_*` (last sync, sync errors, credential
+  changes).
+- **A controller needs the platform's HTTPS as well as NATS.** At a site behind
+  a leaf node, that is a second route out.
+- **If a host is compromised, deactivate its Thing first. A Revoke alone is
+  not enough.** The binary holds the Thing's platform session, so a Revoke
+  hands the new credential to whoever copied it. Deactivate the Thing, set a
+  new password, reactivate it, Revoke, and start once with the new password
+  ([creds-keeper §7](https://github.com/stone-age-io/services/blob/main/docs/creds-keeper.md#7-a-compromised-host)).
 
 ### TLS
 
@@ -480,7 +534,10 @@ Everything else falls back to a default:
   `heartbeatInterval: soon` (`failed to unmarshal config`).
 - No NATS URL is configured (only possible with an explicit empty `urls` list).
 - More than one NATS auth method is set.
-- `nats.credsFile` is set but the file does not exist.
+- `nats.credsFile` is set but the file does not exist, and `platform.url` is
+  not set.
+- `platform.url` is set without `nats.credsFile`, or `platform.syncInterval`
+  is negative.
 - `nats.tls.enable` is true with only one of `certFile` and `keyFile`.
 - `logging.level` is not one of `debug`, `info`, `warn`, `error`.
 - `metrics.updateInterval` is not a parseable duration.
@@ -500,13 +557,19 @@ Some values pass `Load` and fail **later, at startup**:
 - `controller.model` naming no known profile when the driver or reader needs
   one (`unknown controller model`, listing the known ones).
 - accessd only: NATS unreachable at `serve`. The controller retries instead.
+- accessd only: a `nats.credsFile` or `platform.sessionFile` inside
+  `accessd.dataDir` while `platform.url` is set, or no creds file from the
+  platform within 30s on a first start.
+- An invalid `platform` block (an `http://` URL without `allowInsecure`, no
+  identity) when the keeper starts.
 
 ---
 
 ## 13. Which Binary Reads What
 
-- **Both** read `nats`, `logging`, `metrics`, `policy`, `status` and
-  `subjects`. The controller writes the status bucket; accessd watches it.
+- **Both** read `nats`, `platform`, `logging`, `metrics`, `policy`, `status`
+  and `subjects`. `platform.identity` differs per binary: each is its own
+  Thing. The controller writes the status bucket; accessd watches it.
   `policy.cache` and `policy.bindings` are controller-only.
 - **accessd** also reads `events`, `accessd` and `branding`.
 - **access-controller** also reads `controller` and `diagnostics`.

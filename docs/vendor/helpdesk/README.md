@@ -338,4 +338,19 @@ docker run -d -p 8090:8090 -v helpdesk-data:/data ghcr.io/stone-age-io/helpdesk:
 It seeds a staff admin on first boot and prints the password once, so read it
 with `docker logs` and change it after signing in.
 
+To take NATS credentials from the platform, mount the `/creds` volume too and
+point the helpdesk at its Thing. Pass the password on the first start only:
+
+```bash
+docker run -d -p 8090:8090 -v helpdesk-data:/data -v helpdesk-creds:/creds \
+  -e HELPDESK_NATS_URLS=nats://hub.example.com:4222 \
+  -e HELPDESK_NATS_CREDS_FILE=/creds/helpdesk.creds \
+  -e HELPDESK_PLATFORM_URL=https://platform.example.com \
+  -e HELPDESK_PLATFORM_IDENTITY=hd-01@ops.thing.local \
+  -e HELPDESK_PLATFORM_PASSWORD=... \
+  ghcr.io/stone-age-io/helpdesk:latest
+```
+
+[NATS credentials](docs/configuration.md#nats-credentials) has the steps.
+
 Licensed under the [MIT License](https://github.com/stone-age-io/helpdesk/blob/main/LICENSE).

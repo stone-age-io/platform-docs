@@ -61,9 +61,7 @@ KIOSK_NATS_SUBJECT_PREFIX=kiosk
 KIOSK_NATS_STREAM_NAME=KIOSK_EVENTS
 KIOSK_NATS_CREDENTIALS_FILE=/etc/kiosk/nats.creds
 KIOSK_CONTROLLER_ENABLED=true
-KIOSK_CONTROLLER_CATALOG_ITEMS_BUCKET=catalog_items
-KIOSK_CONTROLLER_CATALOG_USERS_BUCKET=catalog_users
-KIOSK_CONTROLLER_CATALOG_GROUPS_BUCKET=catalog_groups
+KIOSK_CONTROLLER_CATALOG_BUCKET=KIOSK_CATALOG
 KIOSK_RFID_ENABLED=true
 KIOSK_RFID_READ_WINDOW=3s
 KIOSK_TIMECLOCK_ENABLED=true
@@ -165,7 +163,7 @@ signatures.
 | `nats.token` | string | `""` | Bearer token. |
 | `nats.username` | string | `""` | Basic auth, with `password`. |
 | `nats.password` | string | `""` | Basic auth, with `username`. |
-| `nats.credentials_file` | string | `""` | JWT `.creds` file, for example from NGS or JetStream Cloud. |
+| `nats.credentials_file` | string | `""` | JWT `.creds` file, for example from NGS or JetStream Cloud, or the one the platform writes ([§5.1](#51-credentials-from-the-platform)). |
 | `nats.nkey_seed_file` | string | `""` | ed25519 NKey seed file. |
 | `nats.tls_ca_file` | string | `""` | Custom CA. |
 | `nats.tls_cert_file` | string | `""` | Client certificate. |
@@ -196,16 +194,66 @@ The controller binds its stream to `{prefix}.*.evt.>`. Each kiosk node, the
 timeclock terminal and the controller must agree on the prefix.
 :::
 
+### 5.1 Credentials from the platform
+
+Set `platform.url` and the binary keeps `nats.credentials_file` current
+itself, as its own Thing on the platform (ADR 0009 in `platform-docs`). It
+signs in with the kit's `credskeeper`, writes the creds file, and rewrites it
+after a Regenerate or a Revoke. The open connection moves to the new file on
+its next reconnect, without a restart. Each kiosk node, timeclock terminal and
+controller is its own Thing, with its own identity.
+
+| Key | Type | Default | Meaning |
+| :--- | :--- | :--- | :--- |
+| `platform.url` | string | `""` | The platform's base URL. Empty starts nothing, and `nats.credentials_file` is a file you provide. |
+| `platform.identity` | string | `""` | This binary's Thing login email, printed once when the Thing is provisioned. |
+| `platform.password` | string | `""` | The Thing's password. Needed only until the first sync has saved a session. Set it as `KIOSK_PLATFORM_PASSWORD`, not in the file, and remove it after the first start. |
+| `platform.session_file` | string | `""` | Defaults to `platform-session.json` beside the creds file. |
+| `platform.sync_interval` | duration | `5m` | How often the platform is asked for a change. A failed sync is retried after 30s. |
+| `platform.allow_insecure` | bool | `false` | Lets `platform.url` be `http://`. Development only: the first sync sends the password and receives a private key. |
+
+To set it up, apply [`contract/`](https://github.com/stone-age-io/kiosk/blob/main/contract) with
+`stone apply --template contract/`, provision a Thing for the binary on its
+Thing Type and NATS role (`stone thing provision ... --nats-mode auto
+--nats-role <role id>`), set `platform.url`, `platform.identity` and
+`nats.credentials_file`, and start once with `KIOSK_PLATFORM_PASSWORD`. The
+binary creates the directory (0700) and writes the creds file and a session
+beside it before it connects.
+
+What to know:
+
+- **The files go outside the PocketBase data directory** (`pb_data`,
+  `pb_data_timeclock` or `pb_data_controller`, or `--dir`), such as
+  `pb_creds/`. PocketBase backups archive the whole data directory, and a
+  restored copy would give a second host this binary's identity. The binary
+  refuses a path inside it.
+- **The platform's creds file is the credential.** `nats.token`,
+  `nats.username` and `nats.nkey_seed_file` must be empty, and
+  `nats.enabled` must be `true`.
+- **Only `serve` runs it.** `migrate` and `demo-seed` never wait on the
+  platform.
+- **A first start waits up to 30s for its first file.** Past that, a kiosk node
+  or a timeclock serves without NATS until a restart, with `credentials`
+  failing on `/api/ready`. The controller, which needs NATS, exits. A
+  restart that finds a file connects at once, even while the platform is
+  down.
+- **`/api/ready` gains `credentials` and `platform`.** `platform` warns
+  when the last sync failed and never fails, since the file already held
+  still works.
+- **If a host is compromised, deactivate its Thing first. A Revoke alone is
+  not enough.** The binary holds the Thing's platform session, so a Revoke
+  hands the new credential to whoever copied it. Deactivate the Thing, set a
+  new password, reactivate it, Revoke, and start once with the new password
+  ([creds-keeper §7](https://github.com/stone-age-io/services/blob/main/docs/creds-keeper.md#7-a-compromised-host)).
+
 ---
 
 ## 6. Controller Opt-In
 
 | Key | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `controller.enabled` | bool | `false` | Puts the kiosk node under central management. It watches the catalog KV buckets and projects each update into its local tables. |
-| `controller.catalog_items_bucket` | string | `"catalog_items"` | KV bucket for items. Empty uses the default. |
-| `controller.catalog_users_bucket` | string | `"catalog_users"` | KV bucket for workers. Empty uses the default. |
-| `controller.catalog_groups_bucket` | string | `"catalog_groups"` | KV bucket for groups. Empty uses the default. |
+| `controller.enabled` | bool | `false` | Puts the kiosk node under central management. It watches the catalog KV bucket and projects each update into its local tables. |
+| `controller.catalog_bucket` | string | `"KIOSK_CATALOG"` | The catalog KV bucket, holding the items, users and groups families ([Wire Protocol](protocol.md#kv-buckets)). Empty uses the default. The controller and every managed node must agree. |
 
 When `controller.enabled` is `true`, the admin SPA on the kiosk node hides Add,
 Edit and Delete on items and workers. It shows a "Catalog managed by
@@ -354,7 +402,7 @@ Standalone, it does nothing.
 
 **Managed mode** means `controller.enabled: true` with NATS. Punches flow to
 the controller. The controller sends each worker's clocked-in state back to
-every kiosk node through the `punch_state` KV bucket. A worker can clock in at
+every kiosk node through the `punch` family of the `KIOSK_STATE` bucket. A worker can clock in at
 one kiosk node and clock out at another. A standalone kiosk node keeps a
 local-only ledger.
 
@@ -378,7 +426,7 @@ It supports the **same three operating modes** as a kiosk node. The `nats` and
 | :--- | :--- | :--- | :--- | :--- |
 | standalone | `false` | `false` | local (admin SPA, superuser, CSV) | local ledger |
 | standalone + NATS | `true` | `false` | local | local, and punches publish events |
-| controller-managed | `true` | `true` | catalog sync | fleet-wide through `punch_state` |
+| controller-managed | `true` | `true` | catalog sync | fleet-wide through `KIOSK_STATE` |
 
 Use managed mode for a public terminal in front of a fleet. Provisioning stays
 central on the controller. A worker who clocked in at a physical kiosk node
@@ -483,6 +531,12 @@ The binary refuses to start in these cases:
 - `kiosk.code` or `kiosk.location_code` is empty. The controller is exempt.
 - `nats.enabled` is `true` and `nats.url` is empty or malformed.
 - `nats.credentials_file` or `nats.nkey_seed_file` is set but cannot be loaded.
+- `platform.url` is set while `nats.enabled` is not `true`, without
+  `nats.credentials_file`, or beside another NATS auth method; or
+  `platform.sync_interval` is negative.
+- `platform.url` is set and the creds file or session file is inside the
+  PocketBase data directory, or the `platform` block is invalid (an
+  `http://` URL without `allow_insecure`, no identity).
 - On the controller, `nats.enabled` is not `true`.
 - `rfid.enabled` is `true` and `rfid.readers` has no entry.
 - A reader has no `mode`, `host` or `port`, or its `mode` is not

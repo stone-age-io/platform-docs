@@ -144,7 +144,7 @@ The frontend has no test suite. `vue-tsc` checks the SPA during
   - idempotent replay by `command_id`
 
   It also tests the `CurrentState` merge rule: the local ledger against the
-  fleet `punch_state` replica, with the own-echo guard. And it tests `Pair`,
+  fleet `punch` replica, with the own-echo guard. And it tests `Pair`,
   the interval and day-total pairing for display only.
 - **`internal/instances`.** The audit and lifecycle hooks, and the recompute of
   the derived `quantity_on_hand`:

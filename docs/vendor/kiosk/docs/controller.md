@@ -34,12 +34,12 @@ change in its own database.
 
 | Concern | `kiosk-controller` | Kiosk node |
 | :--- | :--- | :--- |
-| Catalog (`items`, `users`, `groups`) | Owns it. Publishes it to the catalog KV buckets | Watches its slice of `catalog_items` and all of `catalog_users` into its local tables. Hides catalog edits in its admin SPA |
+| Catalog (`items`, `users`, `groups`) | Owns it. Publishes it to the catalog KV bucket | Watches its slice of the `items` family and all of `users` into its local tables. Hides catalog edits in its admin SPA |
 | Stocking (`kiosk_items` membership) | Owns it | Receives only the items it stocks |
 | Local state (`quantity_on_hand`, `reorder_threshold`, `item_instances`) | Never syncs it. Changes it only through commands | Owns it. Catalog updates leave it alone |
 | Ledger (`transactions`, `transaction_lines`) | Projects a fleet copy from events | Writes it through the single write path. Authoritative |
 | `open_checkouts` | Does not store it. Asks the kiosk node, or replays the projected lines | Keeps it current in the commit path |
-| Time punches | Projects `time_punches`. Writes `punch_state` | The only punch writer |
+| Time punches | Projects `time_punches`. Writes the `punch` family | The only punch writer |
 | Commands | Sends them over core NATS request and reply | Answers them |
 | Heartbeats | Subscribes. Keeps online status in memory | Publishes one every 45 s |
 | Email | Sends receipts, alerts and scheduled digests for the fleet | Publishes notification events. Its scheduler stays off |
@@ -68,15 +68,21 @@ Type and its NATS role come from the repository's
    A second run changes nothing that already matches. It never deletes.
 2. **Create a Thing** of Thing Type `kiosk-controller`. Give its NATS user the
    `kiosk-controller` role.
-3. **Export the Thing's creds file.** Set `nats.credentials_file` to its path.
+3. **Give it the Thing's creds file.** Either set `platform.url` and
+   `platform.identity`, and the controller writes and rotates
+   `nats.credentials_file` itself as the Thing
+   ([Configuration §5.1](configuration.md#51-credentials-from-the-platform)),
+   or export the file from the platform and set `nats.credentials_file` to
+   its path.
 4. **Set `nats.code` to the Thing's code.** The controller registers on NATS
    service discovery as `kiosk-controller` and puts this value in the metadata
    as `code`. With `nats.code` empty, it skips the registration.
 
 The connection reconnects forever and keeps trying through auth errors.
 nats.go reads the creds file again on each reconnect. So a file that
-creds-keeper rewrites after a Revoke reaches the controller without a restart.
-A creds file copied by hand is fine for development.
+the platform rewrites after a Revoke reaches the controller without a restart.
+A creds file copied by hand is fine for development, and a Revoke then means
+copying the new one.
 
 The controller needs NATS. With `nats.enabled: false`, `serve` stops with an
 error. JetStream must be on for the account. On a NATS server you run
@@ -132,22 +138,18 @@ The controller creates these on `serve`, and updates them if they exist.
 | :--- | :--- | :--- | :--- |
 | Stream | `KIOSK_EVENTS` (`nats.stream_name`) | Subjects `kiosk.*.evt.>`, limits retention, `MaxAge` 168 h, file storage, 1 replica | Every event the kiosk nodes publish |
 | Durable consumer | `controller-aggregator` | `AckExplicitPolicy`, starts from the start of the stream | The projection (§4) |
-| KV bucket | `catalog_items` (`controller.catalog_items_bucket`) | History 1 | Items, keyed `{kiosk_code}.{item_code}` |
-| KV bucket | `catalog_users` (`controller.catalog_users_bucket`) | History 1 | Users, for the whole organization |
-| KV bucket | `catalog_groups` (`controller.catalog_groups_bucket`) | History 1 | Groups |
-| KV bucket | `punch_state` | History 1 | Clocked-in state, keyed by `user_code` |
-| KV bucket | `open_checkouts_state` | History 1 | Fleet-wide open checkouts, keyed by `user_code` |
-| KV bucket | `last_observed_state` | History 1 | Last sighting per unit, sliced per kiosk node |
+| KV bucket | `KIOSK_CATALOG` (`controller.catalog_bucket`) | History 1 | The catalog: `items.{kiosk_code}.{item_code}`, `users.{user_code}` for the whole organization, `groups.{group_code}` |
+| KV bucket | `KIOSK_STATE` | History 1 | Fleet state: `punch.{user_code}` (clocked in), `open.{user_code}` (fleet-wide open checkouts), `seen.{kiosk_code}.{instance_id}` (last sighting per unit) |
 
-A failure to create `punch_state`, `open_checkouts_state` or
-`last_observed_state` is logged, and the controller continues without that
-bucket. To provision the main resources by hand, or to keep a record of them:
+Each key's first token is its family ([Wire Protocol](protocol.md#kv-buckets)).
+They were six buckets, one per family, until the controller's NATS role grew
+too large for nats-server's default `max_control_line`. A failure to create
+`KIOSK_STATE` is logged, and the controller continues without fleet state. To provision the main resources by hand, or to keep a record of them:
 
 ```bash
 nats stream add KIOSK_EVENTS --subjects 'kiosk.*.evt.>' --retention limits --max-age 168h
-nats kv add catalog_items --history 1
-nats kv add catalog_users --history 1
-nats kv add catalog_groups --history 1
+nats kv add KIOSK_CATALOG --history 1
+nats kv add KIOSK_STATE --history 1
 ```
 
 The stream captures only the `evt` channel. Commands (`kiosk.*.cmd.>`) and
@@ -232,10 +234,10 @@ controller decide what each kiosk node stocks:
 - A new SKU goes nowhere until an admin adds it. Use the kiosk's "Stocked
   items" panel or the bulk-add-by-category action.
 
-The shared `catalog_items` bucket uses keys `{kiosk_code}.{item_code}`. Each
-kiosk node watches only its own prefix (`Watch("KIOSK01.>")`), so the wire
+The `items` family of `KIOSK_CATALOG` uses keys `items.{kiosk_code}.{item_code}`.
+Each kiosk node watches only its own prefix (`items.KIOSK01.>`), so the wire
 never carries an item that the kiosk node must not see. Users stay
-organization-wide on `catalog_users`.
+organization-wide in the `users` family.
 
 ### What crosses the wire
 
@@ -325,14 +327,14 @@ nats:
 
 controller:
   enabled: true
-  # bucket names default to catalog_items/catalog_users; only set these
-  # if your operator provisioned with different names
+  # catalog_bucket defaults to KIOSK_CATALOG; set it only if your
+  # operator provisioned a different name
 ```
 
 Restart the kiosk node. It then does these things:
 
 1. It connects to NATS and watches its slice of the items bucket
-   (`Watch("{kiosk_code}.>")`) and the shared `catalog_users` bucket. It
+   (`items.{kiosk_code}.>`) and the whole `users` family. It
    writes the snapshot into its local `items` and `users`, matched by `code`.
    An item without a membership row never arrives.
 2. It publishes its transaction events as before. The controller's consumer
@@ -349,10 +351,10 @@ is always authoritative.
 ::: warning Upgrading from flat catalog keys
 Earlier builds used flat keys (`{item_code}`) in `catalog_items` and sent
 every SKU to every kiosk node. Membership publishing changes the shape and the
-meaning of the keys. To upgrade, delete each kiosk node's `pb_data/` and the
-controller's `catalog_items` bucket (`nats kv rm catalog_items`). Let the
-controller create the bucket again, then assign items in the "Stocked items"
-panel. The app is not in production yet, so there is no compatibility layer.
+meaning of the keys. To upgrade, delete each kiosk node's `pb_data/`, then
+assign items in the "Stocked items" panel. The controller now publishes into
+`KIOSK_CATALOG`, so the old buckets are unused; remove them with
+`nats kv rm`. The app is not in production yet, so there is no compatibility layer.
 :::
 
 ### Reconciling catalog drift
@@ -374,7 +376,7 @@ Two admin endpoints help.
 ```json
 {
   "items": {
-    "bucket": "catalog_items",
+    "bucket": "KIOSK_CATALOG.items",
     "expected_keys": 24,
     "actual_keys": 25,
     "missing_in_kv": [],
@@ -454,10 +456,10 @@ When a managed kiosk node records a punch, it publishes
 
 1. It projects the punch into the controller's `time_punches`, idempotent on
    `source_punch_id`.
-2. It writes the worker's merged state to the `punch_state` bucket, keyed by
+2. It writes the worker's merged state to the `punch` family, keyed by
    `user_code`. The write is monotonic on `occurred_at`.
 
-Every kiosk node watches that bucket into an in-memory replica, so clocked-in
+Every kiosk node watches that family into an in-memory replica, so clocked-in
 state covers the fleet. A worker can clock in at one kiosk node and clock out
 at another.
 
@@ -473,14 +475,14 @@ the `timeclock.punch` command.
 A second replica per user uses the same path. After the aggregator projects a
 checkout, return or admin-close line, it computes that worker's open checkouts
 across the fleet (`ReplayOpenRowsForUser`). It writes them to the
-**`open_checkouts_state`** bucket, keyed by `user_code`.
+**`open`** family of `KIOSK_STATE`, keyed by `user_code`.
 
-Managed kiosk nodes and the phone terminal watch this bucket. So a clock-out
+Managed kiosk nodes and the phone terminal watch this family. So a clock-out
 at any kiosk node can stop for tools the worker has out at *other* kiosk
 nodes, and name the building. The gate is advisory and **fails open**. A stale
 or unreachable replica allows the clock-out, so the worker is never stuck. The
 worker can also choose "clock out anyway" to acknowledge and continue. This
-bucket is what gives the gate meaning on the phone terminal, which holds no
+family is what gives the gate meaning on the phone terminal, which holds no
 local checkouts.
 
 ### The kiosks registry
@@ -578,7 +580,7 @@ raw sighting, it does these things:
    on the `instance.lifecycle` projection feeds that index.
 2. It upserts the fleet view `instance_location`.
 3. It writes each unit's last sighting back to its kiosk node through the
-   `last_observed_state` bucket, sliced per kiosk node like `catalog_items`.
+   `seen` family of `KIOSK_STATE`, sliced per kiosk node like `items`.
 
 A movement-not-reads filter drops a sighting that changes nothing before any
 write. The result is the **custody-vs-location reconciliation** report

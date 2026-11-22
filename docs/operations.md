@@ -546,6 +546,17 @@ other's code.
   nobody. Re-apply its `contract/` with stone 0.12.0 to move its Thing Types
   and roles to the new subjects. Each application's CHANGELOG has the subject
   table.
+- **Kiosk v0.2.0 keeps its KV state in two buckets**, `KIOSK_CATALOG` and
+  `KIOSK_STATE`, where it had six. Re-apply its `contract/` for the trimmed
+  roles; a running process gets the new grants at its next connect. Then run
+  one catalog reconcile (`POST /api/kiosk/catalog/reconcile`) and remove the
+  old buckets. Clocked-in and open-checkout state reappear at each worker's
+  next punch or checkout, and fail open until then.
+- **Helpdesk v0.3.0, access control v0.4.0 and kiosk v0.2.0 can take their NATS
+  credentials from the platform** (`platform.url`, ADR 0009), which is
+  optional. Each process needs a Thing provisioned from its application's
+  `contract/`, and keeps its credential files outside its PocketBase data
+  directory. A Thing with a device-held NATS key needs platform v0.21.0.
 
 ---
 

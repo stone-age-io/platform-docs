@@ -7,8 +7,8 @@ nav_order: 60
 The helpdesk has two configuration surfaces, split by when they are needed:
 
 1. **`helpdesk.yaml` plus `HELPDESK_*` environment variables.** Infrastructure
-   the process needs before PocketBase is up: the data directory, NATS, and the
-   inbound-email webhook.
+   the process needs before PocketBase is up: the data directory, NATS and its
+   credentials from the platform, and the inbound-email webhook.
 2. **PocketBase settings** (dashboard at `/_`, then Settings). Operator
    concerns stored in the database: SMTP, the application URL, OAuth2.
 
@@ -51,6 +51,16 @@ nats:
   stream: HELPDESK_EVENTS        # helpdesk-owned inbox stream (hub account)
   durable: helpdesk-ingest       # durable consumer name; stable across restarts
   notify_stream: HELPDESK_NOTIFICATIONS  # helpdesk-owned OUTBOUND event stream
+
+# Keep nats.creds_file current from the platform, as the helpdesk's Thing.
+# Leave url empty to provide the creds file yourself. See "NATS credentials".
+platform:
+  url: ""                        # e.g. https://platform.example.com
+  identity: ""                   # the Thing's login email
+  # password: set HELPDESK_PLATFORM_PASSWORD for the first start only
+  # session_file: ""             # default: platform-session.json beside the creds file
+  sync_interval: 5m
+  allow_insecure: false          # development only: allows an http:// url
 
 # Inbound email via an email-parsing provider (Postmark). Leave secret empty
 # to disable — mail then arrives only via portal/agent/webhook/NATS.
@@ -98,6 +108,12 @@ spaces.
 | `nats.durable` | string | `"helpdesk-ingest"` | Durable consumer name. Stable across restarts. |
 | `nats.notify_stream` | string | `"HELPDESK_NOTIFICATIONS"` | The helpdesk-owned outbound event stream. |
 | `nats.code` | string | `""` | This helpdesk's Thing code on the platform (ADR 0008). It goes into the NATS service discovery metadata as `code`. Empty skips discovery registration and changes nothing else. |
+| `platform.url` | string | `""` | The platform's base URL. Set, the helpdesk keeps `nats.creds_file` current as its Thing, and `nats.creds_file` must be outside `data_dir`. Empty means you provide the creds file. See [NATS credentials](#nats-credentials). |
+| `platform.identity` | string | `""` | The helpdesk Thing's login email, shown once when the Thing is provisioned. |
+| `platform.password` | string | `""` | The Thing's password. Needed only until the first sync has saved a session. Set it as `HELPDESK_PLATFORM_PASSWORD`, not in the file, and remove it after the first start. |
+| `platform.session_file` | string | `""` | Where the platform session is kept. Defaults to `platform-session.json` beside `nats.creds_file`. Must be outside `data_dir`. |
+| `platform.sync_interval` | duration | `"5m"` | How often the platform is asked whether the credential changed. A failed sync is retried after 30s. |
+| `platform.allow_insecure` | bool | `false` | Lets `platform.url` be `http://`. Development only: the first sync sends the password and receives a private key. |
 | `inbound.secret` | string | `""` | Basic-auth password for the email webhook. Empty disables inbound email, and mail then arrives only via portal, agent, webhook or NATS. See [Inbound email](#inbound-email). |
 | `inbound.allowed_ips` | string list | `[]` | Optional. Restricts the email webhook to the provider's egress ranges (IPs or CIDRs). |
 | `inbound.reply_to` | string | `""` | Reserved. Read but **not** wired in v1. Replies thread via the PocketBase sender address. |
@@ -128,12 +144,16 @@ The checks are `database`, `schema`, `schema_version` (which looks for a
 `staff_admin`, `smtp`, `application_url`, `nats_ingest` and `inbound_email`.
 The last two report `skipped` when the feature is not configured, and
 `nats_ingest` warns rather than fails when the broker is unreachable, because
-the portal, webhook and email intakes are all still serving.
+the portal, webhook and email intakes are all still serving. With
+`platform.url` set there are two more, from the kit's keeper: `credentials`
+fails until the creds file exists, and `platform` warns when the last sync
+failed and never fails, since the file already held still works.
 
 `/metrics` publishes the same readiness report as a state set
 (`helpdesk_check_state{name,state}`), plus `helpdesk_ready`,
 `helpdesk_build_info`, row counts per collection, tickets by status, and the
-database size. **No series carries a customer label**, because the endpoint is
+database size, and with `platform.url` set the `creds_keeper_*` series
+(last sync time, sync errors, credential changes). **No series carries a customer label**, because the endpoint is
 open unless a token is set and a tenant's name must not appear beside a ticket
 count. Alert on `helpdesk_check_timestamp_seconds` going stale: it is the only
 series that shows the prober itself is wedged, since the others keep their last
@@ -180,25 +200,64 @@ the SPA under **Notifications**).
 
 ### NATS credentials
 
-The helpdesk authenticates to the hub account with a **platform-minted
-`nats_user`** scoped to `sub helpdesk.>`, exported as a `.creds` file:
+The helpdesk authenticates to the hub account as a **Thing in the operator
+organization**, whose NATS identity has the `helpdesk` role from
+[`contract/`](https://github.com/stone-age-io/helpdesk/blob/main/contract). The platform can keep its creds file current, or
+you can provide the file.
 
-1. In the platform, create a hub-account `nats_user` with subscribe permission
-   on `helpdesk.>`. To also emit outbound notification events, grant
-   `pub helpdesk.>` and stream management for `HELPDESK_NOTIFICATIONS`. The
-   helpdesk is otherwise unaware of the grant. To list it in `nats micro ls`,
-   also grant subscribe on `$SRV.>` and a way to reply: publish on
-   `_INBOX.>`, or Response Permissions on the role
-   ([Wire Protocol](protocol.md#1-the-whole-surface)).
-2. Export its creds file, and point `nats.creds_file` at it.
-3. Start the helpdesk. On first serve it creates `HELPDESK_EVENTS` (subjects
-   `helpdesk.*.cmd.tickets.>`) and begins consuming. If publish is granted, it also
-   creates `HELPDESK_NOTIFICATIONS` (subjects `helpdesk.*.evt.>`) for the
-   outbound channel. If not, that setup fails softly and email still sends.
+**From the platform** (`platform.url` set). This is the way to run it: a
+Regenerate or a Revoke on the platform reaches the helpdesk within one
+`platform.sync_interval`, and the open connection moves to the new credential
+without a restart.
 
-Setting `nats.urls` without `nats.creds_file` is a startup error. A broker that
-is down at boot is **not** an error: the app logs, serves, and the durable
-consumer resumes when connectivity returns.
+1. Apply the contract to the operator organization, as an owner or admin:
+   `stone apply --template contract/`. It creates the `helpdesk` Thing Type and
+   NATS role.
+2. Provision the helpdesk's Thing with a NATS identity on that role:
+   `stone thing provision --code hd-01 --name Helpdesk --type <helpdesk type id>
+   --nats-mode auto --nats-role <helpdesk role id>`. Record the email and
+   password it prints once.
+3. Set `platform.url`, `platform.identity` to that email, and
+   `nats.creds_file` to a path **outside `data_dir`**, such as
+   `pb_creds/helpdesk.creds` (`/creds/helpdesk.creds` in the container, which
+   has a `/creds` volume for it). Set `nats.code` to the Thing's code.
+4. Start it once with `HELPDESK_PLATFORM_PASSWORD` set. The helpdesk creates
+   the directory (0700), signs in, and writes the creds file and a session
+   beside it before it connects. Then remove the password: the session is
+   enough from then on, and it renews itself.
+
+Things to know:
+
+- **A first start waits up to 30s for its first creds file.** If the platform
+  is unreachable for longer, the helpdesk serves without NATS, the
+  `credentials` check fails, and a restart after the platform is back
+  connects. A restart that finds a creds file connects at once, even while
+  the platform is down.
+- **The credential directory is not in `data_dir`**, because PocketBase
+  backups archive all of `data_dir`. A backup would carry the session and the
+  creds file, and a restored copy would give a second host the helpdesk's
+  identity. The helpdesk refuses a `nats.creds_file` or
+  `platform.session_file` inside it.
+- **If the host is compromised, deactivate the Thing first. A Revoke alone is
+  not enough.** The helpdesk holds the Thing's platform session, so a Revoke
+  hands the new credential to whoever copied it. Deactivate the Thing, set a
+  new password, reactivate it, Revoke, and start once with the new password
+  ([creds-keeper §7](https://github.com/stone-age-io/services/blob/main/docs/creds-keeper.md#7-a-compromised-host)).
+
+**A file you provide** (`platform.url` empty). Export the NATS identity's
+creds file from the platform and point `nats.creds_file` at it. A Regenerate
+or a Revoke then means copying the new file and restarting.
+
+Either way, on first serve the helpdesk creates `HELPDESK_EVENTS` (subjects
+`helpdesk.*.cmd.tickets.>`) and begins consuming. If publish is granted, it
+also creates `HELPDESK_NOTIFICATIONS` (subjects `helpdesk.*.evt.>`) for the
+outbound channel. If not, that setup fails softly and email still sends. What
+the role grants, and why, is in [Wire Protocol](protocol.md#1-the-whole-surface).
+
+Setting `nats.urls` without `nats.creds_file` is a startup error, and so is
+`platform.url` without `nats.urls`. A broker that is down at boot is **not**
+an error: the app logs, serves, and the durable consumer resumes when
+connectivity returns.
 
 **Per-customer mapping.** Set `customers.code` (SPA, customer detail) to the
 customer's platform organization **code**. It is the tenant token on subject

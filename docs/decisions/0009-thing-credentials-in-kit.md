@@ -4,7 +4,7 @@ nav_order: 90
 ---
 # ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit
 
-**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by all three applications: the helpdesk, access control and the kiosk. See [As implemented](#as-implemented).
+**Status:** Accepted, 2026-11-22. Implemented in kit v0.2.0 and services v0.5.0, and released in all three applications: helpdesk v0.3.0, access control v0.4.0 and kiosk v0.2.0. See [As implemented](#as-implemented).
 **Date:** 2026-11-21, revised 2026-11-22 after review
 
 > This ADR is ecosystem-scoped, like [ADR 0008](./0008-application-namespace.md). It decides how our own applications (the helpdesk, access control, kiosk and the services) get their NATS credential from the platform. It moves creds-keeper's package into [`stone-age-io/kit`](https://github.com/stone-age-io/kit), lets an application run it inside its own process, and adds device-held NATS keys to it.
@@ -344,18 +344,22 @@ connects, since NATS fixes permissions at connect; a Revoke forces that, a
 role edit does not. Nothing checks a role's JWT size yet, so the next role to
 outgrow 4 KB will fail the same way, at its first connect.
 
+**Before the releases, against a local platform:**
+
+- **The watchdog binary with the keeper inside it.** It wrote its creds file
+  and session, connected, created its buckets, and served every readiness
+  check `ok` after its first evaluation, with no sync error.
+- **A PocketBase application's backup, as a backup.** A backup of a running
+  helpdesk with platform credentials holds `data.db` and `auxiliary.db`
+  only, and neither database contains the session token, the user JWT or the
+  seed.
+- **The kiosk's timeclock terminal.** A first start wrote its credentials,
+  its watchers started on `KIOSK_CATALOG` and `KIOSK_STATE` and projected
+  the users, and a restart without the password served `ok`.
+
 **Not yet verified:**
 
-- **The watchdog binary with the keeper inside it.** Its wiring is a few lines
-  around the package the e2e suite runs, but the watchdog itself has not run
-  against a live platform.
-- **A PocketBase application's backup, as a backup.** The helpdesk refuses a
-  creds file or session file inside `data_dir` and its container keeps them
-  on a separate `/creds` volume, so a backup cannot contain them. No backup
-  has been taken and inspected.
-- **The kiosk's timeclock terminal.** It shares the node's code path, but did
-  not run.
-- **A controller on its hardware.** The run used the mock driver.
+- **An access controller on its hardware.** The run used the mock driver.
 
 **Deviations from the text above:**
 

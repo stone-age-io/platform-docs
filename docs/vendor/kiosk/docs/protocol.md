@@ -319,9 +319,9 @@ idempotent replay of a command punch does **not** publish again.
 
 The controller projects the punch into its own `time_punches`, with
 `source_punch_id` as the dedupe key. It then writes the worker's clocked-in
-state to the `punch_state` bucket. With that bucket a worker can clock in at
+state to the `punch` family of `KIOSK_STATE`. With it a worker can clock in at
 one kiosk and clock out at another. The clock-out gate uses a sibling bucket,
-`open_checkouts_state`. Both are in [§6](#6-streams-and-kv-buckets).
+the `open` family. Both are in [§6](#6-streams-and-kv-buckets).
 
 ### `evt.scan.rfid.observed`
 
@@ -877,7 +877,7 @@ It is the sibling of `ledger.republish` for the punch ledger.
 **Reply data.** `{published, from?, to?}`.
 
 **Idempotency.** The controller's projection dedupes on `source_punch_id`. Its
-`punch_state` write moves only forward on `occurred_at`. Repeated publishes are
+`punch` write moves only forward on `occurred_at`. Repeated publishes are
 therefore safe, and an old punch cannot move fleet state backwards.
 
 ### `metrics.snapshot`
@@ -1142,24 +1142,38 @@ The controller reads the stream with one durable consumer:
 
 ### KV buckets
 
-The controller creates each bucket with CreateOrUpdate and `History: 1`, and is
-the only writer. Each key holds the latest value.
+There are two buckets. The controller creates both with CreateOrUpdate and
+`History: 1`, and is the only writer. Each key holds the latest value. The
+first token of a key names its **family**, and each family is what one bucket
+per family used to be: `items.KC-DC1-CRIB.PT-2010` is the item `PT-2010` at
+the kiosk `KC-DC1-CRIB`.
+
+- **`KIOSK_CATALOG`** (`controller.catalog_bucket`): the catalog, which the
+  controller publishes from its database.
+- **`KIOSK_STATE`**: fleet state, which the controller projects from
+  `KIOSK_EVENTS`.
 
 | Bucket | Key | Value | Watched by |
 | :--- | :--- | :--- | :--- |
-| `catalog_items` (`controller.catalog_items_bucket`) | `{code}.{item_code}` | `{code, name, type, unit?, tracking_mode, category?, active, notes?, requires_maintenance_on_return}` | Managed nodes and timeclock terminals, each on its own slice (`{code}.>`) |
-| `catalog_users` (`controller.catalog_users_bucket`) | `{user_code}` | `{code, name, email?, phone?, role, group_code?, active}` | Managed nodes and timeclock terminals |
-| `catalog_groups` (`controller.catalog_groups_bucket`) | `{group_code}` | `{code, name, contact_email?, contact_phone?, notes?, active}` | Managed nodes and timeclock terminals |
-| `punch_state` | `{user_code}` | `{user_code, clocked_in, occurred_at, source_punch_id}` | Managed nodes and timeclock terminals |
-| `open_checkouts_state` | `{user_code}` | `{user_code, rows: [{item_code, item_name, serial?, kiosk_code}]}` | Managed nodes and timeclock terminals |
-| `last_observed_state` | `{code}.{instance_id}` | `{zone?, gateway?, lat?, lon?, observed_at}` | Managed nodes, each on its own slice (`{code}.>`) |
+| `KIOSK_CATALOG` | `items.{code}.{item_code}` | `{code, name, type, unit?, tracking_mode, category?, active, notes?, requires_maintenance_on_return}` | Managed nodes and timeclock terminals, each on its own slice (`items.{code}.>`) |
+| `KIOSK_CATALOG` | `users.{user_code}` | `{code, name, email?, phone?, role, group_code?, active}` | Managed nodes and timeclock terminals |
+| `KIOSK_CATALOG` | `groups.{group_code}` | `{code, name, contact_email?, contact_phone?, notes?, active}` | Managed nodes and timeclock terminals |
+| `KIOSK_STATE` | `punch.{user_code}` | `{user_code, clocked_in, occurred_at, source_punch_id}` | Managed nodes and timeclock terminals |
+| `KIOSK_STATE` | `open.{user_code}` | `{user_code, rows: [{item_code, item_name, serial?, kiosk_code}]}` | Managed nodes and timeclock terminals |
+| `KIOSK_STATE` | `seen.{code}.{instance_id}` | `{zone?, gateway?, lat?, lon?, observed_at}` | Managed nodes, each on its own slice (`seen.{code}.>`) |
 
-- **`punch_state`.** The controller writes it after it projects each
+**Why two buckets, not six.** Each bucket needs its own block of NATS
+permissions. With one bucket per family, the controller's role made a user JWT
+larger than nats-server's default `max_control_line` (4 KB), and the server
+refused its connect. A reader's grants cannot be narrowed to a family without
+more grants, so a timeclock terminal can also read the advisory `seen` family.
+
+- **`punch`.** The controller writes it after it projects each
   `evt.timeclock.punch`, and moves it only forward on `occurred_at`. A managed
   node watches it into an in-memory replica. Every clocked-in decision uses the
   fresher of the local ledger and the replica. That is what lets a worker clock
   in at one kiosk and out at another.
-- **`open_checkouts_state`** is the **clock-out gate**. After each checkout,
+- **`open`** is the **clock-out gate**. After each checkout,
   return or admin-close line, the controller recomputes the worker's fleet-wide
   open checkouts and writes them here. A managed node and a managed timeclock
   terminal watch it into a `CheckoutFleet`. The punch path merges it with the node's

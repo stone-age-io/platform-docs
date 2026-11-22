@@ -82,6 +82,11 @@ nats:
   urls: ["tls://nats.example.com:4222"]
   credsFile: "/etc/access-controller/controller.creds"
 
+# Optional: the platform writes and rotates credsFile (configuration.md §2.1).
+# platform:
+#   url: "https://platform.example.com"
+#   identity: "ctrl-hq-1@ops.thing.local"   # password: SA_PLATFORM_PASSWORD, first start only
+
 controller:
   code: "ctrl-hq-1"              # matches a controllers record
   location: "hq"                 # timezone + command/fire subscription scope
@@ -127,9 +132,21 @@ The controller survives a boot with NATS unreachable (see
 - the GPIO or I2C driver fails to initialize;
 - the model has no RS485 port, or the serial port fails to open, under
   `reader: osdp` or `both`;
+- the `platform` block is invalid, for example an `http://` URL without
+  `allowInsecure`;
 - the NATS options cannot be built (for example an unreadable
   `nats.nkeySeedFile` or TLS key pair);
 - a command subscription fails.
+
+With `platform.url` set, a **first start waits for its first creds file**
+before step 2 of the [boot sequence](#31-boot-sequence), as long as it takes,
+logging `waiting for the first creds file from the platform`. SIGTERM still
+stops it. Before that file the box has no policy, cache or bindings, so the
+wait arms nothing that would otherwise be armed. A reboot that finds the file
+boots at once, on its cache or bindings, with the platform unreachable. Keep
+the creds directory on the same persistent storage as `data/`, so the two are
+lost together or not at all. See
+[Credentials from the platform](configuration.md#21-credentials-from-the-platform).
 
 ### Running as a service
 

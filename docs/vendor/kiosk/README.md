@@ -274,7 +274,7 @@ are in [Development](docs/development.md).
 ### Timeclock Terminal
 
 `kiosk-timeclock` shares the timeclock code of a kiosk node: the
-`timeclock.PerformPunch` funnel, the `time_punches` ledger, the `punch_state`
+`timeclock.PerformPunch` funnel, the `time_punches` ledger, the `punch`
 replica and the payroll CSV. It uses the same SPA build. Then:
 
 ```bash

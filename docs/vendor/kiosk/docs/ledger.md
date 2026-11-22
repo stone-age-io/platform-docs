@@ -279,7 +279,7 @@ binds the `evt` channel and projects each event:
 | Event | Projection |
 | :--- | :--- |
 | `evt.transaction.complete` | One `transactions` row. |
-| `evt.item.{action}` | One `transaction_lines` row. Then the aggregator recomputes the worker's open set for the fleet and writes it to `open_checkouts_state` (see below). |
+| `evt.item.{action}` | One `transaction_lines` row. Then the aggregator recomputes the worker's open set for the fleet and writes it to the `open` family of `KIOSK_STATE` (see below). |
 | `evt.inventory.adjust` | One `inventory_audit` row, idempotent on `source_adjustment_id`. |
 | `evt.instance.lifecycle` | One `instance_lifecycle_audit` row, idempotent on `source_audit_id`. |
 | `evt.checkout.admin_close` | One `transactions` row and one `admin_close` line (`ProjectAdminCloseToLedger`), the same writes as `commit.AdminClose` makes locally. |
@@ -299,8 +299,8 @@ worker's open set across the fleet with `ledger.ReplayOpenRowsForUser`. That
 replay is bounded to one user. It reads the worker's own transactions, and
 every transaction whose return or close names the worker as
 `original_checkout_user`. So a foreman's cross-user return still closes the
-holder's row. The aggregator writes the result to the `open_checkouts_state`
-bucket, which feeds the fleet-wide clock-out gate.
+holder's row. The aggregator writes the result to the `open` family of the
+`KIOSK_STATE` bucket, which feeds the fleet-wide clock-out gate.
 
 ### Admin closes
 
