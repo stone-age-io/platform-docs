@@ -4,7 +4,7 @@ nav_order: 90
 ---
 # ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit
 
-**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by the helpdesk; access control and the kiosk have not adopted it yet. See [As implemented](#as-implemented).
+**Status:** Accepted, 2026-11-22. Implemented in the kit and the services, and adopted by the helpdesk and access control; the kiosk has not adopted it yet. See [As implemented](#as-implemented).
 **Date:** 2026-11-21, revised 2026-11-22 after review
 
 > This ADR is ecosystem-scoped, like [ADR 0008](./0008-application-namespace.md). It decides how our own applications (the helpdesk, access control, kiosk and the services) get their NATS credential from the platform. It moves creds-keeper's package into [`stone-age-io/kit`](https://github.com/stone-age-io/kit), lets an application run it inside its own process, and adds device-held NATS keys to it.
@@ -280,7 +280,8 @@ that run comes first:
 
 Implemented on 2026-11-22 in `stone-age-io/kit` (`credskeeper`), `stone-age-io/services`
 (the binary and the watchdog) and the platform's e2e suite. The helpdesk
-adopted it the same day (helpdesk `4c9b915`).
+adopted it the same day (helpdesk `4c9b915`), and so did access control, in
+both binaries (access-control `1a9e180`).
 
 **Verified against the real platform binary and NATS server.** The platform's
 `e2e/credskeeper_test.go` runs the kit's keeper against the real routes. It is
@@ -312,6 +313,16 @@ new file two seconds later, with no restart. The run did not reach JetStream
 (the test machine lacked the account's storage), so the `helpdesk` role's
 JetStream grants are still unexercised under a live process.
 
+**Access control, against a local platform.** Its `contract/` was applied and a
+Thing provisioned for accessd and for a controller, each on its own role.
+accessd wrote its credentials outside its data directory and created
+`ACC_POLICY`, `ACC_STATUS` and `ACC_EVENTS` under the `accessd` role, so a
+contract role's JetStream grants have now run under a live process. The
+controller waited for its first file, connected and synced policy. A Revoke
+reached the running controller, which reconnected with the new file within a
+second. A reboot with the platform and NATS down booted at once from the
+file it had.
+
 **Not yet verified:**
 
 - **The watchdog binary with the keeper inside it.** Its wiring is a few lines
@@ -321,8 +332,8 @@ JetStream grants are still unexercised under a live process.
   creds file or session file inside `data_dir` and its container keeps them
   on a separate `/creds` volume, so a backup cannot contain them. No backup
   has been taken and inspected.
-- **Access control and the kiosk** still take a creds file by hand. Each
-  adopts the keeper in its own change.
+- **The kiosk** still takes a creds file by hand.
+- **A controller on its hardware.** The run used the mock driver.
 
 **Deviations from the text above:**
 
@@ -341,10 +352,13 @@ JetStream grants are still unexercised under a live process.
    standalone binary could have the wrong owner. The helpdesk creates it
    (0700) before `New`, as PocketBase creates `data_dir`. §2's snippet
    leaves this out, and the next application needs the same few lines.
-6. **A first start waits a bounded time.** §2's snippet returns the
-   `WaitForCreds` error. The helpdesk serves without NATS anyway, so it waits
-   up to 30s, then serves without NATS, with `credentials` failing, until a
-   restart.
+6. **How long a first start waits is the application's choice.** §2's
+   snippet returns the `WaitForCreds` error. The helpdesk serves without NATS
+   anyway, so it waits up to 30s and then serves without NATS, with
+   `credentials` failing, until a restart. accessd waits 30s and exits, as it
+   does when NATS is unreachable. An access controller waits without a bound,
+   since before its first file it has no policy or bindings to arm; a reboot
+   that finds the file never waits.
 
 ---
 
