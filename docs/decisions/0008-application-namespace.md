@@ -4,7 +4,7 @@ nav_order: 80
 ---
 # ADR 0008: One Namespace, Event Shape and Identity for Applications
 
-**Status:** Accepted — partly implemented. The helpdesk and access control follow its subjects and event shape; kiosk does not yet. The helpdesk (`nats.code`), accessd (`accessd.code`) and each access controller (`controller.code`) register their Thing codes. See [What changes in each application](#what-changes-in-each-application).
+**Status:** Accepted — implemented in the helpdesk, access control and kiosk (November 2026). All three follow its subjects and event shape, and register their Thing codes in NATS service discovery: the helpdesk (`nats.code`), accessd (`accessd.code`), each access controller (`controller.code`) and each kiosk binary (`nats.code`, or `kiosk.code` on a node). See [What changes in each application](#what-changes-in-each-application).
 **Date:** 2026-11-21
 
 > This ADR is ecosystem-scoped, like [ADR 0002](./0002-organization-code-namespace.md). It decides how the applications built on the platform (helpdesk, access control, kiosk and the services) name their subjects, shape their events, connect, and refer to inventory. It changes nothing in the platform itself.
@@ -148,7 +148,7 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
 |---|---|
 | **helpdesk** | `helpdesk.tickets.create` → `helpdesk.cmd.tickets.create` (`helpdesk.{org}.cmd.tickets.create` at the hub). `helpdesk.{org}.events.{type}` → `helpdesk.{org}.evt.{type}`. `occurred_at` → `ts`. The managed-org export maps the whole of `helpdesk.>`, so the platform doesn't change. |
 | **access control** | The scope becomes the location alone, and the portal type and code move after the channel. Every subject changes: see the table below. The events stream then needs one filter, `acc.*.evt.>`. `Nats-Msg-Id` on every event. |
-| **kiosk** | `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`. `occurred_at` → `ts`. `Nats-Msg-Id` on every event. |
+| **kiosk** | `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`, and `kiosk.{code}.command.…` → `kiosk.{code}.cmd.…` (rule 2). `occurred_at` → `ts`, and every event gains a `ts`. `Nats-Msg-Id` on every event. The repository moved to `stone-age-io/kiosk`. |
 | **Agent** | None. It already fits rules 1 to 3. |
 | **All of them** | Rule 4: a Thing per process, creds-keeper, reconnect after a Revoke, `metadata.code`. |
 
