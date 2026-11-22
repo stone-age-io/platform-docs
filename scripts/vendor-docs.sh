@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Copy the agent, rule-router, helpdesk, access-control and services repository
-# docs into docs/vendor/ as wiki pages, each under its own top-level wiki section.
+# Copy the agent, rule-router, helpdesk, access-control, kiosk and services
+# repository docs into docs/vendor/ as wiki pages, each under its own top-level
+# wiki section.
 #
 #   scripts/vendor-docs.sh [agent-checkout] [rule-router-checkout] \
-#     [helpdesk-checkout] [access-control-checkout] [services-checkout]
+#     [helpdesk-checkout] [access-control-checkout] [services-checkout] \
+#     [kiosk-checkout]
 #
 # The checkouts default to ../agent, ../rule-router, ../helpdesk,
-# ../access-control and ../services beside this repo. The script replaces
+# ../access-control, ../services and ../kiosk beside this repo. The script replaces
 # docs/vendor/<repo>/ completely, so a page deleted upstream goes away here too. Files keep their repository layout, which keeps the
 # docs' own relative links working; `pb-wiki import` turns them into wiki
 # links. Do not edit the copies: change the docs upstream, then run this again.
@@ -18,6 +20,7 @@ rr_src=${2:-$here/../rule-router}
 hd_src=${3:-$here/../helpdesk}
 ac_src=${4:-$here/../access-control}
 sv_src=${5:-$here/../services}
+ki_src=${6:-$here/../kiosk}
 
 # repo -> "checkout|GitHub repo"
 source_of() {
@@ -27,6 +30,7 @@ source_of() {
     helpdesk) echo "$hd_src|stone-age-io/helpdesk" ;;
     access-control) echo "$ac_src|stone-age-io/access-control" ;;
     services) echo "$sv_src|stone-age-io/services" ;;
+    kiosk) echo "$ki_src|stone-age-io/kiosk" ;;
   esac
 }
 
@@ -76,6 +80,21 @@ access-control|$ac_src|stone-age-io/access-control|docs/configuration.md|access-
 access-control|$ac_src|stone-age-io/access-control|docs/operators.md|access-control/operators|50|
 access-control|$ac_src|stone-age-io/access-control|docs/hardware.md|access-control/hardware|60|
 access-control|$ac_src|stone-age-io/access-control|demo/README.md|access-control/demo|70|
+kiosk|$ki_src|stone-age-io/kiosk|README.md|kiosk|55|access: public
+kiosk|$ki_src|stone-age-io/kiosk|docs/overview.md|kiosk/overview|10|
+kiosk|$ki_src|stone-age-io/kiosk|docs/controller.md|kiosk/controller|20|
+kiosk|$ki_src|stone-age-io/kiosk|docs/protocol.md|kiosk/protocol|30|
+kiosk|$ki_src|stone-age-io/kiosk|docs/api.md|kiosk/api|40|
+kiosk|$ki_src|stone-age-io/kiosk|docs/schema.md|kiosk/schema|50|
+kiosk|$ki_src|stone-age-io/kiosk|docs/ledger.md|kiosk/ledger|60|
+kiosk|$ki_src|stone-age-io/kiosk|docs/configuration.md|kiosk/configuration|70|
+kiosk|$ki_src|stone-age-io/kiosk|docs/operations.md|kiosk/operations|80|
+kiosk|$ki_src|stone-age-io/kiosk|docs/notifications.md|kiosk/notifications|90|
+kiosk|$ki_src|stone-age-io/kiosk|docs/rfid.md|kiosk/rfid|100|
+kiosk|$ki_src|stone-age-io/kiosk|docs/troubleshooting.md|kiosk/troubleshooting|110|
+kiosk|$ki_src|stone-age-io/kiosk|docs/development.md|kiosk/development|120|
+kiosk|$ki_src|stone-age-io/kiosk|docs/roadmap.md|kiosk/roadmap|130|
+kiosk|$ki_src|stone-age-io/kiosk|contract/README.md|kiosk/contract|140|title: The Kiosk Contract
 services|$sv_src|stone-age-io/services|README.md|services|60|access: public
 services|$sv_src|stone-age-io/services|docs/watchdog.md|services/watchdog|10|
 services|$sv_src|stone-age-io/services|docs/creds-keeper.md|services/creds-keeper|20|
@@ -86,7 +105,7 @@ EOF
 }
 
 # Start each repo's copy from empty, and note which commit it came from.
-for repo in agent rule-router helpdesk access-control services; do
+for repo in agent rule-router helpdesk access-control kiosk services; do
   IFS='|' read -r src gh <<<"$(source_of "$repo")"
   rm -rf "$here/docs/vendor/$repo"
   mkdir -p "$here/docs/vendor/$repo"

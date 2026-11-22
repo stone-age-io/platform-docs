@@ -77,7 +77,7 @@ details follow from this:
   and so are access-control's two binaries
   ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)),
   the helpdesk ([protocol](./vendor/helpdesk/docs/protocol.md#1-the-whole-surface)),
-  the kiosk's three binaries ([contract](https://github.com/stone-age-io/kiosk/tree/main/contract)),
+  the kiosk's three binaries ([protocol](./vendor/kiosk/docs/protocol.md#7-service-discovery)),
   watchdog ([watchdog](./vendor/services/docs/watchdog.md))
   and rule-router
   ([observability](./vendor/rule-router/docs/12-observability.md#service-discovery)).

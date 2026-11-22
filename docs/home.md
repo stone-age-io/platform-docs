@@ -17,6 +17,7 @@ below, or use search in the sidebar.
 | **[Rule Router](./vendor/rule-router/README.md)** | The rule engine: NATS routing, HTTP webhooks in and out, and scheduled publishes, all as YAML rules. |
 | **[Helpdesk](./vendor/helpdesk/README.md)** | The operator's service desk: support tickets and planned field work, machine-generated tickets over NATS, a requester portal, dispatch and time tracking. |
 | **[Access Control](./vendor/access-control/README.md)** | Physical access control on NATS: doors, schedules and access groups decided at the edge, intrusion-lite areas, alarms and notifications, and a phone badge for cardholders and visitors. |
+| **[Kiosk](./vendor/kiosk/README.md)** | Self-service checkout for tool cribs and storerooms: badge-scan checkouts and returns that keep working offline, RFID, a timeclock with tool interlocks, and an optional controller for a fleet. |
 | **[Services](./vendor/services/README.md)** | Small NATS services that run in a tenant's account, starting with the Watchdog, which reports when targets stop sending messages. |
 
 ## Start here
@@ -37,5 +38,7 @@ below, or use search in the sidebar.
 - **Controlling doors:** the [Access Control README](./vendor/access-control/README.md),
   then its [central service](./vendor/access-control/docs/accessd.md) and
   [edge controller](./vendor/access-control/docs/controller.md) pages.
+- **Running a tool crib:** the [Kiosk overview](./vendor/kiosk/docs/overview.md),
+  then its [central controller](./vendor/kiosk/docs/controller.md) for a fleet of kiosks.
 - **Going to production:** the [Operations checklist](./operations.md#7-production-checklist).
 - **Looking up a term:** [Glossary](./glossary.md).

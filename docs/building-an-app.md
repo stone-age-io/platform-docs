@@ -6,7 +6,7 @@ nav_order: 165
 
 An **application** here is a program that does its work on a tenant's NATS
 bus: the [helpdesk](./vendor/helpdesk/README.md),
-[access control](./vendor/access-control/README.md), the kiosk, the
+[access control](./vendor/access-control/README.md), the [kiosk](./vendor/kiosk/README.md), the
 [services](./vendor/services/README.md). It usually has a PocketBase of its own
 for its records and a console of its own for its staff. It never reads the
 platform's database, and the platform never calls it.
@@ -141,7 +141,7 @@ There is no live sync. The platform publishes nothing on a tenant's bus
 ## 7. Build read models from streams
 
 A **read model** is a table your application builds from events. Kiosk's
-controller builds a fleet ledger from every kiosk's transactions. Access
+[controller](./vendor/kiosk/docs/controller.md) builds a fleet ledger from every kiosk's transactions. Access
 control's [accessd](./vendor/access-control/docs/accessd.md) builds its audit
 log from controller events.
 
@@ -204,7 +204,8 @@ has the file format.
   both in one commit.
 
 The four applications each have one: access control, kiosk, helpdesk and
-services (watchdog).
+services (watchdog). The [kiosk contract](./vendor/kiosk/contract/README.md)
+is an example with three kinds of process.
 
 ---
 
@@ -213,5 +214,6 @@ services (watchdog).
 - Subjects, payloads, duplicates and bad messages: [Message Design](./concepts/message-design.md)
 - The decisions this page follows: [ADR 0008](./decisions/0008-application-namespace.md)
 - A device from start to finish: [Your First Device](./first-device.md)
-- Two complete contracts: [Helpdesk protocol](./vendor/helpdesk/docs/protocol.md),
-  [Access control protocol](./vendor/access-control/docs/protocol.md)
+- Three complete contracts: [Helpdesk protocol](./vendor/helpdesk/docs/protocol.md),
+  [Access control protocol](./vendor/access-control/docs/protocol.md),
+  [Kiosk protocol](./vendor/kiosk/docs/protocol.md)

@@ -16,7 +16,7 @@ version says so.
 | Services (Watchdog and creds-keeper) | v0.3.0 | [Services docs](./vendor/services/README.md) |
 | Access Control | v0.3.0 | [Access Control docs](./vendor/access-control/README.md). [CHANGELOG](https://github.com/stone-age-io/access-control/blob/main/CHANGELOG.md) |
 | Helpdesk | v0.2.0 | [Helpdesk docs](./vendor/helpdesk/README.md). [CHANGELOG](https://github.com/stone-age-io/helpdesk/blob/main/CHANGELOG.md) |
-| Kiosk | v0.1.1 | [README](https://github.com/stone-age-io/kiosk#readme). [CHANGELOG](https://github.com/stone-age-io/kiosk/blob/main/CHANGELOG.md) |
+| Kiosk | v0.1.1 | [Kiosk docs](./vendor/kiosk/README.md). [CHANGELOG](https://github.com/stone-age-io/kiosk/blob/main/CHANGELOG.md) |
 | Application kit (`stone-age-io/kit`) | v0.1.0 | [README](https://github.com/stone-age-io/kit#readme). A Go library the applications build on, not something you run |
 
 Platform v0.21.0 is built on these upstream versions:

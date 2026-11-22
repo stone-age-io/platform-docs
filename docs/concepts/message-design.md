@@ -11,7 +11,7 @@ publisher makes.
 
 This page gives the conventions that the Stone-Age.io components follow. Use
 them, and a new device or application fits with the Agent, the rule engine,
-the helpdesk, access control and the kiosk. Each rule names the component that does it,
+the helpdesk, access control and the [kiosk](../vendor/kiosk/README.md). Each rule names the component that does it,
 so you can see a working example.
 
 ---
@@ -230,9 +230,9 @@ messages behind it. Set a maximum number of deliveries on the consumer.
 
 The platform stores subjects in a Thing Type, but it stores no payload shape.
 So write the payload contract in a document, next to the code that publishes
-it. The [helpdesk protocol](../vendor/helpdesk/docs/protocol.md) and the
-[access control protocol](../vendor/access-control/docs/protocol.md) are
-examples. Each one has a table of subject, direction, transport and body.
+it. The [helpdesk protocol](../vendor/helpdesk/docs/protocol.md), the
+[access control protocol](../vendor/access-control/docs/protocol.md) and the
+[kiosk protocol](../vendor/kiosk/docs/protocol.md) are examples. Each one has a table of subject, direction, transport and body.
 
 Before you publish a new kind of message, check these:
 
@@ -256,5 +256,6 @@ Before you publish a new kind of message, check these:
 - Streams, consumers and KV: [Persistence](./persistence.md)
 - The subjects a Thing Type declares: [Thing Types](../thing-types.md)
 - Rules that read and write payloads: [Automation](../automation.md)
-- Two full contracts: [Helpdesk protocol](../vendor/helpdesk/docs/protocol.md),
-  [Access control protocol](../vendor/access-control/docs/protocol.md)
+- Three full contracts: [Helpdesk protocol](../vendor/helpdesk/docs/protocol.md),
+  [Access control protocol](../vendor/access-control/docs/protocol.md),
+  [Kiosk protocol](../vendor/kiosk/docs/protocol.md)
