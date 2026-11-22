@@ -330,6 +330,14 @@ demo/                   dev-only: rules/ (rule-router activity), telegraf/ (even
 
 ---
 
+## Onboarding an Organization
+
+[`contract/`](https://github.com/stone-age-io/access-control/blob/main/contract) holds what an organization needs on the platform: the
+Thing Types for `accessd`, controllers, doors and gates, their operations, and
+a NATS role for `accessd` and one for controllers. As an owner or admin of the
+organization, run `stone apply --template contract/`. It is safe to re-run,
+and running it again moves an organization to a newer contract.
+
 ## Docs
 
 - **[Central Service (accessd)](docs/accessd.md)**: what the central binary

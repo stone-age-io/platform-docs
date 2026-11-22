@@ -34,7 +34,9 @@ names the program.
 
 1. **Create the Thing Type, the NATS role and the Thing**, as for any device:
    [Your First Device §1 to §3](./first-device.md#1-create-a-thing-type). The
-   role grants the subjects the program uses, and nothing else.
+   role grants the subjects the program uses, and nothing else. The Thing Type
+   and the role come from the application's contract folder (§9); only the
+   Thing is made by hand.
 2. **Run creds-keeper beside the process.** It signs in as the Thing and keeps
    the creds file current, so Regenerate, Revoke and deactivation in the
    console reach the process
@@ -176,7 +178,38 @@ A check must be answerable by the process that runs it.
 
 ---
 
-## 9. Where to Go Next
+## 9. Ship a contract folder
+
+Everything an organization needs on the platform to run the application goes
+in a `contract/` folder in its repository: the Thing Types, their operations,
+and a NATS role per kind of process. It is a `stone` template, so onboarding
+an organization is one command, run as an owner or admin of it:
+
+```bash
+stone org switch acme
+stone apply --template contract/
+```
+
+Running it again moves an organization to a newer contract and leaves
+anything that matches alone. It never deletes.
+[stone CLI §5](./stone-cli.md#templates-one-folder-for-many-organizations)
+has the file format.
+
+- **One role per kind of process**, granting what that process uses: an edge
+  controller reads the policy bucket and does not write it. A role is shared by
+  every Thing of its kind, so a subject uses `*` where the location or the
+  Thing would go.
+- **A Thing Type with no operations is fine** for a central process whose
+  subjects all belong to other Thing Types. The role says what it may do.
+- **Keep the folder next to the code that defines the subjects**, and change
+  both in one commit.
+
+The four applications each have one: access control, kiosk, helpdesk and
+services (watchdog).
+
+---
+
+## 10. Where to Go Next
 
 - Subjects, payloads, duplicates and bad messages: [Message Design](./concepts/message-design.md)
 - The decisions this page follows: [ADR 0008](./decisions/0008-application-namespace.md)

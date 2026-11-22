@@ -583,6 +583,48 @@ Do not build a process that expects convergence. For the same reason,
 [Operations §3](./operations.md#3-backups) treats a workspace as an audit and
 rebuild aid, **not** a backup.
 
+### Templates: one folder for many organizations
+
+A workspace belongs to one organization, because its files carry that
+organization's ids. A **template** is a folder that applies to whichever
+organization is current, so the same folder sets up each one. Each
+application ships one as its `contract/` folder
+([Building an Application §9](./building-an-app.md#9-ship-a-contract-folder)).
+
+```bash
+stone org switch acme
+stone apply --template contract/ --dry-run
+stone apply --template contract/
+```
+
+A template file is a pulled file without what ties it to one organization:
+
+```yaml
+# contract/thing_types/access-door.yaml
+code: access-door
+name: Access-Controlled Door
+subject_prefix: acc.{location}
+operations:          # operation names, not ids
+  - publish_door_decision
+  - subscribe_door_grant
+```
+
+- **It holds definitions only:** `thing_types/`, `thing_type_operations/`,
+  `nats_roles/` and `location_types/`. A file anywhere else is an error.
+- **Records are found by key:** a Thing Type or Location Type by `code`
+  (ignoring case), an operation or a role by `name`. A file with `id`,
+  `updated`, `created` or `organization` is refused.
+- **Relations hold keys**, resolved in the current organization. Operations are
+  created before the Thing Type that names them.
+- **Existing records get the fields that differ, missing ones are created.**
+  There is no stale check: the template is the contract, and applying a newer
+  one moves the organization to it.
+- **Nothing is written back and nothing is deleted.**
+- `--dry-run --exit-code` exits 2 when an organization differs from the
+  template, so the same drift check works.
+
+Needs stone with `--template` (unreleased at the time of writing).
+
 ---
 
 ## 6. NATS, JetStream, and KV

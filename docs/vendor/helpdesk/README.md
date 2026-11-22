@@ -277,6 +277,13 @@ docs/                overview guide, data model, wire protocol, notifications,
 
 ---
 
+## Onboarding
+
+[`contract/`](https://github.com/stone-age-io/helpdesk/blob/main/contract) holds the helpdesk's Thing Type and NATS role. Apply it
+once to the operator organization, as an owner or admin of it:
+`stone apply --template contract/`. A managed organization needs nothing from
+it: its tickets arrive through the `helpdesk.>` export the platform creates.
+
 ## Documentation
 
 - [Overview](docs/overview.md): the ideas, the roles and a five-minute tour.
