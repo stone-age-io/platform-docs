@@ -154,7 +154,7 @@ A **NATS micro service** is a request and reply service that follows a NATS
 convention. It answers requests on its own subjects, and it also answers
 discovery requests on `$SRV.>` subjects. A tool such as `nats micro list` can
 then find every running service and its endpoints. The Agent, the helpdesk,
-access-control and rule-router are micro services.
+access-control, the kiosk, watchdog and rule-router are micro services.
 
 ---
 

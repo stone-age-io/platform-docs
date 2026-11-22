@@ -66,7 +66,7 @@ graph TB
 Every release has binaries for linux, darwin and windows, on amd64 and arm64:
 
 ```sh
-VERSION=0.11.0  # the stone version on the Versions page
+VERSION=0.12.0  # the stone version on the Versions page
 curl -sSLO https://github.com/stone-age-io/stone-cli/releases/download/v${VERSION}/stone_${VERSION}_linux_amd64.tar.gz
 tar xzf stone_${VERSION}_linux_amd64.tar.gz     # unpacks ./stone, LICENSE, README.md, SKILLS.md
 ./stone --version
@@ -623,7 +623,7 @@ operations:          # operation names, not ids
 - `--dry-run --exit-code` exits 2 when an organization differs from the
   template, so the same drift check works.
 
-Needs stone with `--template` (unreleased at the time of writing).
+From stone 0.12.0.
 
 ---
 

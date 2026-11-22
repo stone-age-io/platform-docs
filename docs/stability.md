@@ -114,8 +114,8 @@ Do not build on these. They can change in any release.
 - **`demo-seed`.** The tenants, codes, roles and subjects it creates.
 - **Collections that are not for clients:** `nats_publish_queue`,
   `nats_system_operator` and `audit_logs`' internal fields.
-- **Reference applications.** `rule-router`, the Helpdesk, Access Control and
-  the services each have their own versions and their own contracts.
+- **Reference applications.** `rule-router`, the Helpdesk, Access Control, the
+  Kiosk and the services each have their own versions and their own contracts.
 
 Upstream behavior is also outside this contract. NATS, Nebula and PocketBase
 each have their own compatibility rules, and

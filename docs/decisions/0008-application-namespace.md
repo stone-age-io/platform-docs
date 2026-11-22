@@ -96,7 +96,8 @@ site-scoped permissions, as ADR 0003 decided.
 | `telemetry` | Measurement | Publish | Yes |
 
 - **An application may add a channel of its own** for raw input, such as
-  access control's `tap`, if no stream filter captures it.
+  access control's `tap` or the kiosk's `sighting`, if no stream filter
+  captures it.
 - **ADR 0002's disjointness rule follows from the channel.** A stream captures
   `{app}.{*…}.evt.>`, with one `*` per scope token, and an intake stream
   captures `cmd`. Two channels never overlap, so no application chooses a
@@ -154,7 +155,7 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
 
 Access control's subjects, before and after:
 
-| Message | Today | After |
+| Message | Before | After |
 |---|---|---|
 | Card read | `acc.{location}.{type}.{thing}.tap` | `acc.{location}.tap.{type}.{thing}` |
 | Posture override | `acc.{location}.{type}.{thing}.cmd.posture` | `acc.{location}.cmd.{type}.{thing}.posture` |

@@ -236,7 +236,7 @@ internal/
   customers/         email-domain validation (never a public provider)
   notifications/     notifier core, templates, lifecycle hooks, NATS publish,
                      editor API
-  subjects/          NATS subject grammar (helpdesk.{org}.tickets.{verb})
+  subjects/          NATS subject grammar (helpdesk.{org}.cmd.tickets.{verb})
   natsx/             NATS connect (creds file) + inbox stream helper
   ingest/            durable consumer → ticket projection
   inbound/           webhook route, webhook-token reveal/rotate, email intake

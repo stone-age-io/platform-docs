@@ -10,8 +10,17 @@ connection:
 - `GET /api/ready`: a readiness report in JSON, `200` or `503`.
 - `GET /metrics`: a Prometheus exposition.
 
-The Agent is the one exception to the path: it serves `/ready` with no `/api`
-prefix, on its own `observability.addr` ([§5](#5-the-edge-agent)).
+Three processes differ:
+
+- **The Agent** serves `/ready` with no `/api` prefix, on its own
+  `observability.addr` ([§5](#5-the-edge-agent)).
+- **`rule-router`** serves `/health` and `/ready` on its metrics port
+  (`:2112`), only when `metrics.enabled` is true
+  ([Rule Router observability](./vendor/rule-router/docs/12-observability.md)).
+- **An access controller** has no `/api/ready`. It serves `/metrics` when
+  `metrics.enabled` is true and a local status page when `diagnostics.enabled`
+  is true, and it answers a health request over NATS
+  ([Access Control controller](./vendor/access-control/docs/controller.md)).
 
 [Observability](./observability.md) covers the history of your *telemetry*.
 This page covers the *processes*: can the Control Plane do its job, and is the

@@ -15,6 +15,8 @@ nav_order: 20
 
 > **Rule 2 is amended for Things and Locations by [ADR 0003](./0003-human-friendly-codes-and-default-subject.md)**. A blank code there is replaced with a generated one, not slugified from the name; in practice only organizations were ever slugified. Uniqueness ignores case, and a record's type is frozen once set. Everything else here stands.
 
+> **The helpdesk's subjects are amended by [ADR 0008](./0008-application-namespace.md)**, which also owns the disjointness rule this ADR left without an owner. The intake subject is now `helpdesk.cmd.tickets.create` (arriving as `helpdesk.{org}.cmd.tickets.create` through the export), the stream filter is `helpdesk.*.cmd.tickets.>`, and events are `helpdesk.{code}.evt.{type}`. The subjects below are left as written, because an ADR records what was argued at the time.
+
 ---
 
 ## Context

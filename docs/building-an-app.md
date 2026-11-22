@@ -17,12 +17,8 @@ the topic. The decisions behind it are
 [ADR 0002](./decisions/0002-organization-code-namespace.md),
 [ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md),
 [ADR 0007](./vendor/services/docs/decisions/0007-creds-keeper.md) and
-[ADR 0008](./decisions/0008-application-namespace.md).
-
-::: note Not every application follows this page yet
-ADR 0008 is accepted, and the applications are being brought in line with it.
-Where one still differs, ADR 0008 lists the change.
-:::
+[ADR 0008](./decisions/0008-application-namespace.md). All four applications
+follow this page.
 
 ---
 
@@ -165,7 +161,10 @@ into memory. That is how an edge box keeps working while it is offline.
 
 ## 8. Serve the process contract
 
-Every process serves the same two endpoints as the Control Plane:
+Every process with an HTTP server serves the same two endpoints as the
+Control Plane. An edge process with none, such as an access controller, serves
+`/metrics` and answers a health request over NATS instead
+([Health & Metrics](./health-metrics.md)).
 
 - **`GET /api/ready`**: a JSON report of named checks, each `ok`, `warn`,
   `fail` or `skipped`, with `503` only when a check failed. Every non-`ok`

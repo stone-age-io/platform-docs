@@ -11,7 +11,7 @@ publisher makes.
 
 This page gives the conventions that the Stone-Age.io components follow. Use
 them, and a new device or application fits with the Agent, the rule engine,
-the helpdesk and access control. Each rule names the component that does it,
+the helpdesk, access control and the kiosk. Each rule names the component that does it,
 so you can see a working example.
 
 ---
@@ -165,9 +165,9 @@ The helpdesk puts the name and version of its contract in each event:
 ```json
 {
   "schema": "helpdesk.event",
-  "version": 1,
+  "version": 2,
   "event_type": "ticket.status_changed",
-  "occurred_at": "2026-07-15T14:02:11Z",
+  "ts": "2026-07-15T14:02:11Z",
   "change": { "field": "status", "from": "open", "to": "in_progress" }
 }
 ```

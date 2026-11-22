@@ -485,6 +485,7 @@ other's code.
 | **`stone` CLI** | PocketBase REST API and the platform's collections schema; NATS protocol | The REST API is stable upstream PocketBase. Additive schema changes do not break the CLI. Before 1.0, the release notes flag breaking schema changes. |
 | **Agent** | PocketBase API and NATS protocol | It signs in at bootstrap. After that it reads its credentials from the platform again at intervals, so the platform must stay reachable ([The Agent](./agent.md)). |
 | **`rule-router`** | NATS subjects and KV only | Knows nothing about PocketBase. Versioned separately. |
+| **Applications** (access control, helpdesk, kiosk, services) | NATS subjects ([ADR 0008](./decisions/0008-application-namespace.md)); a creds file kept current by creds-keeper; their own PocketBase | They never read the platform's database. What they need on it (Thing Types, operations, NATS roles) is each one's `contract/` folder, applied with `stone apply --template` ([Building an Application §9](./building-an-app.md#9-ship-a-contract-folder)). Each is versioned separately. |
 | **Stream processors, Telegraf, TSDB, Grafana/Perses** | NATS subjects only | Independent of the platform. The subject contract ([Thing Types](./thing-types.md)) is the only interface. |
 | **`nats-server`** | The exported NATS Operator and resolver config ([Configuration §4.1](./configuration.md#41-what-init-runs)) | Needs JetStream and JWT/operator-mode auth. Some patterns in these docs need a minimum version: 2.11 for a TTL on one KV key, 2.12 for message scheduling ([Automation §3](./automation.md#3-patterns-built-from-existing-parts)). For an external server, use the same version as the one embedded for `serve --nats` ([Versions](./versions.md)) or a newer one. |
 | **`nebula`** | Certificates from the org CAs | Stock upstream. The platform issues standard Nebula certificates and configs. |
@@ -509,6 +510,15 @@ other's code.
   gave two NATS identities the same key, pb-nats refuses to start and names the
   collection. See
   [NATS Security §4](./concepts/nats-security.md#device-held-keys).
+- **The ADR 0008 subjects change the applications' wire format** in access
+  control v0.3.0 and helpdesk v0.2.0. Kiosk v0.1.0, its first release, ships
+  on them; a kiosk built from an earlier commit is on the old subjects.
+  Upgrade every process of
+  one application together, with the rule-router rules, Telegraf inputs and
+  NATS roles that name its old subjects; a publisher on an old subject reaches
+  nobody. Re-apply its `contract/` with stone 0.12.0 to move its Thing Types
+  and roles to the new subjects. Each application's CHANGELOG has the subject
+  table.
 
 ---
 

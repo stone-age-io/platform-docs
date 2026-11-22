@@ -142,7 +142,8 @@ A suggested starting layout:
 An application can use a bare `{app-identifier}.…`, the same shape as a Thing
 Type, or put every application under one root such as `app.{app}.…`. The demo
 uses the second form: `app.wms.{thing}`, `app.kiosk.{thing}`. That keeps its
-kiosk controller out of `kiosk.>`, which belongs to the kiosk nodes. Thing Type
+kiosk controller's own Thing off `kiosk.{thing}`, whose second token is a kiosk
+node's code; the controller reaches the nodes through its NATS role. Thing Type
 codes and application namespaces share token 0, and the same organization admin
 controls both, so the platform does not check for a clash.
 
@@ -355,8 +356,8 @@ Type that *asks for* them links `snapshot_request`.
 read from the device's side, and the subject comes from that Thing's prefix and
 code. So `snapshot_reply` on the camera resolves to
 `camera.CA-9KD-4PX.snapshot`, where the camera answers. `snapshot_request` on a
-kiosk resolves to `kiosk.K-1.snapshot`, where the kiosk sends a request and a
-service that subscribes to `kiosk.*.snapshot` answers. The two do not meet.
+gateway resolves to `gateway.GW-1.snapshot`, where the gateway sends a request and a
+service that subscribes to `gateway.*.snapshot` answers. The two do not meet.
 
 A `request` operation therefore describes a Thing that asks a service for
 something on its own subject. To call *another* Thing, a client sends a request

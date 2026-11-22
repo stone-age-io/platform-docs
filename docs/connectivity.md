@@ -76,7 +76,9 @@ details follow from this:
   subscribe. The Agent is one ([The Agent §3E](./agent.md#e-service-discovery)),
   and so are access-control's two binaries
   ([protocol](./vendor/access-control/docs/protocol.md#service-discovery)),
-  the helpdesk ([protocol](./vendor/helpdesk/docs/protocol.md#1-the-whole-surface))
+  the helpdesk ([protocol](./vendor/helpdesk/docs/protocol.md#1-the-whole-surface)),
+  the kiosk's three binaries ([contract](https://github.com/stone-age-io/kiosk/tree/main/contract)),
+  watchdog ([watchdog](./vendor/services/docs/watchdog.md))
   and rule-router
   ([observability](./vendor/rule-router/docs/12-observability.md#service-discovery)).
 

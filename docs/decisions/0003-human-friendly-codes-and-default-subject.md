@@ -195,7 +195,7 @@ Shipped in the platform as one change: `hooks/codes.go`, `migrations/schema_upda
 
 **The demo keeps its `app.` root.** Rule 6 had the demo move from `app.{kind}.{thing}` to a bare `{kind}.{thing}`. For the kiosk controller that means `app.kiosk.{thing}` becoming `kiosk.{thing}`, which is the kiosk nodes' own tree:
 
-- The kiosk stream binds `kiosk.*.event.>`, and the Thing Type screen would render the controller's subjects as if it were one more kiosk node.
+- The kiosk stream binds `kiosk.*.event.>` (`kiosk.*.evt.>` since [ADR 0008](./0008-application-namespace.md)), and the Thing Type screen would render the controller's subjects as if it were one more kiosk node.
 - A role granting kiosk nodes `kiosk.*.>` would match the controller's code too.
 
 Nothing in rule 6 required the move. It says subject layout past the default is guidance, and a grouped `app.{app}.…` root is as valid as a bare identifier. The demo shows the grouped shape; [Thing Types](../thing-types.md#subject-layout-past-the-default-is-guidance) describes both. The rejected alternative below still holds as platform policy: the platform reserves no `app.` token. Every demo type already sets an explicit prefix, so the new default subject changed none of them.

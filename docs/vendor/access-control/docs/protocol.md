@@ -41,7 +41,7 @@ The leading literal keeps `ACC_EVENTS`'s subjects disjoint from every sibling
 app's stream on a shared NATS account. JetStream forbids overlapping stream
 subjects, and a subject that led with a wildcard (e.g. `*.*.*.acc.evt.>`) would
 overlap any stream rooted at a literal first token (`things.>`, `cameras.>`,
-`kiosk.*.event.>`, …).
+`kiosk.*.evt.>`, …).
 
 Set the token with `subjects.app` (or `SA_SUBJECTS_APP`). The default is `acc`.
 Change it only to isolate a deployment on a shared NATS account. It must be a
