@@ -196,7 +196,7 @@ publish allow, publish deny, subscribe allow and subscribe deny.
 In Stone-Age.io, a **NATS Role** is a reusable set of permissions. The platform
 copies a role's lists, and the user's own overrides, into each user JWT that it
 signs. So only Owners and Admins can write roles. See
-[Connectivity §1](../connectivity.md#core-pubsub-subject-namespacing).
+[Connectivity §1](../connectivity.md#core-pubsub--subject-namespacing).
 
 ::: warning An empty allow list means everything in NATS, and nothing in Stone-Age.io
 In plain NATS, a user JWT with no permissions can publish and subscribe to
@@ -242,7 +242,7 @@ service, deactivate it. See
 
 - How messages move: [Messaging](./messaging.md)
 - The platform's chain of trust and tenancy:
-  [Architecture](../architecture.md#3-multi-tenancy-infrastructure-isolation)
+  [Architecture](../architecture.md#3-multi-tenancy--infrastructure-isolation)
 - Who can read and write credentials: [Authorization](../authorization.md)
 - How a device gets and renews its credential: [The Agent](../agent.md)
 - What reaches a site, and when: [Leaf Nodes](../leaf-nodes.md#81-what-reaches-a-site-and-when)

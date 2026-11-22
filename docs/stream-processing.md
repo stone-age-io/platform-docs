@@ -163,7 +163,7 @@ pattern is an exception that uses KV in a complex-looking but sound way.
 ## 6. A Worked Example: Anomaly Detection on Access Events
 
 This example adds Layer 2 to the access-control reference architecture in
-[Platform Layers §8](./platform-layers.md#8-reference-architecture-all-four-layers).
+[Platform Layers §8](./platform-layers.md#8-reference-architecture--all-four-layers).
 The other layers stay as they are.
 
 **Goal:** flag access events that are unusual for the user, such as access

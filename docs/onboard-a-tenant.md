@@ -82,7 +82,7 @@ The account must show `active` as `true`.
 A new Organization has **no NATS roles and no NATS users**. Nobody in it can
 connect to the bus until an Owner or Admin creates a role with permissions and
 a user with that role. An empty allow list grants nothing
-([Connectivity §1](./connectivity.md#core-pubsub-subject-namespacing)).
+([Connectivity §1](./connectivity.md#core-pubsub--subject-namespacing)).
 
 ---
 
@@ -160,7 +160,7 @@ these steps in detail.
 - [ ] At least one NATS role and one NATS user exist, and the user is linked to
       a Membership.
 - [ ] If the tenant uses the provider's helpdesk, the `managed` flag is set
-      ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports)).
+      ([Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports--exports)).
 
 ---
 

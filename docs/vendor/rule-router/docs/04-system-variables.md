@@ -246,7 +246,7 @@ The same holds for nested paths (`{device.location.zone}` is missing if any step
   operator: not_exists
 ```
 
-See [`rules/router/owntracks.yaml`](https://github.com/skeeeon/rule-router/blob/main/rules/router/owntracks.yaml) for the full pair, and [09 Patterns — Writing to KV](./09-patterns.md#11-writing-to-kv-event-state) for why an optional array needs it.
+See [`rules/router/owntracks.yaml`](https://github.com/skeeeon/rule-router/blob/main/rules/router/owntracks.yaml) for the full pair, and [09 Patterns — Writing to KV](./09-patterns.md#11-writing-to-kv-event--state) for why an optional array needs it.
 
 ## Worked examples
 

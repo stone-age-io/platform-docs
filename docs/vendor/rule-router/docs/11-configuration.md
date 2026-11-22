@@ -226,7 +226,7 @@ http:
 
 Inbound request bodies are hard-capped at **10 MB** (`io.LimitReader`); anything beyond is truncated. This is a fixed safeguard, not configurable.
 
-> **TLS / HTTPS:** the inbound server speaks **plain HTTP only** — there are no `tls` fields here by design. Terminate TLS at a reverse proxy or load balancer (nginx, Caddy, Envoy, an ALB/NLB, an ingress controller) in front of the gateway. See [02 Gateway — TLS termination](./02-gateway.md#tls-https-termination).
+> **TLS / HTTPS:** the inbound server speaks **plain HTTP only** — there are no `tls` fields here by design. Terminate TLS at a reverse proxy or load balancer (nginx, Caddy, Envoy, an ALB/NLB, an ingress controller) in front of the gateway. See [02 Gateway — TLS termination](./02-gateway.md#tls--https-termination).
 
 ### `http.client` — outbound HTTP client (gateway + scheduler)
 
@@ -370,7 +370,7 @@ forEach:
 |-------|------|---------|--------|-------------|
 | `maxIterations` | int | `100` | `0`–`10000` | Max array length a `forEach` action accepts. `0` = unlimited (use with caution). The hard ceiling enforced at load is **10000**. |
 
-When an array exceeds the limit, the `forEach` action **fails for that message** and generates no actions; the error `forEach array exceeds limit` is logged and `template_operations_total{status="error"}` increments. Nothing is truncated. See [05 Array Processing](./05-array-processing.md#performance-limits).
+When an array exceeds the limit, the `forEach` action **fails for that message** and generates no actions; the error `forEach array exceeds limit` is logged and `template_operations_total{status="error"}` increments. Nothing is truncated. See [05 Array Processing](./05-array-processing.md#performance--limits).
 
 ---
 

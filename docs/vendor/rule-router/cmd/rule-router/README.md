@@ -191,7 +191,7 @@ When only the final value of a burst matters, `mode: trailing` holds the action 
 
 Trailing mode adds up to `window` of latency and makes the action at-most-once, so it suits settling state (dials, setpoints, config edits) rather than alerting.
 
-> A throttle can also go on a **trigger**, but it skips evaluation entirely and will discard messages that would have matched. Only use it on unconditional or expensive rules — see [Core Concepts](./../../docs/01-core-concepts.md#trigger-throttle-read-this-before-using-it) for full throttle semantics.
+> A throttle can also go on a **trigger**, but it skips evaluation entirely and will discard messages that would have matched. Only use it on unconditional or expensive rules — see [Core Concepts](./../../docs/01-core-concepts.md#trigger-throttle--read-this-before-using-it) for full throttle semantics.
 
 ### Example: Polling an HTTP API into NATS
 

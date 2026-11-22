@@ -81,7 +81,7 @@ rule-cli check --rule idface.yaml --message body.form
 
 Two adjacent symptoms:
 
-- **The rendered payload is invalid JSON.** An unresolved variable renders as an empty string, so `"card": {card_value}` becomes `"card": ` when the sender omits that field. Quote every optional scalar: `"card": "{card_value}"`. An optional array or object cannot be quoted — split the rule on `exists` / `not_exists` instead ([09 Patterns — Writing to KV](./09-patterns.md#11-writing-to-kv-event-state)).
+- **The rendered payload is invalid JSON.** An unresolved variable renders as an empty string, so `"card": {card_value}` becomes `"card": ` when the sender omits that field. Quote every optional scalar: `"card": "{card_value}"`. An optional array or object cannot be quoted — split the rule on `exists` / `not_exists` instead ([09 Patterns — Writing to KV](./09-patterns.md#11-writing-to-kv-event--state)).
 - **`failed to decode form payload` / `parsing form body` in the logs.** The body has a malformed percent-escape. This is rejected rather than partially parsed on purpose — a silently dropped field reads as absent and can flip a condition instead of raising an error. On a fire-and-forget route the sender has already received its `200`, so the log line is the only trace; a synchronous route returns `500`.
 
 ## Query parameter is always empty

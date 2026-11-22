@@ -303,7 +303,7 @@ someone who badged and walked away.
 - It is evaluated on the existing hold-eval tick, not a per-grant timer, so it
   lands 10 to 20s after the grant.
 - It is diagnostic, not urgent, so notification treats it as opt-in (see
-  [Notifications & Webhook](#12-notifications-webhook)).
+  [Notifications & Webhook](#12-notifications--webhook)).
 - It is emitted only where an open is **observable**, which takes two things:
   the portal's binding declares a `dpsInput`, *and* the controller has a
   door-input driver. Either alone is not enough. They agree on real hardware
@@ -663,7 +663,7 @@ omit them:
 - **Notification opt-ins.** `portals.notify_on_alarm`,
   `areas.notify_on_alarm`, `locations.notify_fire` and
   `controllers.notify_offline` are read by accessd's notification sink (see
-  [Notifications & Webhook](#12-notifications-webhook)).
+  [Notifications & Webhook](#12-notifications--webhook)).
 - **Controller liveness.** `controllers.last_seen`/`status` are written by
   accessd from heartbeats (see [Controller heartbeat](#controller-heartbeat)).
 

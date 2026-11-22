@@ -80,7 +80,7 @@ set in a **top-level `platform:` block**. The Agent depends on the Stone-Age.io 
 PocketBase.
 
 The block is top-level because **three** parts of the Agent read it: the NATS
-credential lifecycle below, the [Nebula](#4-security-isolation) config source,
+credential lifecycle below, the [Nebula](#4-security--isolation) config source,
 and the [leaf bootstrap](./leaf-nodes.md#3-get-apimeleaf-config). All three
 authenticate as the same Thing, so each also needs `nats.auth.type:
 "platform"`, and the Agent refuses to start with a Nebula `source: "platform"`

@@ -76,7 +76,7 @@ trigger:
     reply: true
     queue: "geocoders"   # optional; load-balance across responders
 ```
-See [Request/Reply & responses](#requestreply-responses) below.
+See [Request/Reply & responses](#requestreply--responses) below.
 
 **HTTP Trigger** (gateway feature): Evaluates an incoming HTTP request.
 ```yaml

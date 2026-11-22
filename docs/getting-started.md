@@ -83,7 +83,7 @@ go build -o stone-age .                          # build the package, not main.g
 
 `stone` is the command-line client. Download it for your platform from its
 [Releases page](https://github.com/stone-age-io/stone-cli/releases)
-([Stone CLI §2](./stone-cli.md#2-install-build)). Then point it at the
+([Stone CLI §2](./stone-cli.md#2-install--build)). Then point it at the
 platform and sign in:
 
 ```bash
@@ -145,7 +145,7 @@ To send messages, your membership in the organization needs a NATS identity. In
 the console:
 
 1. Under **NATS → Roles**, create a **Role**. Fill in its permissions, because
-   [an empty allow list grants nothing](./connectivity.md#core-pubsub-subject-namespacing):
+   [an empty allow list grants nothing](./connectivity.md#core-pubsub--subject-namespacing):
    - **Publishing → Allow Subjects:** `test.>`
    - **Subscribing → Allow Subjects:** `test.>` and `_INBOX.>`. Replies to
      requests arrive on `_INBOX` subjects.
@@ -204,7 +204,7 @@ widget can also send messages from the dashboard ([Dashboards](./dashboards.md))
   the bus, and [Onboard a Tenant](./onboard-a-tenant.md) to add a customer.
 - Define [Thing Types](./thing-types.md) to declare the subjects of each device.
 - Put your config in git. `stone pull` writes every tenant record to YAML that
-  you can diff and review ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
+  you can diff and review ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull--apply)).
 - Install the [Agent](./agent.md) on a Linux or Windows machine to collect
   telemetry.
 - Add rules, webhooks and scheduled publishes with the rule engine

@@ -711,7 +711,7 @@ stone js apply --domain GW-KC-01
 
 In Stone-Age.io, NATS credentials are **per membership**. A user has a separate
 NATS identity in each Organization, stored as the membership's
-[Linked NATS Identity](./platform-ui-entities.md#1-organizations-memberships).
+[Linked NATS Identity](./platform-ui-entities.md#1-organizations--memberships).
 `stone` keeps your local `nats` CLI on the credential for your current org.
 
 When the context has `nats_url`, `stone org switch <org>` and

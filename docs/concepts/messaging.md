@@ -46,7 +46,7 @@ A NATS message has four parts:
 
 NATS accepts a payload in any format. The platform's components use JSON. The
 server refuses a payload larger than its `max_payload`, which is 1 MB by
-default. A [NATS role](../connectivity.md#core-pubsub-subject-namespacing) can
+default. A [NATS role](../connectivity.md#core-pubsub--subject-namespacing) can
 set a lower limit.
 
 ---
@@ -87,7 +87,7 @@ But it is harder to read in a permission list or a stream filter.
 
 The platform's default subject follows this rule:
 `{thing_type_code}.{thing}.{operation_suffix}`. See
-[Connectivity §1](../connectivity.md#core-pubsub-subject-namespacing) and
+[Connectivity §1](../connectivity.md#core-pubsub--subject-namespacing) and
 [ADR 0003](../decisions/0003-human-friendly-codes-and-default-subject.md).
 
 ---
@@ -145,7 +145,7 @@ The requester publishes the request, but it must also **subscribe** to
 **publish** the answer. In Stone-Age.io, the platform adds neither permission
 for you. A request that times out with a responder online usually means that
 one of these permissions is missing. See
-[Connectivity §1](../connectivity.md#core-pubsub-subject-namespacing).
+[Connectivity §1](../connectivity.md#core-pubsub--subject-namespacing).
 :::
 
 ### Services
@@ -198,7 +198,7 @@ one account.
 
 To share chosen subjects between two accounts, the source account **exports**
 them and the other account **imports** them. See
-[Connectivity §1](../connectivity.md#cross-account-subject-sharing-imports-exports).
+[Connectivity §1](../connectivity.md#cross-account-subject-sharing-imports--exports).
 [NATS Security](./nats-security.md) explains how the server enforces the
 account boundary.
 

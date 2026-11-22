@@ -19,7 +19,7 @@ small SQLite file that is easy to back up, and a recovery time of minutes.
 | State | Where it lives | Loss impact | Protected by |
 | :--- | :--- | :--- | :--- |
 | **Identity hierarchy**: NATS Operator key, NATS Accounts, Nebula CAs, user and Thing credentials | Control Plane (`pb_data`) | **Severe.** The NATS Operator key is the root of the chain of trust. Losing it orphans every Account and credential it signed. | This page (§3). |
-| **Inventory and contracts**: Orgs, Things, Thing Types, Locations, schemas, related config | Control Plane (`pb_data`) | High, but you can enter it again, or restore it from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull-apply). | This page (§3), plus `stone pull` workspaces. |
+| **Inventory and contracts**: Orgs, Things, Thing Types, Locations, schemas, related config | Control Plane (`pb_data`) | High, but you can enter it again, or restore it from a [GitOps workspace](./stone-cli.md#5-declarative-workspaces-pull--apply). | This page (§3), plus `stone pull` workspaces. |
 | **Live state**: twin KV, other KV buckets, JetStream streams | NATS servers (JetStream storage) | Depends on the bucket. The reported twin (`twin`) fills again as devices report. The **desired** twin (`twin_desired`) does not: people wrote it, nothing recreates it, and losing it loses every setpoint. Other tenant buckets and their contents are also lost. Stream retention is a buffer, not an archive. | JetStream replicas (`replicas: 3` on clustered NATS), stream mirrors. |
 | **Historical telemetry** | Your Layer 3 TSDB | Your choice: it is [your own](./observability.md). | Your TSDB's backup tools. |
 | **Edge leaf config** | `nats-leaf.conf` and creds on the edge box | None. Regenerate it with `agent -leaf-config` ([Leaf Nodes](./leaf-nodes.md)). | Nothing needed. |
@@ -227,7 +227,7 @@ zfs create tank/stone-age
 
 As in §1: JetStream and KV contents (use replicas and mirrors), your TSDB (use
 its own tools) and edge state (it rebuilds itself). Also keep a regular
-[`stone pull`](./stone-cli.md#5-declarative-workspaces-pull-apply) workspace in
+[`stone pull`](./stone-cli.md#5-declarative-workspaces-pull--apply) workspace in
 git. It is a readable, diffable record of tenant configuration, useful for
 audits and selective rebuilds. It is not a backup, because it has no secrets or
 identity material.
@@ -623,7 +623,7 @@ The versions these docs describe are in [Versions](./versions.md).
   test of them. If the release changed a rule, check that it also has a migration
   (§5.1).
 - [ ] **A `stone pull` workspace in git** for reviewable tenant configuration
-  ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply)).
+  ([Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull--apply)).
 
 ---
 

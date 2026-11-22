@@ -264,7 +264,7 @@ After that each durable keeps its position on the NATS server (§5).
 - **Notification sink.** Emails on alarms, a fire input asserting (never its
   clear) and controller-offline when
   both a source opt-in and an operator opt-in line up, through PocketBase's
-  mail settings. See [Notifications & Webhook](protocol.md#12-notifications-webhook)
+  mail settings. See [Notifications & Webhook](protocol.md#12-notifications--webhook)
   and [Notifications](configuration.md#8-notifications).
 - **Reminders.** Re-sends an urgent alarm (`forced`, `intrusion`, an active
   `fire`, `controller_offline`) still unacknowledged after 15 minutes, at most twice,

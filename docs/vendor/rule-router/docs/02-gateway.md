@@ -190,7 +190,7 @@ All three reject a timestamp more than **5 minutes** from the gateway's clock, i
 
 Slack's `url_verification` challenge is signed too, so it passes the gate; answer it with a synchronous `respond` rule that returns `{challenge}`.
 
-Outcomes are exported as `webhook_hmac_verifications_total{result}` (`valid`/`invalid`/`missing`/`expired`/`error`); rejections also appear as `http_inbound_requests_total{status="401"}`. See [Observability](./12-observability.md#http-gateway-inbound).
+Outcomes are exported as `webhook_hmac_verifications_total{result}` (`valid`/`invalid`/`missing`/`expired`/`error`); rejections also appear as `http_inbound_requests_total{status="401"}`. See [Observability](./12-observability.md#http-gateway--inbound).
 
 ## Outbound: NATS → HTTP
 
@@ -269,7 +269,7 @@ The response body is published on 2xx (capped at 1 MB). Non-2xx responses retry 
 
 ## Request/reply: synchronous responses and the HTTP↔NATS bridge
 
-The flows above are fire-and-forget. Two opt-in shapes let an HTTP request receive a real, evaluated response. Conceptual overview (including the NATS-side responder) is in [01 Core Concepts — Request/Reply & responses](./01-core-concepts.md#requestreply-responses); this section covers the HTTP specifics.
+The flows above are fire-and-forget. Two opt-in shapes let an HTTP request receive a real, evaluated response. Conceptual overview (including the NATS-side responder) is in [01 Core Concepts — Request/Reply & responses](./01-core-concepts.md#requestreply--responses); this section covers the HTTP specifics.
 
 ### Synchronous response (`respond` action)
 
@@ -303,7 +303,7 @@ An HTTP-triggered rule with a `respond` action returns the evaluated payload dir
 
 ### HTTP↔NATS bridge (`request: true`)
 
-An HTTP-triggered rule with `action.nats` and `request: true` turns the request into a NATS request (`nc.Request`): the gateway waits for a responder and returns the reply as the HTTP response body. This exposes any NATS request/reply service — including a [NATS responder rule](./01-core-concepts.md#requestreply-responses) running under the `router` feature — as an HTTP endpoint.
+An HTTP-triggered rule with `action.nats` and `request: true` turns the request into a NATS request (`nc.Request`): the gateway waits for a responder and returns the reply as the HTTP response body. This exposes any NATS request/reply service — including a [NATS responder rule](./01-core-concepts.md#requestreply--responses) running under the `router` feature — as an HTTP endpoint.
 
 ```yaml
 - trigger:
@@ -371,7 +371,7 @@ server {
 
 Notes:
 - The same applies to the metrics endpoint (`:2112`) and the health endpoints — all plain HTTP. Keep them on an internal interface or behind the same proxy/network policy.
-- The **outbound** HTTP client (NATS→HTTP actions) does support TLS settings — see [`http.client.tls`](./11-configuration.md#httpclient-outbound-http-client-gateway-scheduler). That is unrelated to inbound TLS termination.
+- The **outbound** HTTP client (NATS→HTTP actions) does support TLS settings — see [`http.client.tls`](./11-configuration.md#httpclient--outbound-http-client-gateway--scheduler). That is unrelated to inbound TLS termination.
 
 ## Path matching
 

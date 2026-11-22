@@ -381,7 +381,7 @@ A per-door monitor over the DPS and REX inputs raises `forced`, `held`,
 armed area to that area's `intrusion`. Aux inputs raise `intrusion` by
 `point_type`. Behaviour and timings are in
 [Door monitoring](hardware.md#door-monitoring); subjects and suppression rules
-are in [Door Monitoring & Alarms](protocol.md#3-door-monitoring-alarms). Under
+are in [Door Monitoring & Alarms](protocol.md#3-door-monitoring--alarms). Under
 `driver: mock` there are no door inputs, so door state stays `unknown` and no
 door alarm fires.
 
@@ -426,7 +426,7 @@ The runtime keeps three timers. Everything else is event-driven.
 
 Posture commands and portal arming re-apply the hold immediately; the tick is
 the fallback for time boundaries. See
-[Scheduled Posture & the Strike Hold](protocol.md#6-scheduled-posture-the-strike-hold).
+[Scheduled Posture & the Strike Hold](protocol.md#6-scheduled-posture--the-strike-hold).
 
 Background loops outside the runtime are infrastructure, not policy: the KV
 watch retry backoff, the offline cache's 10-minute freshness stamp (only while

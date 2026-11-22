@@ -182,7 +182,7 @@ Suppress rapid-fire events per logical key — per device, per room, per user �
 
 **When to reach for it:** Flappy sensors or chatty event sources. The `key` field is the lever — without it, all messages share one window; with `{@subject.N}` or `{field}`, each distinct value gets its own.
 
-Note this throttles the **action**, not the trigger, so every message is still evaluated and the window only opens once something actually matches. A trigger throttle would sample the input stream instead and could discard the reading you cared about — see [Core Concepts](./01-core-concepts.md#trigger-throttle-read-this-before-using-it).
+Note this throttles the **action**, not the trigger, so every message is still evaluated and the window only opens once something actually matches. A trigger throttle would sample the input stream instead and could discard the reading you cared about — see [Core Concepts](./01-core-concepts.md#trigger-throttle--read-this-before-using-it).
 
 ### 7b. Emit the settled value, not the first one
 

@@ -47,7 +47,7 @@ a record or a payload is an addition, not a break.
 | `GET /metrics` | The metric names, types and labels | [Health & Metrics §3](./health-metrics.md#3-get-metrics) |
 | The record API | The collection names and field names that the Agent, `stone` and sibling apps read. The record API itself is PocketBase's. | [HTTP API](./concepts/http-api.md) |
 | What a refused rule returns | A list leaves out the records a rule refuses and answers `200`. A view, update or delete that a rule refuses answers `404`, the same as a record that does not exist. A client must not read a `404` as proof that a record is absent; to decide between create and update, list first. This is PocketBase behavior, and the platform keeps it: it does not tell a caller that a record it may not see exists. | [HTTP API](./concepts/http-api.md#what-a-failed-rule-returns) |
-| The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file`, `jwt`, `updated`, `device_key` and `public_key` fields, and the `nebula_host` relation the Agent reads its Nebula config from, with its `device_key` and `public_key` | [The Agent §2](./agent.md#2-provisioning-credential-lifecycle) |
+| The device sign-in path | `things` auth with a password, `auth-refresh`, the `nats_user` relation with its `creds_file`, `jwt`, `updated`, `device_key` and `public_key` fields, and the `nebula_host` relation the Agent reads its Nebula config from, with its `device_key` and `public_key` | [The Agent §2](./agent.md#2-provisioning--credential-lifecycle) |
 | MQTT bearer tokens | `nats_users.bearer_token`, and that the user JWT is accepted as the MQTT password when it is set | [Connectivity §1](./connectivity.md#mqtt-clients) |
 
 ### Authorization
@@ -70,7 +70,7 @@ a record or a payload is an addition, not a break.
 | A leaf's JetStream domain | The gateway Thing's code | [Leaf Nodes §3](./leaf-nodes.md#the-domain-is-the-code-computed-and-never-stored) |
 | A QR label's payload | The bare code | [Platform Entities §5](./platform-ui-entities.md#5-codes-and-qr-labels) |
 | A Location's `path` | Codes from the root down, with `/` between them and at both ends | [Platform Entities §2](./platform-ui-entities.md#2-locations) |
-| Platform subjects in a tenant's account | The managed export subtree, as configured | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports-exports) |
+| Platform subjects in a tenant's account | The managed export subtree, as configured | [Connectivity §1](./connectivity.md#cross-account-subject-sharing-imports--exports) |
 
 ### Configuration and commands
 
@@ -80,7 +80,7 @@ a record or a payload is an addition, not a break.
 | `stone-age` commands | `init`, `serve`, `migrate up`, `bootstrap`, `superuser upsert`, `nats export`, and their flags. Under `serve --nats`, `SIGHUP` reloads `nats.conf` into the running server | [Configuration §4.1](./configuration.md#41-what-init-runs), [Operations §2.2](./operations.md#22-reloading-natsconf) |
 | The exported `nats.conf` | That a stock `nats-server` accepts it, and that the embedded server reads the same file | [ADR 0001](./decisions/0001-embedded-nats-server.md) |
 | `stone` commands | The command names, the flags, the exit status, and the `-o json` and `-o yaml` output. `stone` ships separately, so a flag for a field that a platform release adds can arrive in a later `stone` release; until then, set the field with `stone <type> edit`, `apply` or the console. Each `stone` release names, in its release notes, the platform release its flags were checked against | [Stone CLI §10](./stone-cli.md#10-limitations) |
-| The `stone` workspace | One YAML file for each record, and for each stream and KV bucket under `jetstream/`, and that neither `apply` nor `js apply` ever deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull-apply), [§6](./stone-cli.md#jetstream-config-in-a-workspace) |
+| The `stone` workspace | One YAML file for each record, and for each stream and KV bucket under `jetstream/`, and that neither `apply` nor `js apply` ever deletes | [Stone CLI §5](./stone-cli.md#5-declarative-workspaces-pull--apply), [§6](./stone-cli.md#jetstream-config-in-a-workspace) |
 
 ### The Agent
 

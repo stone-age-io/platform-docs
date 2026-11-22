@@ -124,8 +124,10 @@ pages | while IFS='|' read -r repo src gh file path order extra; do
     # heading. Only a link to another vendored page becomes a wiki link, so a
     # relative link to any other repo file (LICENSE, an example rule, a .md
     # that is not vendored) points at GitHub instead.
-    # GitHub keeps a double hyphen in an anchor where a heading had " & "
-    # or " / " (#requestreply--responses); pb-wiki's heading ids have one.
+    # An anchor keeps GitHub's form. GitHub keeps a double hyphen where a
+    # heading had " & " or " / " (#requestreply--responses); pb-wiki's ids
+    # collapse it, and pb-wiki collapses a link's fragment the same way when
+    # it renders, so the copy stays as upstream wrote it.
     sed -e 's/\r$//' \
         -e '/^<\/\{0,1\}details>$/d' \
         -e 's|^<summary><b>\(.*\)</b></summary>$|### \1|' \
@@ -163,8 +165,7 @@ pages | while IFS='|' read -r repo src gh file path order extra; do
           }
           my $r = join("/", @out);
           $v{$r} ? "]($p)" : "](https://github.com/$ENV{GH}/blob/main/$r)";
-        }ge;
-        s{\]\(([^)\s#]*)#([^)\s]+)\)}{my ($p, $a) = ($1, $2); $a =~ s/-{2,}/-/g; "]($p#$a)"}ge'
+        }ge'
   } > "$dest"
 done
 

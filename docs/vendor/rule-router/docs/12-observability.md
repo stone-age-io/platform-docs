@@ -42,7 +42,7 @@ The metrics-port `/health` and `/ready` are the recommended probe targets for **
 
 > **Note:** `/health` and `/ready` live on the metrics server, so they require `metrics.enabled: true` (set in the shipped config files; the built-in default is `false`). With metrics disabled there is no HTTP probe target on router-only or scheduler-only deployments.
 
-> **TLS:** health and metrics endpoints, like the inbound gateway, are plain HTTP. Terminate TLS at a proxy/load balancer — see [02 Gateway — TLS termination](./02-gateway.md#tls-https-termination).
+> **TLS:** health and metrics endpoints, like the inbound gateway, are plain HTTP. Terminate TLS at a proxy/load balancer — see [02 Gateway — TLS termination](./02-gateway.md#tls--https-termination).
 
 ---
 
@@ -139,7 +139,7 @@ Despite its name, the `rule_file` label on the `foreach_*` metrics carries the *
 
 Useful derived signals:
 
-- `rate(throttle_suppressed_total{phase="trigger"}[5m])` climbing on a rule that *has* conditions is a smell: a trigger throttle samples the input stream and may be discarding messages that would have matched. See [Core Concepts](./01-core-concepts.md#trigger-throttle-read-this-before-using-it).
+- `rate(throttle_suppressed_total{phase="trigger"}[5m])` climbing on a rule that *has* conditions is a smell: a trigger throttle samples the input stream and may be discarding messages that would have matched. See [Core Concepts](./01-core-concepts.md#trigger-throttle--read-this-before-using-it).
 - `coalesced / (coalesced + emitted)` is how much churn trailing mode is absorbing. Near zero means the window is doing nothing and can be removed.
 - Any sustained `dropped` means shutdowns are losing settled values — raise the shutdown grace period or reconsider trailing mode for that rule.
 

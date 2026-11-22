@@ -122,7 +122,7 @@ two kinds of helper host:
 
 A lighthouse knows *where* a host is. A relay carries *packets*. One host can do
 both jobs. See
-[Connectivity §2](../connectivity.md#lighthouses-discovery).
+[Connectivity §2](../connectivity.md#lighthouses--discovery).
 
 Every host connects out to the lighthouse. No device needs an open inbound port
 ([Connectivity §3](../connectivity.md#3-outbound-only-connections)).

@@ -46,7 +46,7 @@ choice, and one role then serves the whole fleet. To limit each device to its
 own subjects, leave the role's publish list empty and put
 `temp-probe.<thing code>.>` in the publish permissions of that device's NATS
 user. The platform combines the two lists
-([Connectivity §1](./connectivity.md#core-pubsub-subject-namespacing)).
+([Connectivity §1](./connectivity.md#core-pubsub--subject-namespacing)).
 
 ---
 
@@ -86,7 +86,7 @@ Choose the way that fits the device:
 
 | The device | How it gets its credential |
 | :--- | :--- |
-| Runs the [Agent](./agent.md) | The Agent signs in with the Thing's email and password and fetches the credential. It also keeps the credential current ([The Agent §2](./agent.md#2-provisioning-credential-lifecycle)). |
+| Runs the [Agent](./agent.md) | The Agent signs in with the Thing's email and password and fetches the credential. It also keeps the credential current ([The Agent §2](./agent.md#2-provisioning--credential-lifecycle)). |
 | Runs your own NATS client | Download the `.creds` file and install it on the device (below). |
 | Speaks MQTT | Use a bearer-token identity ([Connectivity §1](./connectivity.md#mqtt-clients)). |
 
