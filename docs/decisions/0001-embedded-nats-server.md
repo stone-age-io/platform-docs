@@ -4,7 +4,7 @@ nav_order: 10
 ---
 # ADR 0001: Embed the NATS Server in the Control Plane Binary
 
-**Status:** Accepted — implemented. Step 3 (config reload) followed on 2026-11-22, as `SIGHUP`
+**Status:** Accepted — implemented. Step 3 (config reload) followed on 2026-11-22, as `SIGHUP` in platform v0.22.0
 **Date:** 2026-08-14 (implemented 2026-08-15)
 
 > The Context below describes the state of things when the decision was made. Two of the problems it names have since been fixed; see [As implemented](#as-implemented) at the end for what shipped and what building it turned up.

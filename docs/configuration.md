@@ -120,7 +120,7 @@ imports, and the System Account connection.
 >
 > The **port** must agree across the two files. `server_url` is where the Control Plane connects, and `port` in `nats.conf` is where the server listens. `--nats` refuses to start when they differ, because the process could not reach the server it started.
 >
-> **An edit to `nats.conf` applies on `SIGHUP`** under `--nats`, without a restart, except for the few settings nats-server cannot change live, such as the port. See [Operations §2.2](./operations.md#22-reloading-natsconf).
+> **An edit to `nats.conf` applies on `SIGHUP`** under `--nats` (from v0.22.0), without a restart, except for the few settings nats-server cannot change live, such as the port. See [Operations §2.2](./operations.md#22-reloading-natsconf).
 
 ### 2.1 `server_url` and `websocket_urls` are different addresses
 

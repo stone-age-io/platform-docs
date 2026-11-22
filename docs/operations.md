@@ -121,9 +121,9 @@ the embedded node leaving one
 
 ### 2.2 Reloading `nats.conf`
 
-Under `serve --nats`, send the process `SIGHUP` to apply an edited `nats.conf`
-without a restart. It is the same reload a stock `nats-server` does on
-`nats-server --signal reload`, and connections stay up.
+From platform v0.22.0, under `serve --nats`, send the process `SIGHUP` to apply
+an edited `nats.conf` without a restart. It is the same reload a stock
+`nats-server` does on `nats-server --signal reload`, and connections stay up.
 
 ```bash
 kill -HUP "$(pidof stone-age)"             # a host install

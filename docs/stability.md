@@ -135,7 +135,7 @@ None. The three gaps listed here until 2026-11-22 are resolved:
   fields, so the lag can leave a field without a flag but cannot break one.
 - **A refused update returns `404`.** It is now part of the contract, in the
   HTTP API table above, rather than a gap.
-- **Config reload (ADR 0001 step 3)** is built: `SIGHUP` reloads `nats.conf`
+- **Config reload (ADR 0001 step 3)** shipped in platform v0.22.0: `SIGHUP` reloads `nats.conf`
   under `serve --nats` ([Operations §2.2](./operations.md#22-reloading-natsconf)).
 
 ---

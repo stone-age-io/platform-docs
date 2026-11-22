@@ -9,7 +9,7 @@ version says so.
 
 | Component | Version | Where its own docs are |
 | :--- | :--- | :--- |
-| Control Plane and console (`stone-age`) | v0.21.0 | The Platform section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
+| Control Plane and console (`stone-age`) | v0.22.0 | The Platform section. [CHANGELOG](https://github.com/stone-age-io/platform/blob/main/CHANGELOG.md) |
 | `stone` CLI | v0.12.0 | [Stone CLI](./stone-cli.md) |
 | Agent | v0.11.0 | [Agent docs](./vendor/agent/README.md) |
 | `rule-router` | v0.25.0 | [Rule Router docs](./vendor/rule-router/README.md) |
@@ -19,7 +19,7 @@ version says so.
 | Kiosk | v0.1.1 | [Kiosk docs](./vendor/kiosk/README.md). [CHANGELOG](https://github.com/stone-age-io/kiosk/blob/main/CHANGELOG.md) |
 | Application kit (`stone-age-io/kit`) | v0.2.0 | [README](https://github.com/stone-age-io/kit#readme). A Go library the applications build on, not something you run |
 
-Platform v0.21.0 is built on these upstream versions:
+Platform v0.22.0 is built on these upstream versions:
 
 | Upstream | Version |
 | :--- | :--- |
