@@ -333,8 +333,16 @@ seconds later. The run found a defect outside the keeper: the
 `kiosk-controller` role's user JWT is 4,745 bytes, over nats-server's default
 `max_control_line` of 4,096, so the server refuses the connect whichever way
 the creds file arrives. Raising the limit in `nats.conf` and reloading it with
-`SIGHUP` let the run finish. A contract role must fit that limit, or the
-exported `nats.conf` must raise it; neither is done yet.
+`SIGHUP` let the run finish. Kiosk `0cb9895` fixed it at the source: its six
+KV buckets became two with key families inside, as accessd keeps
+`ACC_POLICY`, and the roles were trimmed to the grants a KV bucket needs. The
+controller's JWT is 1,886 bytes. On a server back at the default limit, the
+role update reached the running controller through its keeper: its next
+connect was refused with the old JWT, the keeper fetched the re-signed one,
+and it reconnected. A role change reaches a connection only when it next
+connects, since NATS fixes permissions at connect; a Revoke forces that, a
+role edit does not. Nothing checks a role's JWT size yet, so the next role to
+outgrow 4 KB will fail the same way, at its first connect.
 
 **Not yet verified:**
 
