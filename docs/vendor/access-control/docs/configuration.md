@@ -113,15 +113,17 @@ it is ignored.
 
 ## 4. Metrics
 
-A Prometheus endpoint on a side port. The example configs enable it and put the
-two binaries on **different ports** so both can run on one host: accessd
-`:2113`, controller `:2114`.
+A Prometheus endpoint. **accessd** serves `GET /metrics` on its own PocketBase
+listener, beside `GET /api/ready`, and ignores `metrics.address` and
+`metrics.path`. **The controller** serves it on a side listener at
+`metrics.address` (`:2114` in the example config).
 
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
 | `metrics.enabled` | `false` | `SA_METRICS_ENABLED` | The example configs set `true`. |
-| `metrics.address` | `:2113` | `SA_METRICS_ADDRESS` | The controller example uses `:2114`. |
-| `metrics.path` | `/metrics` | `SA_METRICS_PATH` | |
+| `metrics.address` | `:2113` | `SA_METRICS_ADDRESS` | Controller only. The controller example uses `:2114`. |
+| `metrics.path` | `/metrics` | `SA_METRICS_PATH` | Controller only. |
+| `metrics.token` | `""` | `SA_METRICS_TOKEN` | accessd only. When set, `GET /metrics` needs it as a Bearer token or a Basic password. |
 | `metrics.updateInterval` | `15s` | `SA_METRICS_UPDATEINTERVAL` | Duration string. |
 
 ---
@@ -190,6 +192,7 @@ Keys only the central service reads. What it runs with them is in
 | Key | Default | Env var | Purpose |
 |---|---|---|---|
 | `accessd.dataDir` | `./pb_data` | `SA_ACCESSD_DATADIR` | The embedded PocketBase data dir (database and uploads). Created at runtime and gitignored. The UI is `//go:embed`-ed, so there is no `pb_public`. |
+| `accessd.code` | `""` | `SA_ACCESSD_CODE` | accessd's Thing code on the platform (ADR 0008). It goes into the NATS service discovery metadata as `code`, which is how the console finds the running process. Empty skips discovery registration. A controller's Thing code is its `controller.code`. |
 | `accessd.controllerOfflineAfter` | `45s` | `SA_ACCESSD_CONTROLLEROFFLINEAFTER` | How long a controller can be silent before it shows offline. Keep it a few controller `heartbeatInterval`s, so one dropped heartbeat does not flap a box offline. |
 | `accessd.auditRetentionDays` | `365` | `SA_ACCESSD_AUDITRETENTIONDAYS` | How long control-plane audit rows (`audit_logs`, written by `internal/changelog`) are kept before a daily 03:00 prune deletes them. Absent means 365. An explicit `0` or a **negative** value turns off pruning (keep forever). See [Operators & Authorization](operators.md#8-control-plane-audit-log-audit_logs). |
 | `accessd.eventRetentionDays` | `0` | `SA_ACCESSD_EVENTRETENTIONDAYS` | How long door-activity rows (`events`, the rebuildable projection of the `ACC_EVENTS` JetStream stream) are kept before a daily 03:00 prune deletes them. **`0` (the default) or any negative value keeps them forever.** Pruning is opt-in, so an upgrade never silently deletes event history. A positive day count trims the projection. JetStream stays the system of record, so a prune only shrinks the read model. |

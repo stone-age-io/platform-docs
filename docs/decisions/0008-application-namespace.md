@@ -4,7 +4,7 @@ nav_order: 80
 ---
 # ADR 0008: One Namespace, Event Shape and Identity for Applications
 
-**Status:** Accepted — partly implemented. The helpdesk and access control follow its subjects and event shape; kiosk does not yet. The helpdesk registers its Thing code when `nats.code` is set; access control does not yet. See [What changes in each application](#what-changes-in-each-application).
+**Status:** Accepted — partly implemented. The helpdesk and access control follow its subjects and event shape; kiosk does not yet. The helpdesk (`nats.code`), accessd (`accessd.code`) and each access controller (`controller.code`) register their Thing codes. See [What changes in each application](#what-changes-in-each-application).
 **Date:** 2026-11-21
 
 > This ADR is ecosystem-scoped, like [ADR 0002](./0002-organization-code-namespace.md). It decides how the applications built on the platform (helpdesk, access control, kiosk and the services) name their subjects, shape their events, connect, and refer to inventory. It changes nothing in the platform itself.

@@ -285,7 +285,7 @@ pbmigrations/           PocketBase collections (schema-in-code)
 internal/mirror/        PocketBase record hooks → one ACC_POLICY KV key per record (+ boot reconcile/prune)
 internal/audit/         JetStream consumer → PocketBase events collection (+ optional prune)
 internal/status/        ACC_STATUS → point_status projection (+ area arm-transition events)
-internal/health/        heartbeat subscriber → controllers.last_seen/status + online/offline events
+internal/liveness/      heartbeat subscriber → controllers.last_seen/status + online/offline events
 internal/notify/        alarm/fire/offline email sink (an ACC_EVENTS durable); inert until opted into
 internal/webhook/       POSTs each pageable event as JSON to `accessd.webhookURL` (another durable)
 internal/disarm/        entry-disarm sink: a valid grant at a `disarm_on_grant` portal disarms its area
@@ -320,10 +320,9 @@ internal/policykv/      downward wire contract: ACC_POLICY key scheme + JSON sha
 internal/statuskv/      upward wire contract: ACC_STATUS key scheme + JSON shapes
 internal/subjects/      every NATS subject is built and parsed here
 internal/drivers/hardware/  per-model board profiles (the console reads them for /api/models)
-internal/natsx/         NATS connection + KV helpers + service-discovery registration
-internal/version/       the build version `go build` stamps (--version, service discovery)
+internal/natsx/         auth/TLS options + KV helpers over the kit's NATS connection and discovery
 internal/logger/        zap wrapper
-internal/metrics/       Prometheus instrumentation (default :2113; the example controller config uses :2114)
+internal/metrics/       Prometheus instrumentation (accessd: its own HTTP port; controller: :2114 in the example config)
 
 demo/                   dev-only: rules/ (rule-router activity), telegraf/ (events → VictoriaMetrics),
                         and the older seed.ps1 + access-demo.yaml

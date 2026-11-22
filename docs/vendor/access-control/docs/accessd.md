@@ -107,8 +107,9 @@ command, though their hooks and crons only fire while serving:
 
 On `serve`, in this order:
 
-1. The embedded console at `/` and the branding route at `/branding/*`.
-2. The metrics collector, and the metrics server if `metrics.enabled`.
+1. The embedded console at `/`, the branding route at `/branding/*`, `GET /api/ready`,
+   and `GET /metrics` if `metrics.enabled`.
+2. The metrics collector.
 3. The NATS connection. accessd **fails fast**: if no server is reachable, the
    connect returns an error and `serve` exits.
 4. `ACC_POLICY`, `ACC_STATUS` and `ACC_EVENTS`, created or updated.
@@ -119,7 +120,8 @@ On `serve`, in this order:
 8. The HTTP routes: command bridge, models, simulator, badge tier.
 9. The one-shot disarm release and the visitor credential sweep.
 10. The status projector.
-11. The [service discovery](protocol.md#service-discovery) registration. A
+11. The [service discovery](protocol.md#service-discovery) registration, with
+    `accessd.code` as its Thing code; it is skipped while that is empty. A
     failure is logged and `serve` carries on without it.
 
 Steps 4 to 6 share a two-minute timeout, and each bucket or stream call has its
@@ -137,7 +139,8 @@ are logged and skipped.
 | PocketBase admin | `/_` |
 | PocketBase REST API | `/api/` |
 | Branding overlay | `/branding/*` |
-| Prometheus metrics | A separate listener, `metrics.address` (`:2113` by default) at `metrics.path` (`/metrics`), only when `metrics.enabled` is true. See [Configuration Reference](configuration.md#4-metrics) |
+| Readiness | `GET /api/ready` on the PocketBase listener, no login. Checks the database, accessd's collections, the schema version and the NATS connection, every 15 seconds; `503` only when one fails. The shared wire format is in Health & Metrics in platform-docs |
+| Prometheus metrics | `GET /metrics` on the PocketBase listener, only when `metrics.enabled` is true. With `metrics.token` set it needs that token as a Bearer token or a Basic password. `metrics.address` and `metrics.path` are the controller's and accessd ignores them. See [Configuration Reference](configuration.md#4-metrics) |
 | Data directory | `accessd.dataDir`, default `./pb_data` (database and uploads) |
 
 The console is compiled into the binary with `//go:embed`, so there is no
@@ -201,7 +204,7 @@ Everything below runs inside the `serve` process and stops when it terminates.
 | Audit projection | [`internal/audit`](https://github.com/stone-age-io/access-control/blob/main/internal/audit) | Durable `acc-audit` | `events` rows | `events.stream` |
 | Events prune | `internal/audit` | Cron, daily 03:00 UTC | Deletes `events` rows | `accessd.eventRetentionDays` (off by default) |
 | Status projector | [`internal/status`](https://github.com/stone-age-io/access-control/blob/main/internal/status/projector.go) | KV watch on `ACC_STATUS` | `point_status` rows; `area` `evt.state` events | `status.bucket` |
-| Controller health | [`internal/health`](https://github.com/stone-age-io/access-control/blob/main/internal/health/monitor.go) | Heartbeat subscription; staleness sweep every `controllerOfflineAfter / 3` (minimum 1s) | `controllers.last_seen`/`status`; `ctrl` `evt.state` events | `accessd.controllerOfflineAfter` (45s) |
+| Controller liveness | [`internal/liveness`](https://github.com/stone-age-io/access-control/blob/main/internal/liveness/monitor.go) | Heartbeat subscription; staleness sweep every `controllerOfflineAfter / 3` (minimum 1s) | `controllers.last_seen`/`status`; `ctrl` `evt.state` events | `accessd.controllerOfflineAfter` (45s) |
 | Notification sink | [`internal/notify`](https://github.com/stone-age-io/access-control/blob/main/internal/notify) | Durable `acc-notify` | Email | None (opt-ins are data) |
 | Reminders | [`internal/repage`](https://github.com/stone-age-io/access-control/blob/main/internal/repage) | Every 5 minutes | Email; `events.repage_count` | None |
 | Webhook sink | [`internal/webhook`](https://github.com/stone-age-io/access-control/blob/main/internal/webhook) | Durable `acc-webhook` | HTTP POST | `accessd.webhookURL` |
