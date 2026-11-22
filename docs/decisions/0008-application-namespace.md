@@ -120,9 +120,11 @@ accessd, each access controller, each kiosk node and the kiosk controller, the
 helpdesk, and every service instance get a Thing of their own, with a type
 that names the program. Each one:
 
-- **gets its creds file from the platform through creds-keeper**, as
-  [ADR 0007](../vendor/services/docs/decisions/0007-creds-keeper.md) decided:
-  a companion program, not a platform client built into the application;
+- **gets its creds file from the platform through the kit's `credskeeper`,
+  run in its own process.** *Amended by [ADR 0009](./0009-thing-credentials-in-kit.md):*
+  this bullet first said a companion program, as
+  [ADR 0007](../vendor/services/docs/decisions/0007-creds-keeper.md) decided,
+  and not a platform client built into the application;
 - **reconnects after a Revoke**, which in nats.go means
   `IgnoreAuthErrorAbort()` beside `UserCredentials(path)`, so the next
   connect reads the file creds-keeper wrote (ADR 0007 §4);
@@ -151,7 +153,7 @@ publish inventory on NATS ([Architecture §2](../architecture.md)).
 | **access control** | The scope becomes the location alone, and the portal type and code move after the channel. Every subject changes: see the table below. The events stream then needs one filter, `acc.*.evt.>`. `Nats-Msg-Id` on every event. |
 | **kiosk** | `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`, and `kiosk.{code}.command.…` → `kiosk.{code}.cmd.…` (rule 2). `occurred_at` → `ts`, and every event gains a `ts`. `Nats-Msg-Id` on every event. The repository moved to `stone-age-io/kiosk`. |
 | **Agent** | None. It already fits rules 1 to 3. |
-| **All of them** | Rule 4: a Thing per process, creds-keeper, reconnect after a Revoke, `metadata.code`. |
+| **All of them** | Rule 4: a Thing per process, the kit's keeper in process (ADR 0009), reconnect after a Revoke, `metadata.code`. |
 
 Access control's subjects, before and after:
 
@@ -188,8 +190,7 @@ A reader can still be limited to its own door with a literal subject, such as
 
 - **Every application renames subjects.** Each one changes its protocol
   document, its demo rules and its tests, once.
-- **One more process per application instance**: creds-keeper runs beside it,
-  as a sidecar container or a second systemd unit (ADR 0007 §8).
+- ~~**One more process per application instance**~~. *Removed by [ADR 0009](./0009-thing-credentials-in-kit.md): an application runs the keeper in its own process.*
 - **Every access control subject changes,** not only the two that differed
   from the others. After the channel, the rest of a subject varies in length
   (`evt.fire` against `evt.door.lobby-main.tap`), so a consumer that parses
@@ -213,7 +214,9 @@ A reader can still be limited to its own door with a literal subject, such as
 
 ## Rejected alternatives
 
-- **A platform client built into each application.** ADR 0007 rejected it for
+- **A platform client built into each application.** *Superseded by
+  [ADR 0009](./0009-thing-credentials-in-kit.md), once the kit existed and the
+  package was already a library.* ADR 0007 rejected it for
   services, and the reasons hold here: every application would gain an HTTP
   client, a sync loop and credential swapping, and the platform's credential
   lifecycle would have several implementations.

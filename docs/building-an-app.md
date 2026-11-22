@@ -16,8 +16,9 @@ the other applications. Each section is short and links to the page that owns
 the topic. The decisions behind it are
 [ADR 0002](./decisions/0002-organization-code-namespace.md),
 [ADR 0003](./decisions/0003-human-friendly-codes-and-default-subject.md),
-[ADR 0007](./vendor/services/docs/decisions/0007-creds-keeper.md) and
-[ADR 0008](./decisions/0008-application-namespace.md). All four applications
+[ADR 0007](./vendor/services/docs/decisions/0007-creds-keeper.md),
+[ADR 0008](./decisions/0008-application-namespace.md) and
+[ADR 0009](./decisions/0009-thing-credentials-in-kit.md). All four applications
 follow this page.
 
 ---
@@ -33,12 +34,21 @@ names the program.
    role grants the subjects the program uses, and nothing else. The Thing Type
    and the role come from the application's contract folder (§9); only the
    Thing is made by hand.
-2. **Run creds-keeper beside the process.** It signs in as the Thing and keeps
-   the creds file current, so Regenerate, Revoke and deactivation in the
-   console reach the process
-   ([creds-keeper](./vendor/services/docs/creds-keeper.md)). The application
-   doesn't contain a platform client: [ADR 0007](./vendor/services/docs/decisions/0007-creds-keeper.md)
-   explains why.
+2. **Run the kit's `credskeeper` in the process.** It signs in as the Thing
+   and keeps the creds file current, so Regenerate, Revoke and deactivation in
+   the console reach the process
+   ([ADR 0009](./decisions/0009-thing-credentials-in-kit.md) §2):
+   - fill `credskeeper.Config` from the application's own configuration, with
+     `CredsFile` set to the path it connects with;
+   - `go k.Run(ctx)`, then `k.WaitForCreds(ctx)` before the NATS connect,
+     which fails at once on a missing creds file;
+   - keep its directory persistent and out of the application's backups,
+     so not under `pb_data/`.
+
+   A program that cannot link Go, such as Telegraf, runs the
+   [creds-keeper](./vendor/services/docs/creds-keeper.md) binary beside it
+   instead. **If a host is compromised, deactivate its Thing; a Revoke alone
+   does not lock out whoever holds its session** (ADR 0009 §6).
 3. **Connect so that a new file is picked up.** In nats.go that means
    `UserCredentials(path)`, `MaxReconnects(-1)` and `IgnoreAuthErrorAbort()`.
    Without the last one, the client stops trying after two refused connects,

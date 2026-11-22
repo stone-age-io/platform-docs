@@ -4,7 +4,7 @@ nav_order: 90
 ---
 # ADR 0009: Applications Keep Their Own Thing Credentials, Through the Kit
 
-**Status:** Proposed
+**Status:** Accepted, 2026-11-22. Implemented in the kit and the services; the applications have not adopted it yet. See [As implemented](#as-implemented).
 **Date:** 2026-11-21, revised 2026-11-22 after review
 
 > This ADR is ecosystem-scoped, like [ADR 0008](./0008-application-namespace.md). It decides how our own applications (the helpdesk, access control, kiosk and the services) get their NATS credential from the platform. It moves creds-keeper's package into [`stone-age-io/kit`](https://github.com/stone-age-io/kit), lets an application run it inside its own process, and adds device-held NATS keys to it.
@@ -254,7 +254,7 @@ compromised host.
 
 ---
 
-## Verification before this is accepted
+## Verification
 
 ADR 0007's "As implemented" lists a run against a live platform as not yet
 verified. This decision makes the package the path for every application, so
@@ -276,6 +276,55 @@ that run comes first:
 
 ---
 
+## As implemented
+
+Implemented on 2026-11-22 in `stone-age-io/kit` (`credskeeper`), `stone-age-io/services`
+(the binary and the watchdog) and the platform's e2e suite.
+
+**Verified against the real platform binary and NATS server.** The platform's
+`e2e/credskeeper_test.go` runs the kit's keeper against the real routes. It is
+the contract test §1 calls for, and it covers most of the run above:
+
+- Platform-held key: a first start through `Run`, `WaitForCreds` and
+  `natsx.Connect`; a restart without the password; a Regenerate; and a Revoke
+  that locks out the old file while the new one connects.
+- Device-held key: enrollment, with no `creds_file` on the platform; a Revoke
+  that empties the key, a new seed, a new enrollment, and the old file refused;
+  and a lost seed stopping with `ErrForeignKey`, with no seed made over the key.
+- §6 end to end: a copied session enrolls first after a Revoke, the real host
+  stops on `ErrForeignKey`, and the recovery steps lock the copy out while the
+  host reconnects with the new password.
+
+**Verified by unit tests against a fake platform** (`kit/credskeeper`): a failed
+enrollment followed by a new seed on the next sync, losing an enrollment race
+(409) to another client, and `WaitForCreds` on a first start, on a file left
+from an earlier run, and with the platform down.
+
+**Not yet verified:**
+
+- **The watchdog binary with the keeper inside it.** Its wiring is a few lines
+  around the package the e2e suite runs, but the watchdog itself has not run
+  against a live platform.
+- **A PocketBase application's backup.** No PocketBase application has adopted
+  the keeper yet.
+- **The applications.** The helpdesk, access control and the kiosk still take a
+  creds file by hand. Each adopts the keeper in its own change.
+
+**Deviations from the text above:**
+
+1. **No `Enabled`.** §2's application fills `Config` from its own configuration
+   and checks its own platform URL. The watchdog, configured by environment,
+   checks `PLATFORM_URL` itself.
+2. **The seed path comes from the creds file:** `user.creds` becomes `user.nk`.
+   `New` refuses a session file at that path.
+3. **A lost seed is `ErrForeignKey` too.** It is the same case as a pasted key
+   (the platform holds a key this host cannot use), with the same fix.
+4. **The lapsed-session `fix` text says "the platform password"**, not
+   `PLATFORM_PASSWORD`, because an application names it in its own
+   configuration.
+
+---
+
 ## What this changes in other documents
 
 | Document | Part | Change |
@@ -290,7 +339,7 @@ that run comes first:
 | services `docs/creds-keeper.md` | Regenerate and Revoke | Adds §6: Revoke for a leaked creds file, deactivate for a compromised host. |
 | `platform/plans/app-kit.md` | Decision C | As ADR 0008 rule 4, amended. "Not a dependency of the Agent" still holds. |
 
-These edits follow when this ADR is accepted.
+These edits were made on 2026-11-22.
 
 ---
 
